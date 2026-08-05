@@ -19,6 +19,8 @@ export interface WebviewState {
   pickMode: boolean
   /** Annotation entries, each with its own comment draft. */
   picks: PickItem[]
+  /** Vertical split (0..1): preview iframe share of the body height. */
+  split: number
   /** A send is in flight. */
   sending: boolean
   /** Last user-visible error (navigation or send), cleared on next gesture. */
@@ -29,6 +31,11 @@ export interface WebviewState {
 export const PANEL_WIDTH_MIN = 320
 export const PANEL_WIDTH_MAX = 960
 export const PANEL_WIDTH_DEFAULT = 440
+
+/** Preview/annotations split clamp range (share of the body height). */
+export const SPLIT_MIN = 0.25
+export const SPLIT_MAX = 0.75
+export const SPLIT_DEFAULT = 0.55
 
 /**
  * Store factory: state + the complete write set. Components write only
@@ -44,6 +51,7 @@ export function createWebviewStore() {
       mode: 'proxy',
       pickMode: false,
       picks: [],
+      split: SPLIT_DEFAULT,
       sending: false,
       error: null,
     }),
@@ -62,6 +70,9 @@ export function createWebviewStore() {
       setMode: (d, mode: WebviewMode) => { d.mode = mode; d.pickMode = false },
       setWidth: (d, width: number) => {
         d.width = Math.min(PANEL_WIDTH_MAX, Math.max(PANEL_WIDTH_MIN, Math.round(width)))
+      },
+      setSplit: (d, split: number) => {
+        d.split = Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, split))
       },
       togglePickMode: (d) => { d.pickMode = !d.pickMode },
       addPick: (d, pick: PickItem) => { d.picks = [...d.picks, pick]; d.pickMode = false },

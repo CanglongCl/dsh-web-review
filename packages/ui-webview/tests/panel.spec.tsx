@@ -41,7 +41,7 @@ function pick(): PickItem {
   }
 }
 
-afterEach(() => { cleanup() })
+afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 function renderPanel(sendText: WebviewInjected['sendText'] = vi.fn(async () => {})) {
   const store = createWebviewStore().create()
@@ -114,6 +114,34 @@ describe('WebviewHeaderAction', () => {
     const store = renderPanel()
     act(() => { store.actions.open() })
     expect((screen.getByRole('button', { name: zh['panel.send'] }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('drags the splitter to resize the preview/annotations split', () => {
+    // jsdom lacks PointerEvent and pointer capture/layout: stub the capture
+    // surface and dispatch real MouseEvents (clientY is a MouseEvent member).
+    const proto = Element.prototype as unknown as Record<string, unknown>
+    const prevCapture = proto.setPointerCapture
+    const prevHas = proto.hasPointerCapture
+    const prevRelease = proto.releasePointerCapture
+    proto.setPointerCapture = () => {}
+    proto.hasPointerCapture = () => true
+    proto.releasePointerCapture = () => {}
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ height: 500 } as DOMRect)
+    try {
+      const store = renderPanel()
+      act(() => { store.actions.open('http://localhost:5173/') })
+      const separator = screen.getByRole('separator')
+      expect(Number(separator.getAttribute('aria-valuenow'))).toBe(55)
+      fireEvent(separator, new MouseEvent('pointerdown', { bubbles: true, cancelable: true, clientY: 100 }))
+      fireEvent(separator, new MouseEvent('pointermove', { bubbles: true, cancelable: true, clientY: 150 }))
+      // +50px over a 500px body moves the split by 0.1.
+      expect(store.getSnapshot().split).toBeCloseTo(0.65, 5)
+      fireEvent(separator, new MouseEvent('pointerup', { bubbles: true, cancelable: true, clientY: 150 }))
+    } finally {
+      proto.setPointerCapture = prevCapture
+      proto.hasPointerCapture = prevHas
+      proto.releasePointerCapture = prevRelease
+    }
   })
 
   it('intercepts unmodified http(s) link clicks while open and opens them in the panel', () => {

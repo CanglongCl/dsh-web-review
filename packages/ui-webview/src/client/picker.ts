@@ -20,9 +20,9 @@ import type { ElementSnapshot } from './contract.ts'
 /** Style sheet injected into the iframe document (hover marker + crosshair). */
 const PICKER_STYLE = `
 [data-dsh-wv-hover] {
-  outline: 2px dashed #f59e0b !important;
+  outline: 2px solid #4176e6 !important;
   outline-offset: -2px !important;
-  background-color: rgba(245, 158, 11, 0.08) !important;
+  background-color: rgba(65, 118, 230, 0.10) !important;
 }
 .dsh-wv-picking, .dsh-wv-picking * { cursor: crosshair !important; }
 `

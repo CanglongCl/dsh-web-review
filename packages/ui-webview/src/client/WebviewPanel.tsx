@@ -5,12 +5,29 @@
  * link interceptor (capture-phase, active only while the panel is open),
  * and the picker lifecycle inside the same-origin iframe.
  *
- * Presentation-only per the slot rules: state arrives via useStore/actions,
- * the send path via the injected sendText callback; no ctx, no contexts.
+ * Presentation follows the dsh web design system: shared atoms (Button,
+ * Input) and the ic_ds_* icon set from @deepseek-ai/dsh-client-ui-primitives,
+ * plus the --dsw-alias-* token vocabulary for everything custom. State
+ * arrives via useStore/actions, the send path via the injected sendText
+ * callback; no ctx, no contexts.
  */
 import { useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
+import {
+  Button,
+  IconBrowseOutline16,
+  IconCheckOutline16,
+  IconCloseOutline16,
+  IconLinkOutline16,
+  IconListPenOutline16,
+  IconLoadingOutline16,
+  IconRefreshOutline16,
+  IconRightUpOutline16,
+  IconSendOutline16,
+  IconWarningOutline16,
+  Input,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import { proxyUrl } from '../rewrite.ts'
 import { ensurePicker, isSameOrigin, pickFromElement, pickerOf } from './picker.ts'
@@ -55,10 +72,13 @@ export function WebviewHeaderAction({ useStore, actions, sendText, t }: WebviewS
   actionsRef.current = actions
 
   const frameRef = useRef<HTMLIFrameElement | null>(null)
+  const bodyRef = useRef<HTMLDivElement | null>(null)
   /** Whether the current frame content is same-origin (picker-capable). */
   const [pickerReady, setPickerReady] = useState(false)
   /** Bump to force an iframe remount (refresh button). */
   const [frameKey, setFrameKey] = useState(0)
+  /** Splitter drag is in flight (drives the active affordance). */
+  const [splitDragging, setSplitDragging] = useState(false)
 
   // Link interceptor: document capture-phase click; inert while closed.
   useEffect(() => {
@@ -149,6 +169,28 @@ export function WebviewHeaderAction({ useStore, actions, sendText, t }: WebviewS
     e.currentTarget.releasePointerCapture(e.pointerId)
   }
 
+  // Preview/annotations splitter: pointer capture on the divider, split
+  // tracked as a share of the body height (clamped in the store).
+  const splitDrag = useRef<{ startY: number; startSplit: number; bodyHeight: number } | null>(null)
+  const onSplitStart = (e: ReactPointerEvent<HTMLDivElement>): void => {
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const bodyHeight = bodyRef.current?.getBoundingClientRect().height ?? 1
+    splitDrag.current = { startY: e.clientY, startSplit: stateRef.current.split, bodyHeight }
+    setSplitDragging(true)
+  }
+  const onSplitMove = (e: ReactPointerEvent<HTMLDivElement>): void => {
+    const drag = splitDrag.current
+    if (drag === null || !e.currentTarget.hasPointerCapture(e.pointerId)) return
+    actions.setSplit(drag.startSplit + (e.clientY - drag.startY) / drag.bodyHeight)
+  }
+  const onSplitEnd = (e: ReactPointerEvent<HTMLDivElement>): void => {
+    if (splitDrag.current === null) return
+    splitDrag.current = null
+    setSplitDragging(false)
+    e.currentTarget.releasePointerCapture(e.pointerId)
+  }
+
   const frameSrc = state.url !== ''
     ? (state.mode === 'proxy' ? proxyUrl(state.url) : state.url)
     : undefined
@@ -163,7 +205,8 @@ export function WebviewHeaderAction({ useStore, actions, sendText, t }: WebviewS
         onClick={() => { actions.open() }}
         title={t('header.action')}
       >
-        {t('header.action')}
+        <IconBrowseOutline16 size={16} className="wv-toggle-icon" />
+        <span>{t('header.action')}</span>
       </button>
       {state.open && createPortal(
         <div className="wv-panel" data-webview-ui style={{ width: state.width }}>
@@ -174,57 +217,86 @@ export function WebviewHeaderAction({ useStore, actions, sendText, t }: WebviewS
             onPointerUp={onResizeEnd}
           />
           <div className="wv-header">
-            <span className="wv-title">{t('panel.title')}</span>
-            <input
+            <span className="wv-title">
+              <IconBrowseOutline16 size={16} className="wv-title-icon" />
+              {t('panel.title')}
+            </span>
+            <button
+              type="button"
+              className="wv-icon"
+              title={t('panel.close')}
+              onClick={() => { actions.close() }}
+            >
+              <IconCloseOutline16 size={16} />
+            </button>
+          </div>
+          <div className="wv-urlrow">
+            <Input
               className="wv-url"
+              icon={<IconLinkOutline16 size={16} />}
               value={state.url}
               placeholder={t('panel.urlPlaceholder')}
               onChange={(e) => { actions.setUrl(e.target.value) }}
               onKeyDown={(e) => { if (e.key === 'Enter') navigate(state.url) }}
               spellCheck={false}
             />
-            <button type="button" className="wv-icon" title={t('panel.open')} onClick={() => { navigate(state.url) }}>⏎</button>
             <button
-              type="button" className="wv-icon" title={t('panel.refresh')}
+              type="button"
+              className="wv-icon"
+              title={t('panel.refresh')}
               disabled={state.url === ''}
               onClick={() => { setFrameKey((k) => k + 1) }}
-            >↻</button>
+            >
+              <IconRefreshOutline16 size={16} />
+            </button>
             {state.url !== '' && (
-              <a className="wv-icon" href={state.url} target="_blank" rel="noopener noreferrer" title={t('panel.external')}>↗</a>
+              <a
+                className="wv-icon"
+                href={state.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={t('panel.external')}
+              >
+                <IconRightUpOutline16 size={16} />
+              </a>
             )}
-            <button type="button" className="wv-icon" title={t('panel.close')} onClick={() => { actions.close() }}>✕</button>
           </div>
           <div className="wv-toolbar">
+            <div className="wv-seg" role="group" aria-label={t('panel.mode.group')}>
+              <button
+                type="button"
+                className="wv-chip"
+                aria-pressed={state.mode === 'proxy' || undefined}
+                onClick={() => { actions.setMode('proxy') }}
+              >
+                {t('panel.mode.proxy')}
+              </button>
+              <button
+                type="button"
+                className="wv-chip"
+                aria-pressed={state.mode === 'direct' || undefined}
+                onClick={() => { actions.setMode('direct') }}
+              >
+                {t('panel.mode.direct')}
+              </button>
+            </div>
             <button
               type="button"
-              className="wv-chip"
-              aria-pressed={state.mode === 'proxy' || undefined}
-              onClick={() => { actions.setMode('proxy') }}
-            >
-              {t('panel.mode.proxy')}
-            </button>
-            <button
-              type="button"
-              className="wv-chip"
-              aria-pressed={state.mode === 'direct' || undefined}
-              onClick={() => { actions.setMode('direct') }}
-            >
-              {t('panel.mode.direct')}
-            </button>
-            <button
-              type="button"
-              className="wv-chip"
+              className="wv-chip wv-chip-pick"
               aria-pressed={state.pickMode || undefined}
               disabled={pickDisabled}
               onClick={() => { actions.togglePickMode() }}
             >
+              {state.pickMode
+                ? <IconCheckOutline16 size={14} className="wv-chip-icon" />
+                : <IconListPenOutline16 size={14} className="wv-chip-icon" />}
               {state.pickMode ? t('panel.pick.off') : t('panel.pick')}
             </button>
             {state.pickMode && pickerReady && <span className="wv-hint">{t('panel.pick.hint')}</span>}
             {state.mode === 'direct' && <span className="wv-hint">{t('panel.pick.unavailable')}</span>}
           </div>
-          <div className="wv-body">
-            <div className="wv-frame-wrap">
+          <div className="wv-body" ref={bodyRef}>
+            <div className="wv-frame-wrap" style={{ flexBasis: `${state.split * 100}%` }}>
               {frameSrc !== undefined
                 ? (
                   <iframe
@@ -236,22 +308,40 @@ export function WebviewHeaderAction({ useStore, actions, sendText, t }: WebviewS
                   />
                 )
                 : <div className="wv-frame-overlay">{t('panel.noUrl')}</div>}
-              {state.error !== null && <div className="wv-frame-overlay">{state.error}</div>}
             </div>
+            <div
+              className="wv-split"
+              role="separator"
+              aria-orientation="horizontal"
+              aria-valuemin={25}
+              aria-valuemax={75}
+              aria-valuenow={Math.round(state.split * 100)}
+              data-dragging={splitDragging || undefined}
+              onPointerDown={onSplitStart}
+              onPointerMove={onSplitMove}
+              onPointerUp={onSplitEnd}
+            />
             <div className="wv-annotations">
+              <div className="wv-annotations-head">
+                <span className="wv-annotations-label">{t('panel.picks.title')}</span>
+                {state.picks.length > 0 && (
+                  <span className="wv-annotations-count">{state.picks.length}</span>
+                )}
+              </div>
               {state.picks.length === 0
                 ? <div className="wv-empty">{t('panel.picks.empty')}</div>
-                : state.picks.map((pick) => (
+                : state.picks.map((pick, index) => (
                   <div className="wv-pick" key={pick.id}>
                     <div className="wv-pick-head">
+                      <span className="wv-pick-index">{index + 1}</span>
                       <span className="wv-pick-selector" title={pick.snapshot.cssPath}>{pick.snapshot.cssPath}</span>
                       <button
                         type="button"
-                        className="wv-icon"
+                        className="wv-icon wv-icon-danger"
                         title={t('panel.pick.remove')}
                         onClick={() => { actions.removePick(pick.id) }}
                       >
-                        ✕
+                        <IconCloseOutline16 size={14} />
                       </button>
                     </div>
                     <pre className="wv-pick-snippet">{pick.snapshot.outerHTML}</pre>
@@ -266,14 +356,24 @@ export function WebviewHeaderAction({ useStore, actions, sendText, t }: WebviewS
             </div>
           </div>
           <div className="wv-footer">
-            <button
-              type="button"
+            {state.error !== null && (
+              <div className="wv-error" role="alert" title={state.error}>
+                <IconWarningOutline16 size={14} className="wv-error-icon" />
+                <span>{state.error}</span>
+              </div>
+            )}
+            <Button
+              variant="primary"
+              size="md"
+              icon={state.sending
+                ? <IconLoadingOutline16 size={16} className="wv-spin" />
+                : <IconSendOutline16 size={16} />}
               className="wv-send"
               disabled={state.picks.length === 0 || state.sending || state.url === ''}
               onClick={() => { void onSend() }}
             >
               {state.sending ? t('panel.send.progress') : t('panel.send')}
-            </button>
+            </Button>
           </div>
         </div>,
         document.body,

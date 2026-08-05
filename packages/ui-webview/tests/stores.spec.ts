@@ -2,7 +2,7 @@
  * Store factory suite: the write set and state invariants.
  */
 import { describe, expect, it } from 'vitest'
-import { PANEL_WIDTH_DEFAULT, createWebviewStore } from '../src/client/stores.ts'
+import { PANEL_WIDTH_DEFAULT, SPLIT_DEFAULT, createWebviewStore } from '../src/client/stores.ts'
 import type { PickItem } from '../src/client/contract.ts'
 
 function pick(id: string): PickItem {
@@ -26,7 +26,7 @@ describe('createWebviewStore', () => {
     const store = createWebviewStore().create()
     expect(store.getSnapshot()).toMatchObject({
       open: false, width: PANEL_WIDTH_DEFAULT, url: '', mode: 'proxy',
-      pickMode: false, picks: [], sending: false, error: null,
+      pickMode: false, picks: [], split: SPLIT_DEFAULT, sending: false, error: null,
     })
   })
 
@@ -47,6 +47,16 @@ describe('createWebviewStore', () => {
     expect(store.getSnapshot().width).toBe(320)
     store.actions.setWidth(5000)
     expect(store.getSnapshot().width).toBe(960)
+  })
+
+  it('clamps the preview/annotations split', () => {
+    const store = createWebviewStore().create()
+    store.actions.setSplit(0)
+    expect(store.getSnapshot().split).toBe(0.25)
+    store.actions.setSplit(1)
+    expect(store.getSnapshot().split).toBe(0.75)
+    store.actions.setSplit(0.5)
+    expect(store.getSnapshot().split).toBe(0.5)
   })
 
   it('pick lifecycle: add, comment, remove, clear; mode toggles', () => {
