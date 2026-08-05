@@ -13,7 +13,7 @@
 import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { en, zh, type WebviewKey } from './locales.ts'
 import { createWebviewStore, type WebviewStore } from './stores.ts'
 import { WebviewHeaderAction, type WebviewInjected } from './WebviewPanel.tsx'
@@ -43,12 +43,22 @@ export function apply(ctx: ClientContext): void {
       locale: NS,
       store: createWebviewStore,
       inject: (sessionId: SessionId, _actions: BoundActions<WebviewStore>): WebviewInjected => ({
-        // Scope-addressed send: the conversation service is scope-addressed —
-        // never a bare ctx.conversation.send from a scope-less closure.
+        // Scope-addressed send. The conversation service is resolved through
+        // the session scope with cordis `get` — NOT property access: the
+        // service lives on ui-conversation's own child fiber, so
+        // `scoped.conversation` raises "cannot get property conversation
+        // without inject" (the fiber-chain walk demands the inject
+        // declaration), while `get` reads the service store directly. Never
+        // a bare `ctx.conversation.send` from a scope-less closure either —
+        // the conversation service is scope-addressed.
         sendText: async (text: string) => {
           const scoped = ctx.sessions.scope(sessionId)
           if (scoped === undefined) throw new Error('webview: session scope unavailable')
-          await scoped.conversation.send(text)
+          const conversation = scoped.get('conversation') as IConversation | undefined
+          if (conversation === undefined) {
+            throw new Error('webview: conversation service unavailable through the session scope')
+          }
+          await conversation.send(text)
         },
       }),
     }, WebviewHeaderAction)

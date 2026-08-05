@@ -7,9 +7,14 @@
  *  2. element picking: pick mode → click inside the iframe → annotation card
  *     with the generated selector; commenting arms the send button;
  *  3. direct mode degrades: iframe loads the raw URL, picking is disabled
- *     with an explanatory hint.
- * No API key is required: the send action itself is exercised at the
- * component level; here the UI reaches the ready-to-send state.
+ *     with an explanatory hint;
+ *  4. the FULL loop: pick + comment + send → the annotation message lands in
+ *     the conversation transcript and the pick list clears (this pins the
+ *     scope-addressed send path, which used to raise "cannot get property
+ *     conversation without inject").
+ * No API key is required: with a real key the probe message succeeds, and
+ * without one the dead-loopback provider makes the probe turn settle fast —
+ * either way the sent user message lands in the transcript.
  */
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
@@ -115,6 +120,39 @@ describe('ui-webview e2e', () => {
     ).toBe(services.demoUrl)
     await expect.poll(async () => page.getByRole('button', { name: 'Pick element' }).isDisabled(), { timeout: 10_000 }).toBe(true)
     await expect.poll(async () => page.getByText(/cross-origin|unavailable/).count(), { timeout: 10_000 }).toBeGreaterThan(0)
+    await page.close()
+  })
+
+  it('sends the annotation into the conversation after picking and commenting', async () => {
+    const page = await newPage(browser)
+    onTestFailed(() => saveFailureShot(page, 'annotation-send'))
+    await bootWithPanel(page, 'annotation-send')
+
+    const urlInput = page.getByPlaceholder('Enter a URL and press Enter (e.g. http://localhost:5173)')
+    await urlInput.fill(services.demoUrl)
+    await urlInput.press('Enter')
+    const frame = page.frameLocator('iframe.wv-frame')
+    await expect.poll(async () => frame.locator('h1').textContent(), { timeout: 20_000 }).toBe('魔法 UI 演示页')
+
+    // Pick an element and comment on it.
+    await page.getByRole('button', { name: 'Pick element' }).click()
+    await frame.locator('button.btn-primary').click()
+    const pickCard = page.locator('.wv-pick')
+    await expect.poll(async () => pickCard.count(), { timeout: 10_000 }).toBe(1)
+    await pickCard.locator('textarea.wv-comment').fill('Make the button color darker.')
+
+    // Send: the formatted annotation must land in the conversation transcript
+    // (scope-addressed send), and the pick list must clear.
+    const send = page.getByRole('button', { name: 'Add to chat and send' })
+    await expect.poll(async () => send.isEnabled(), { timeout: 10_000 }).toBe(true)
+    await send.click()
+    await expect.poll(
+      async () => page.getByText('[Page change request]').count(),
+      { timeout: 20_000 },
+    ).toBeGreaterThan(0)
+    await expect.poll(async () => page.getByText('CSS selector: .btn-primary').count(), { timeout: 10_000 }).toBeGreaterThan(0)
+    await expect.poll(async () => pickCard.count(), { timeout: 10_000 }).toBe(0)
+    await expect.poll(async () => page.getByText('No elements picked yet').count(), { timeout: 10_000 }).toBeGreaterThan(0)
     await page.close()
   })
 })
