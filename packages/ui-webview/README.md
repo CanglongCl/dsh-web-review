@@ -1,0 +1,71 @@
+# @limao/ui-webview
+
+Webui webview panel plugin: open a URL in a floating right-edge iframe, pick
+elements and comment on them, then send the annotation into the conversation
+so the model modifies the corresponding frontend source in the session
+workspace.
+
+The package is **loaded externally by `dsh web`** — zero changes to the
+deepseek-harness source tree. See [AGENTS.md](../../../AGENTS.md) for the
+loading model, proxy contract, picker contract, and development rules.
+
+## Usage
+
+```bash
+pnpm install            # dev deps + file: type links into the harness checkout
+pnpm gen-config         # regenerate cordis.yml + entry-name.json (after moving the repo)
+pnpm dev                # harness prep (once) + dsh web --dev --port 3090 + tsdown watch
+```
+
+Open `http://127.0.0.1:3090`, start a session (pick a workspace — the AI's
+file tools operate there), then:
+
+1. Click **网页预览** in the conversation header — the floating panel opens.
+2. Enter a URL (e.g. `http://localhost:5173` from `node demo/server.mjs`),
+   press Enter. **代理模式** keeps the page same-origin so elements can be
+   picked; **直接打开** loads it cross-origin without picking.
+3. Click **选择元素**, hover to highlight, click the element to pick it,
+   write a comment, repeat for more elements.
+4. Click **加入对话并发送** — a structured annotation message is sent to the
+   session; the model locates and modifies the corresponding source in the
+   workspace.
+5. Click **↻** in the panel to refresh the page and see the changes.
+
+Links in the GUI (chat messages, web cards) open in the panel when it is
+open; modifier-click keeps the default new-tab behavior.
+
+## Model Experience
+
+The annotation is a plain user message: one text block containing the page
+URL/title, per-element CSS selectors with truncated snapshots, the user's
+comments, and an instruction to modify the workspace source and report the
+changed files. No model-facing tool is registered; the model acts with the
+session's existing workspace tools (`tool-fs`, bash). Messages therefore
+cost only ordinary user-turn tokens.
+
+#### KV Cache effect
+
+None — no provider request shape is altered.
+
+## Known Limitations and Deferred Work
+
+- **Selector generation** is delegated to `css-selector-generator` (`['id', 'class', 'tag', 'nthoftype']` priority, shortest-unique output); its nth-of-type segments are relative to the page's live DOM, so adding/removing identical siblings can renumber them — same tradeoff as any index-based selector.
+- **Proxy fidelity** (documented, do not "fix" into breakage): absolute URLs
+  hardcoded in page JS (`fetch('http://host/api')`, WebSocket endpoints) are
+  not rewritten; root-relative (`/api`) and relative calls work through the
+  injected `<base>`. Dev-server HMR websockets do not survive the proxy.
+  Server-side fetch carries no browser cookies — login-gated pages must use
+  direct mode (which forfeits element picking).
+- **The entry name is machine-specific**: `cordis.yml` and
+  `entry-name.json` embed this checkout's absolute path; moving the repo
+  requires `pnpm gen-config` (and a web-process restart). The package root's
+  `index.js` re-export exists for the Loader's directory import (ESM has no
+  directory resolution) — keep it in sync with `lib/index.js` (it only
+  re-exports, so it never needs edits).
+- **No auto-refresh after the model finishes**: the panel refresh button is
+  manual.
+- **One page at a time**: no tabs; switching URL clears the annotation picks.
+- **Regex-based HTML rewriting**: `>` inside quoted attribute values is
+  handled, but exotic markup (unquoted `>` in attributes, HTML inside
+  comments, template tags) can evade rewriting; such pages degrade to
+  pass-through behavior for the affected attributes.

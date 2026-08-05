@@ -1,0 +1,79 @@
+/**
+ * Store factory suite: the write set and state invariants.
+ */
+import { describe, expect, it } from 'vitest'
+import { PANEL_WIDTH_DEFAULT, createWebviewStore } from '../src/client/stores.ts'
+import type { PickItem } from '../src/client/contract.ts'
+
+function pick(id: string): PickItem {
+  return {
+    id,
+    snapshot: {
+      tagName: 'div', id: '', className: '', cssPath: 'div',
+      outerHTML: '<div></div>', textContent: '',
+      rect: { x: 0, y: 0, width: 0, height: 0 },
+      computed: {
+        display: '', position: '', fontSize: '', color: '', backgroundColor: '',
+        margin: '', padding: '', width: '', height: '',
+      },
+    },
+    comment: '',
+  }
+}
+
+describe('createWebviewStore', () => {
+  it('seeds the initial state', () => {
+    const store = createWebviewStore().create()
+    expect(store.getSnapshot()).toMatchObject({
+      open: false, width: PANEL_WIDTH_DEFAULT, url: '', mode: 'proxy',
+      pickMode: false, picks: [], sending: false, error: null,
+    })
+  })
+
+  it('open with a URL sets it and clears stale picks; open without keeps them', () => {
+    const store = createWebviewStore().create()
+    store.actions.addPick(pick('a'))
+    store.actions.open('http://new/')
+    expect(store.getSnapshot().url).toBe('http://new/')
+    expect(store.getSnapshot().picks).toEqual([])
+    store.actions.addPick(pick('b'))
+    store.actions.open()
+    expect(store.getSnapshot().picks).toHaveLength(1)
+  })
+
+  it('clamps the panel width', () => {
+    const store = createWebviewStore().create()
+    store.actions.setWidth(10)
+    expect(store.getSnapshot().width).toBe(320)
+    store.actions.setWidth(5000)
+    expect(store.getSnapshot().width).toBe(960)
+  })
+
+  it('pick lifecycle: add, comment, remove, clear; mode toggles', () => {
+    const store = createWebviewStore().create()
+    store.actions.togglePickMode()
+    expect(store.getSnapshot().pickMode).toBe(true)
+    store.actions.addPick(pick('a'))
+    // Adding a pick exits pick mode.
+    expect(store.getSnapshot().pickMode).toBe(false)
+    store.actions.updateComment('a', 'comment')
+    expect(store.getSnapshot().picks[0]?.comment).toBe('comment')
+    store.actions.removePick('a')
+    expect(store.getSnapshot().picks).toEqual([])
+  })
+
+  it('setMode exits pick mode', () => {
+    const store = createWebviewStore().create()
+    store.actions.togglePickMode()
+    store.actions.setMode('direct')
+    expect(store.getSnapshot().mode).toBe('direct')
+    expect(store.getSnapshot().pickMode).toBe(false)
+  })
+
+  it('sending and error transitions', () => {
+    const store = createWebviewStore().create()
+    store.actions.setSending(true)
+    store.actions.setError('boom')
+    expect(store.getSnapshot()).toMatchObject({ sending: true, error: 'boom' })
+  })
+})

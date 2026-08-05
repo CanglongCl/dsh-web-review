@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Pre-commit gate (installed via core.hooksPath — see scripts/git-hooks/README).
+# Runs the fast quality gate on staged work: typecheck + unit tests + config
+# consistency. The full gate (`pnpm check`) stays available for deeper runs.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+echo "[pre-commit] tsc -b (typecheck)"
+pnpm exec tsc -b --force
+
+echo "[pre-commit] vitest (unit + entry-load)"
+pnpm vitest run
+
+echo "[pre-commit] config consistency (gen-config idempotence)"
+node --import tsx scripts/gen-config.ts >/dev/null
+
+echo "[pre-commit] ok"

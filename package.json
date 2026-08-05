@@ -1,0 +1,37 @@
+{
+  "name": "limao-magic-ui",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "ui-webview plugin repo: webui right-side page preview + element annotation + AI-driven source edits",
+  "scripts": {
+    "gen-config": "tsx scripts/gen-config.ts",
+    "setup:harness": "tsx scripts/dev.ts --setup-only",
+    "build": "pnpm gen-config && pnpm --filter ui-webview build",
+    "build:watch": "pnpm --filter ui-webview watch",
+    "dev": "tsx scripts/dev.ts",
+    "demo": "tsx demo/server.ts",
+    "test": "pnpm build && vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "prepare:hooks": "git config core.hooksPath scripts/git-hooks",
+    "prepare": "pnpm prepare:hooks",
+    "check": "tsx scripts/check.ts",
+    "check:e2e": "tsx scripts/check.ts --e2e"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.0.0",
+    "@testing-library/react": "^16.0.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "~18.3.1",
+    "@types/react-dom": "~18.3.0",
+    "jsdom": "^25.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tsdown": "^0.22.2",
+    "typescript": "^6.0.0",
+    "vitest": "^3.0.0",
+    "tsx": "^4.22.4",
+    "playwright": "^1.61.1"
+  }
+}
