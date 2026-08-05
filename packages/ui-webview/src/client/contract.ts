@@ -34,6 +34,3 @@ export interface PickItem {
   snapshot: ElementSnapshot
   comment: string
 }
-
-/** Iframe loading mode: proxied (same-origin, picker enabled) or direct (cross-origin). */
-export type WebviewMode = 'proxy' | 'direct'

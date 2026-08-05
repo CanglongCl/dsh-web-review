@@ -1,7 +1,8 @@
 /**
  * Computed-style verification (not part of the test suite): boots the e2e
- * services, opens the panel with a pick, and dumps the resolved token styles
- * of every key surface in light and dark theme. Run with:
+ * services, annotates two elements, and dumps the resolved token styles of
+ * the new surfaces (chip bar, chips, armed pick button, iframe markers) in
+ * light and dark theme. Run with:
  *   pnpm exec tsx packages/ui-webview/tests/visual-check.ts
  */
 import { chromium, clickWhenStable, connectWorkspace, newPage, startServices } from './e2e-scaffold.ts'
@@ -19,65 +20,61 @@ try {
   await urlInput.press('Enter')
   const frame = page.frameLocator('iframe.wv-frame')
   await page.waitForTimeout(1500)
-  await page.getByRole('button', { name: 'Pick element' }).click()
-  await page.waitForTimeout(300)
-  const armedChip = await page.evaluate(() => {
-    const el = document.querySelector('.wv-chip-pick[aria-pressed="true"]')
-    if (el === null) return 'NOT ARMED'
-    const cs = getComputedStyle(el)
-    return `armed | bg:${cs.backgroundColor} | color:${cs.color}`
-  })
-  console.log(armedChip)
-  await frame.locator('button.btn-primary').click()
-  await page.locator('.wv-pick').waitFor({ timeout: 10_000 })
-  await page.locator('.wv-pick textarea.wv-comment').fill('darker please')
 
-  const light = await page.evaluate(() => {
-    const sels = [
-      '.wv-toggle', '.wv-title', '.wv-url', '.wv-seg', '.wv-chip[aria-pressed="true"]',
-      '.wv-chip-pick[aria-pressed="true"]', '.wv-hint', '.wv-frame-wrap', '.wv-annotations-label',
-      '.wv-annotations-count', '.wv-pick', '.wv-pick-index', '.wv-pick-selector',
-      '.wv-pick-snippet', '.wv-comment', '.wv-send',
-    ]
+  // Arm pick mode: capture the armed icon button style, then annotate twice.
+  await page.getByRole('button', { name: 'Pick element' }).click()
+  await frame.locator('button.btn-primary').click()
+  const input = frame.locator('.dsh-wv-comment-input')
+  await input.waitFor({ timeout: 10_000 })
+  await input.fill('darker')
+  await input.press('Enter')
+  await frame.locator('.card:nth-of-type(2) button').click()
+  const input2 = frame.locator('.dsh-wv-comment-input')
+  await input2.waitFor({ timeout: 10_000 })
+  await input2.fill('spacing')
+  await input2.press('Enter')
+  await page.locator('.wv-chip').nth(1).waitFor({ timeout: 10_000 })
+
+  const dump = async (): Promise<string> => {
     const rows: string[] = []
+    const sels = ['.wv-hint', '.wv-chips-label', '.wv-chips-count', '.wv-chip', '.wv-chip-index', '.wv-chip-label', '.wv-chip-comment', '.wv-send']
     for (const sel of sels) {
       const el = document.querySelector(sel)
       if (el === null) continue
       const cs = getComputedStyle(el)
       rows.push(`${sel} | bg:${cs.backgroundColor} | color:${cs.color} | borderTop:${cs.borderTopColor} | font:${cs.fontSize}/${cs.lineHeight}/${cs.fontWeight} | radius:${cs.borderTopLeftRadius}`)
     }
+    const pickBtn = document.querySelector('.wv-icon-accent')
+    if (pickBtn !== null) {
+      const cs = getComputedStyle(pickBtn)
+      rows.push(`.wv-icon-accent (pick armed) | bg:${cs.backgroundColor} | color:${cs.color}`)
+    }
     const panel = document.querySelector('.wv-panel')
     if (panel !== null) {
       const box = panel.getBoundingClientRect()
       rows.push(`.wv-panel | rect ${Math.round(box.width)}x${Math.round(box.height)} @ (${Math.round(box.left)},${Math.round(box.top)})`)
-      const cs = getComputedStyle(panel)
-      rows.push(`.wv-panel | shadow:${cs.boxShadow}`)
-      rows.push(`.wv-panel | --dsh-scrollbar-thumb:${cs.getPropertyValue('--dsh-scrollbar-thumb').trim()}`)
     }
-    const split = document.querySelector('.wv-split')
-    if (split !== null) rows.push(`.wv-split | h:${split.getBoundingClientRect().height}`)
+    return rows.join('\n')
+  }
+  const panelDump = await page.evaluate(dump)
+  console.log('=== light ===')
+  console.log(panelDump)
+
+  const markerDump = await frame.locator('.dsh-wv-marker').evaluateAll((markers) => {
+    const rows: string[] = []
+    rows.push(`marker count: ${markers.length}`)
+    markers.forEach((m, i) => {
+      const cs = getComputedStyle(m)
+      const r = m.getBoundingClientRect()
+      rows.push(`marker[${i}] text:${m.textContent} bg:${cs.backgroundColor} color:${cs.color} size:${Math.round(r.width)}x${Math.round(r.height)} pos:(${Math.round(r.left)},${Math.round(r.top)})`)
+    })
     return rows.join('\n')
   })
-  console.log('=== light ===')
-  console.log(light)
+  console.log(markerDump)
 
-  // Dark theme: force the attribute the theme service sets.
   await page.evaluate(() => { document.body.setAttribute('data-ds-dark-theme', '') })
   await page.waitForTimeout(300)
-  const dark = await page.evaluate(() => {
-    const sels = [
-      '.wv-panel', '.wv-title', '.wv-url', '.wv-pick', '.wv-pick-snippet',
-      '.wv-comment', '.wv-send', '.wv-chip-pick[aria-pressed="true"]',
-    ]
-    const rows: string[] = []
-    for (const sel of sels) {
-      const el = document.querySelector(sel)
-      if (el === null) continue
-      const cs = getComputedStyle(el)
-      rows.push(`${sel} | bg:${cs.backgroundColor} | color:${cs.color} | borderTop:${cs.borderTopColor}`)
-    }
-    return rows.join('\n')
-  })
+  const dark = await page.evaluate(dump)
   console.log('=== dark ===')
   console.log(dark)
   await page.close()

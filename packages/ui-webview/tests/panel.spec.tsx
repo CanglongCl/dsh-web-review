@@ -131,11 +131,11 @@ describe('WebviewHeaderAction', () => {
       const store = renderPanel()
       act(() => { store.actions.open('http://localhost:5173/') })
       const separator = screen.getByRole('separator')
-      expect(Number(separator.getAttribute('aria-valuenow'))).toBe(55)
+      expect(Number(separator.getAttribute('aria-valuenow'))).toBe(60)
       fireEvent(separator, new MouseEvent('pointerdown', { bubbles: true, cancelable: true, clientY: 100 }))
       fireEvent(separator, new MouseEvent('pointermove', { bubbles: true, cancelable: true, clientY: 150 }))
       // +50px over a 500px body moves the split by 0.1.
-      expect(store.getSnapshot().split).toBeCloseTo(0.65, 5)
+      expect(store.getSnapshot().split).toBeCloseTo(0.7, 5)
       fireEvent(separator, new MouseEvent('pointerup', { bubbles: true, cancelable: true, clientY: 150 }))
     } finally {
       proto.setPointerCapture = prevCapture

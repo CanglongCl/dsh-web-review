@@ -5,6 +5,13 @@
  * link interceptor (capture-phase, active only while the panel is open),
  * and the picker lifecycle inside the same-origin iframe.
  *
+ * Interaction model: the pick button (icon-only, far right of the URL row)
+ * arms pick mode; clicking an element in the iframe opens a floating comment
+ * field next to it; Enter commits the annotation into the horizontal
+ * "注释" chip bar, Esc dismisses. Each annotation echoes as a numbered
+ * circle floating over its element in the iframe — clicking a circle or a
+ * chip re-expands that element's comment field.
+ *
  * Presentation follows the dsh web design system: shared atoms (Button,
  * Input) and the ic_ds_* icon set from @deepseek-ai/dsh-client-ui-primitives,
  * plus the --dsw-alias-* token vocabulary for everything custom. State
@@ -12,7 +19,7 @@
  * callback; no ctx, no contexts.
  */
 import { useEffect, useRef, useState } from 'react'
-import type { PointerEvent as ReactPointerEvent } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Button,
@@ -30,8 +37,9 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import { proxyUrl } from '../rewrite.ts'
-import { ensurePicker, isSameOrigin, pickFromElement, pickerOf } from './picker.ts'
+import { ensurePicker, isSameOrigin, pickFromElement, pickerOf, type MarkerEntry, type PickerSurface } from './picker.ts'
 import { formatAnnotation } from './format.ts'
+import type { ElementSnapshot } from './contract.ts'
 import type { WebviewStore } from './stores.ts'
 
 /** The inject face: the thin, scope-addressed send path (assembly in apply). */
@@ -62,6 +70,15 @@ function titleOf(frame: HTMLIFrameElement | null): string {
   }
 }
 
+/** Compact element identity for the chip bar: tag#id.class1.class2. */
+function elementLabel(s: ElementSnapshot): string {
+  const id = s.id !== '' ? `#${s.id}` : ''
+  const classes = s.className !== ''
+    ? `.${s.className.trim().split(/\s+/).filter(Boolean).join('.')}`
+    : ''
+  return `${s.tagName}${id}${classes}`
+}
+
 /** The header action button + floating overlay panel (see module doc). */
 export function WebviewHeaderAction({ useStore, actions, sendText, t }: WebviewSlotProps) {
   const state = useStore((s) => s)
@@ -73,12 +90,106 @@ export function WebviewHeaderAction({ useStore, actions, sendText, t }: WebviewS
 
   const frameRef = useRef<HTMLIFrameElement | null>(null)
   const bodyRef = useRef<HTMLDivElement | null>(null)
+  /** Live element references for each pick (echo markers + comment anchors). */
+  const pickRefs = useRef(new Map<string, Element>())
+  /** The in-flight pick whose comment field is open (not yet committed). */
+  const pendingRef = useRef<{ id: string; el: Element } | null>(null)
+  /** Chip nodes by pick id (scroll-into-view on marker clicks). */
+  const chipRefs = useRef(new Map<string, HTMLDivElement | null>())
   /** Whether the current frame content is same-origin (picker-capable). */
   const [pickerReady, setPickerReady] = useState(false)
   /** Bump to force an iframe remount (refresh button). */
   const [frameKey, setFrameKey] = useState(0)
   /** Splitter drag is in flight (drives the active affordance). */
   const [splitDragging, setSplitDragging] = useState(false)
+  /** Chip id currently flashed (marker-click echo). */
+  const [flashId, setFlashId] = useState<string | null>(null)
+
+  /** Reconcile the iframe marker circles with the current picks. The store
+   * order is authoritative (pickRefs may briefly hold stale entries between
+   * a navigation and the next frame load). */
+  const syncMarkers = (): void => {
+    const picker = pickerOf(frameRef.current)
+    if (picker === null) return
+    const entries: MarkerEntry[] = []
+    stateRef.current.picks.forEach((pick, index) => {
+      const el = pickRefs.current.get(pick.id)
+      if (el !== undefined) entries.push({ id: pick.id, index: index + 1, element: el })
+    })
+    picker.syncMarkers(entries)
+  }
+
+  // Keep the echo markers in step with the pick list (add/remove/clear).
+  useEffect(() => { syncMarkers() }, [state.picks])
+
+  /** Re-anchor pick elements after a navigation (cssPath requery). */
+  const refreshPickRefs = (): void => {
+    const frame = frameRef.current
+    const doc = frame?.contentDocument
+    if (frame === null || doc === undefined || doc === null) return
+    for (const pick of stateRef.current.picks) {
+      const found = doc.querySelector(pick.snapshot.cssPath)
+      if (found instanceof Element) pickRefs.current.set(pick.id, found)
+      else pickRefs.current.delete(pick.id)
+    }
+    syncMarkers()
+  }
+
+  /** Re-open an element's comment field and reveal its chip. */
+  const onMarkClick = (id: string): void => {
+    const pick = stateRef.current.picks.find((p) => p.id === id)
+    const el = pickRefs.current.get(id)
+    const picker = pickerOf(frameRef.current)
+    if (picker !== null && el !== undefined) {
+      picker.openComment(id, el, pick?.comment ?? '')
+    }
+    setFlashId(id)
+    window.setTimeout(() => {
+      setFlashId((current) => (current === id ? null : current))
+    }, 1200)
+    requestAnimationFrame(() => {
+      chipRefs.current.get(id)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    })
+  }
+
+  /** Enter on the floating field: commit a pending pick or update an existing one. */
+  const onCommentCommit = (id: string, text: string): void => {
+    const pending = pendingRef.current
+    if (pending !== null && pending.id === id) {
+      pendingRef.current = null
+      pickRefs.current.set(id, pending.el)
+      actions.addPick(pickFromElement(pending.el, id, text))
+    } else {
+      actions.updateComment(id, text)
+    }
+  }
+
+  /** Esc on the floating field: drop an uncommitted pick, keep existing ones. */
+  const onCommentDismiss = (id: string): void => {
+    if (pendingRef.current?.id === id) pendingRef.current = null
+  }
+
+  /** Remove a pick and its echo marker. */
+  const onRemovePick = (id: string): void => {
+    actions.removePick(id)
+    pickRefs.current.delete(id)
+    if (pendingRef.current?.id === id) pendingRef.current = null
+    pickerOf(frameRef.current)?.closeComment()
+  }
+
+  /** Wire the handoff callbacks on a (re-)injected picker surface. */
+  const wireHandoff = (picker: PickerSurface): void => {
+    picker.onPick = (el) => {
+      const id = pickId()
+      pendingRef.current = { id, el }
+      picker.openComment(id, el, '')
+    }
+    picker.onCancel = () => { actionsRef.current.togglePickMode() }
+    picker.onMarkClick = (id) => { onMarkClick(id) }
+    picker.onCommentCommit = (id, text) => { onCommentCommit(id, text) }
+    picker.onCommentDismiss = (id) => { onCommentDismiss(id) }
+    picker.commentPlaceholder = t('panel.comment.float')
+  }
 
   // Link interceptor: document capture-phase click; inert while closed.
   useEffect(() => {
@@ -102,7 +213,7 @@ export function WebviewHeaderAction({ useStore, actions, sendText, t }: WebviewS
   }, [])
 
   // After a frame load: detect same-origin, (re-)inject the picker, wire the
-  // handoff, and honor a pickMode that was armed before the load settled.
+  // handoff, rebuild the echo markers, and honor an armed pick mode.
   const onFrameLoad = (): void => {
     const frame = frameRef.current
     if (frame === null) return
@@ -113,20 +224,25 @@ export function WebviewHeaderAction({ useStore, actions, sendText, t }: WebviewS
     const picker = ensurePicker(frame)
     setPickerReady(picker !== null)
     if (picker !== null) {
-      picker.onPick = (el) => { actionsRef.current.addPick(pickFromElement(el, pickId())) }
-      picker.onCancel = () => { actionsRef.current.togglePickMode() }
+      wireHandoff(picker)
+      refreshPickRefs()
       if (stateRef.current.pickMode && !picker.isActive()) picker.activate()
     }
   }
 
-  // Pick-mode lifecycle: activate/deactivate the injected picker.
+  // Pick-mode lifecycle: activate/deactivate the injected picker and close
+  // any floating comment field when picking ends.
   useEffect(() => {
     const frame = frameRef.current
     if (frame === null) return
     const picker = pickerOf(frame)
     if (picker === null) return
     if (state.pickMode && !picker.isActive()) picker.activate()
-    if (!state.pickMode && picker.isActive()) picker.deactivate()
+    if (!state.pickMode) {
+      if (picker.isActive()) picker.deactivate()
+      picker.closeComment()
+      pendingRef.current = null
+    }
   }, [state.pickMode])
 
   const navigate = (url: string): void => {
@@ -143,6 +259,8 @@ export function WebviewHeaderAction({ useStore, actions, sendText, t }: WebviewS
       const text = formatAnnotation(current.url, titleOf(frameRef.current), current.picks, t)
       await sendText(text)
       actions.clearPicks()
+      pickRefs.current.clear()
+      pendingRef.current = null
     } catch (error) {
       actions.setError(t('panel.error.send', {
         message: error instanceof Error ? error.message : String(error),
@@ -191,10 +309,14 @@ export function WebviewHeaderAction({ useStore, actions, sendText, t }: WebviewS
     e.currentTarget.releasePointerCapture(e.pointerId)
   }
 
-  const frameSrc = state.url !== ''
-    ? (state.mode === 'proxy' ? proxyUrl(state.url) : state.url)
-    : undefined
-  const pickDisabled = state.mode === 'direct' || !pickerReady || state.url === ''
+  const frameSrc = state.url !== '' ? proxyUrl(state.url) : undefined
+  const pickDisabled = !pickerReady || state.url === ''
+  const onChipKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>, id: string): void => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      onMarkClick(id)
+    }
+  }
 
   return (
     <>
@@ -260,41 +382,21 @@ export function WebviewHeaderAction({ useStore, actions, sendText, t }: WebviewS
                 <IconRightUpOutline16 size={16} />
               </a>
             )}
-          </div>
-          <div className="wv-toolbar">
-            <div className="wv-seg" role="group" aria-label={t('panel.mode.group')}>
-              <button
-                type="button"
-                className="wv-chip"
-                aria-pressed={state.mode === 'proxy' || undefined}
-                onClick={() => { actions.setMode('proxy') }}
-              >
-                {t('panel.mode.proxy')}
-              </button>
-              <button
-                type="button"
-                className="wv-chip"
-                aria-pressed={state.mode === 'direct' || undefined}
-                onClick={() => { actions.setMode('direct') }}
-              >
-                {t('panel.mode.direct')}
-              </button>
-            </div>
             <button
               type="button"
-              className="wv-chip wv-chip-pick"
+              className={state.pickMode ? 'wv-icon wv-icon-accent' : 'wv-icon'}
               aria-pressed={state.pickMode || undefined}
+              aria-label={state.pickMode ? t('panel.pick.off') : t('panel.pick')}
+              title={state.pickMode ? t('panel.pick.off') : t('panel.pick')}
               disabled={pickDisabled}
               onClick={() => { actions.togglePickMode() }}
             >
               {state.pickMode
-                ? <IconCheckOutline16 size={14} className="wv-chip-icon" />
-                : <IconListPenOutline16 size={14} className="wv-chip-icon" />}
-              {state.pickMode ? t('panel.pick.off') : t('panel.pick')}
+                ? <IconCheckOutline16 size={16} />
+                : <IconListPenOutline16 size={16} />}
             </button>
-            {state.pickMode && pickerReady && <span className="wv-hint">{t('panel.pick.hint')}</span>}
-            {state.mode === 'direct' && <span className="wv-hint">{t('panel.pick.unavailable')}</span>}
           </div>
+          {state.pickMode && <div className="wv-hint">{t('panel.pick.hint')}</div>}
           <div className="wv-body" ref={bodyRef}>
             <div className="wv-frame-wrap" style={{ flexBasis: `${state.split * 100}%` }}>
               {frameSrc !== undefined
@@ -321,36 +423,43 @@ export function WebviewHeaderAction({ useStore, actions, sendText, t }: WebviewS
               onPointerMove={onSplitMove}
               onPointerUp={onSplitEnd}
             />
-            <div className="wv-annotations">
-              <div className="wv-annotations-head">
-                <span className="wv-annotations-label">{t('panel.picks.title')}</span>
+            <div className="wv-chips">
+              <div className="wv-chips-head">
+                <span className="wv-chips-label">{t('panel.picks.title')}</span>
                 {state.picks.length > 0 && (
-                  <span className="wv-annotations-count">{state.picks.length}</span>
+                  <span className="wv-chips-count">{state.picks.length}</span>
                 )}
               </div>
               {state.picks.length === 0
-                ? <div className="wv-empty">{t('panel.picks.empty')}</div>
+                ? <div className="wv-chips-empty">{t('panel.picks.empty')}</div>
                 : state.picks.map((pick, index) => (
-                  <div className="wv-pick" key={pick.id}>
-                    <div className="wv-pick-head">
-                      <span className="wv-pick-index">{index + 1}</span>
-                      <span className="wv-pick-selector" title={pick.snapshot.cssPath}>{pick.snapshot.cssPath}</span>
-                      <button
-                        type="button"
-                        className="wv-icon wv-icon-danger"
-                        title={t('panel.pick.remove')}
-                        onClick={() => { actions.removePick(pick.id) }}
-                      >
-                        <IconCloseOutline16 size={14} />
-                      </button>
-                    </div>
-                    <pre className="wv-pick-snippet">{pick.snapshot.outerHTML}</pre>
-                    <textarea
-                      className="wv-comment"
-                      placeholder={t('panel.comment.placeholder')}
-                      value={pick.comment}
-                      onChange={(e) => { actions.updateComment(pick.id, e.target.value) }}
-                    />
+                  <div
+                    key={pick.id}
+                    ref={(node) => { chipRefs.current.set(pick.id, node) }}
+                    className={`wv-chip${flashId === pick.id ? ' wv-chip-flash' : ''}`}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${index + 1}. ${elementLabel(pick.snapshot)}`}
+                    onClick={() => { onMarkClick(pick.id) }}
+                    onKeyDown={(e) => { onChipKeyDown(e, pick.id) }}
+                  >
+                    <span className="wv-chip-index">{index + 1}</span>
+                    <span className="wv-chip-label">{elementLabel(pick.snapshot)}</span>
+                    {pick.comment.trim() !== '' && (
+                      <span className="wv-chip-comment">{pick.comment}</span>
+                    )}
+                    <button
+                      type="button"
+                      className="wv-chip-remove"
+                      title={t('panel.pick.remove')}
+                      aria-label={t('panel.pick.remove')}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onRemovePick(pick.id)
+                      }}
+                    >
+                      <IconCloseOutline16 size={12} />
+                    </button>
                   </div>
                 ))}
             </div>

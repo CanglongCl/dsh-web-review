@@ -1,7 +1,7 @@
 /**
  * Visual-verification helper (not part of the test suite): boots the e2e
- * services, opens the webview panel against the demo page, picks an element,
- * and saves screenshots into .artifacts/ui/. Run with:
+ * services, opens the webview panel against the demo page, annotates two
+ * elements, and saves screenshots into .artifacts/ui/. Run with:
  *   pnpm exec tsx packages/ui-webview/tests/visual-shot.ts
  */
 import { join } from 'node:path'
@@ -45,30 +45,41 @@ try {
   await page.waitForTimeout(500)
   await shot(page, 'panel-with-page')
 
+  // Floating comment field open over the first element.
   await page.getByRole('button', { name: 'Pick element' }).click()
   await frame.locator('button.btn-primary').click()
-  const pickCard = page.locator('.wv-pick')
-  await pickCard.waitFor({ timeout: 10_000 })
-  await pickCard.locator('textarea.wv-comment').fill('Make the button color darker and increase spacing.')
-  await page.waitForTimeout(200)
-  await shot(page, 'panel-with-pick')
+  const commentInput = frame.locator('.dsh-wv-comment-input')
+  await commentInput.waitFor({ timeout: 10_000 })
+  await commentInput.fill('Make the button color darker and increase spacing.')
+  await shot(page, 'panel-comment-open')
+  await commentInput.press('Enter')
 
-  // Dragged split, to verify the splitter affordance visually.
+  // Second annotation: chips + markers echo.
+  await frame.locator('.card:nth-of-type(2) button').click()
+  const comment2 = frame.locator('.dsh-wv-comment-input')
+  await comment2.waitFor({ timeout: 10_000 })
+  await comment2.fill('Increase the spacing.')
+  await comment2.press('Enter')
+  await page.locator('.wv-chip').nth(1).waitFor({ timeout: 10_000 })
+  await page.waitForTimeout(300)
+  await shot(page, 'panel-two-annotations')
+
+  // Drag the splitter up to give the chips bar more room.
   const split = page.locator('.wv-split')
   const box = await split.boundingBox()
   if (box !== null) {
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
     await page.mouse.down()
-    await page.mouse.move(box.x + box.width / 2, box.y + 140, { steps: 8 })
+    await page.mouse.move(box.x + box.width / 2, box.y + 180, { steps: 8 })
     await page.mouse.up()
   }
   await page.waitForTimeout(300)
   await shot(page, 'panel-split-dragged')
 
-  // Dark theme variant of the pick state.
+  // Dark theme variant.
   await page.evaluate(() => { document.body.setAttribute('data-ds-dark-theme', '') })
   await page.waitForTimeout(400)
-  await shot(page, 'panel-dark-with-pick')
+  await shot(page, 'panel-dark-annotations')
   await page.close()
 } finally {
   await browser.close()

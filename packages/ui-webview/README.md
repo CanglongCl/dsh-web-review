@@ -22,10 +22,13 @@ file tools operate there), then:
 
 1. Click **网页预览** in the conversation header — the floating panel opens.
 2. Enter a URL (e.g. `http://localhost:5173` from `node demo/server.mjs`),
-   press Enter. **代理模式** keeps the page same-origin so elements can be
-   picked; **直接打开** loads it cross-origin without picking.
-3. Click **选择元素**, hover to highlight, click the element to pick it,
-   write a comment, repeat for more elements.
+   press Enter. The page loads through the proxy so it stays same-origin and
+   elements can be picked.
+3. Click the **选择元素** icon (far right of the URL row), then click an
+   element in the page — a floating comment field appears next to it. Type a
+   comment and press Enter; the annotation joins the **注释** chip bar below
+   and a numbered circle echoes over the element in the preview. Repeat for
+   more elements; click a circle or a chip to re-open that element's comment.
 4. Click **加入对话并发送** — a structured annotation message is sent to the
    session; the model locates and modifies the corresponding source in the
    workspace.
@@ -54,8 +57,8 @@ None — no provider request shape is altered.
   hardcoded in page JS (`fetch('http://host/api')`, WebSocket endpoints) are
   not rewritten; root-relative (`/api`) and relative calls work through the
   injected `<base>`. Dev-server HMR websockets do not survive the proxy.
-  Server-side fetch carries no browser cookies — login-gated pages must use
-  direct mode (which forfeits element picking).
+  Server-side fetch carries no browser cookies — login-gated pages cannot be
+  annotated (element picking requires the same-origin proxy).
 - **The entry name is machine-specific**: `cordis.yml` and
   `entry-name.json` embed this checkout's absolute path; moving the repo
   requires `pnpm gen-config` (and a web-process restart). The package root's

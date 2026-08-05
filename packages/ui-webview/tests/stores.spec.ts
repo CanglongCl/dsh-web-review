@@ -25,7 +25,7 @@ describe('createWebviewStore', () => {
   it('seeds the initial state', () => {
     const store = createWebviewStore().create()
     expect(store.getSnapshot()).toMatchObject({
-      open: false, width: PANEL_WIDTH_DEFAULT, url: '', mode: 'proxy',
+      open: false, width: PANEL_WIDTH_DEFAULT, url: '',
       pickMode: false, picks: [], split: SPLIT_DEFAULT, sending: false, error: null,
     })
   })
@@ -64,19 +64,19 @@ describe('createWebviewStore', () => {
     store.actions.togglePickMode()
     expect(store.getSnapshot().pickMode).toBe(true)
     store.actions.addPick(pick('a'))
-    // Adding a pick exits pick mode.
-    expect(store.getSnapshot().pickMode).toBe(false)
+    // Committing keeps pick mode armed (the user annotates the next element).
+    expect(store.getSnapshot().pickMode).toBe(true)
     store.actions.updateComment('a', 'comment')
     expect(store.getSnapshot().picks[0]?.comment).toBe('comment')
     store.actions.removePick('a')
     expect(store.getSnapshot().picks).toEqual([])
   })
 
-  it('setMode exits pick mode', () => {
+  it('togglePickMode exits pick mode', () => {
     const store = createWebviewStore().create()
     store.actions.togglePickMode()
-    store.actions.setMode('direct')
-    expect(store.getSnapshot().mode).toBe('direct')
+    expect(store.getSnapshot().pickMode).toBe(true)
+    store.actions.togglePickMode()
     expect(store.getSnapshot().pickMode).toBe(false)
   })
 
