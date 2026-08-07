@@ -2,7 +2,7 @@
  * Store factory suite: the write set and state invariants.
  */
 import { describe, expect, it } from 'vitest'
-import { PANEL_WIDTH_DEFAULT, SPLIT_DEFAULT, createWebviewStore } from '../src/client/stores.ts'
+import { createWebviewStore } from '../src/client/stores.ts'
 import type { PickItem } from '../src/client/contract.ts'
 
 function pick(id: string): PickItem {
@@ -26,38 +26,14 @@ describe('createWebviewStore', () => {
   it('seeds the initial state', () => {
     const store = createWebviewStore().create()
     expect(store.getSnapshot()).toMatchObject({
-      open: false, width: PANEL_WIDTH_DEFAULT, url: '',
-      pickMode: false, picks: [], split: SPLIT_DEFAULT, sending: false, error: null,
+      url: '', pickMode: false, picks: [], error: null, focusPickId: null,
     })
   })
 
-  it('open with a URL sets it and clears stale picks; open without keeps them', () => {
+  it('setUrl updates the navigation draft', () => {
     const store = createWebviewStore().create()
-    store.actions.addPick(pick('a'))
-    store.actions.open('http://new/')
-    expect(store.getSnapshot().url).toBe('http://new/')
-    expect(store.getSnapshot().picks).toEqual([])
-    store.actions.addPick(pick('b'))
-    store.actions.open()
-    expect(store.getSnapshot().picks).toHaveLength(1)
-  })
-
-  it('clamps the panel width', () => {
-    const store = createWebviewStore().create()
-    store.actions.setWidth(10)
-    expect(store.getSnapshot().width).toBe(320)
-    store.actions.setWidth(5000)
-    expect(store.getSnapshot().width).toBe(960)
-  })
-
-  it('clamps the preview/annotations split', () => {
-    const store = createWebviewStore().create()
-    store.actions.setSplit(0)
-    expect(store.getSnapshot().split).toBe(0.25)
-    store.actions.setSplit(1)
-    expect(store.getSnapshot().split).toBe(0.75)
-    store.actions.setSplit(0.5)
-    expect(store.getSnapshot().split).toBe(0.5)
+    store.actions.setUrl('http://localhost:5173/')
+    expect(store.getSnapshot().url).toBe('http://localhost:5173/')
   })
 
   it('pick lifecycle: add, comment, remove, clear; mode toggles', () => {
@@ -71,6 +47,9 @@ describe('createWebviewStore', () => {
     expect(store.getSnapshot().picks[0]?.comment).toBe('comment')
     store.actions.removePick('a')
     expect(store.getSnapshot().picks).toEqual([])
+    store.actions.addPick(pick('b'))
+    store.actions.clearPicks()
+    expect(store.getSnapshot().picks).toEqual([])
   })
 
   it('togglePickMode exits pick mode', () => {
@@ -81,10 +60,20 @@ describe('createWebviewStore', () => {
     expect(store.getSnapshot().pickMode).toBe(false)
   })
 
-  it('sending and error transitions', () => {
+  it('focusPickId tracks the dock focus signal without clamping', () => {
     const store = createWebviewStore().create()
-    store.actions.setSending(true)
+    expect(store.getSnapshot().focusPickId).toBeNull()
+    store.actions.setFocusPickId('p1')
+    expect(store.getSnapshot().focusPickId).toBe('p1')
+    store.actions.setFocusPickId(null)
+    expect(store.getSnapshot().focusPickId).toBeNull()
+  })
+
+  it('error transitions', () => {
+    const store = createWebviewStore().create()
     store.actions.setError('boom')
-    expect(store.getSnapshot()).toMatchObject({ sending: true, error: 'boom' })
+    expect(store.getSnapshot().error).toBe('boom')
+    store.actions.setError(null)
+    expect(store.getSnapshot().error).toBeNull()
   })
 })

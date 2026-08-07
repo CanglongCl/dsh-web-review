@@ -37,6 +37,7 @@
   "devDependencies": {
     "@cordisjs/plugin-include": "link:/Users/canglong/Program/deepseek-harness/vendor/include",
     "@cordisjs/plugin-loader": "link:/Users/canglong/Program/deepseek-harness/vendor/loader",
+    "@deepseek-ai/dsh-agent": "link:/Users/canglong/.dsh/source/staging-20260805T141019Z/packages/core/agent",
     "@deepseek-ai/dsh-client-locale": "link:/Users/canglong/Program/deepseek-harness/packages/client/locale",
     "@deepseek-ai/dsh-client-runtime": "link:/Users/canglong/Program/deepseek-harness/packages/client/runtime",
     "@deepseek-ai/dsh-client-ui-conversation": "link:/Users/canglong/Program/deepseek-harness/packages/client/ui-conversation",

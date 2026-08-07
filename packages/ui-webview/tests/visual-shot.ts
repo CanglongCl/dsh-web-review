@@ -1,6 +1,6 @@
 /**
  * Visual-verification helper (not part of the test suite): boots the e2e
- * services, opens the webview panel against the demo page, annotates two
+ * services, opens the Preview tab against the demo page, annotates two
  * elements, and saves screenshots into .artifacts/ui/. Run with:
  *   pnpm exec tsx packages/ui-webview/tests/visual-shot.ts
  */
@@ -29,7 +29,7 @@ try {
   const page = await newPage(browser)
   await page.goto(services.webUrl)
   await connectWorkspace(page, services.workspaceRoot, 'visual')
-  await clickWhenStable(page, page.getByRole('button', { name: 'Web preview' }))
+  await clickWhenStable(page, page.getByRole('tab', { name: 'Preview' }))
   const urlInput = page.getByPlaceholder('Enter a URL and press Enter (e.g. http://localhost:5173)')
   await urlInput.waitFor({ timeout: 15_000 })
   await shot(page, 'panel-open-empty')
@@ -63,18 +63,6 @@ try {
   await page.locator('.wv-chip').nth(1).waitFor({ timeout: 10_000 })
   await page.waitForTimeout(300)
   await shot(page, 'panel-two-annotations')
-
-  // Drag the splitter up to give the chips bar more room.
-  const split = page.locator('.wv-split')
-  const box = await split.boundingBox()
-  if (box !== null) {
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-    await page.mouse.down()
-    await page.mouse.move(box.x + box.width / 2, box.y + 180, { steps: 8 })
-    await page.mouse.up()
-  }
-  await page.waitForTimeout(300)
-  await shot(page, 'panel-split-dragged')
 
   // Dark theme variant.
   await page.evaluate(() => { document.body.setAttribute('data-ds-dark-theme', '') })

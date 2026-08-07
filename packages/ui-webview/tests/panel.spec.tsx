@@ -1,14 +1,18 @@
 // @vitest-environment jsdom
 /**
- * Component spec for the webview header action + floating panel: user-visible
- * behavior driven with realistic props (real store engine, stubbed inject
- * face and locale) — per the upstream component-spec discipline.
+ * Component spec for the webview preview tab (WebviewView) and the annotation
+ * dock (DraftOverlayBar): user-visible behavior driven with realistic props
+ * (real store engine, stubbed inject face and locale) — per the upstream
+ * component-spec discipline.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useSyncExternalStore } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import * as pickerModule from '../src/client/picker.ts'
+import type { PickerSurface } from '../src/client/picker.ts'
 import { createWebviewStore, type WebviewState, type WebviewStore } from '../src/client/stores.ts'
-import { WebviewHeaderAction, type WebviewInjected } from '../src/client/WebviewPanel.tsx'
+import { DraftOverlayBar } from '../src/client/DraftOverlayBar.tsx'
+import { WebviewView, type WebviewInjected } from '../src/client/WebviewView.tsx'
 import { zh, type WebviewKey } from '../src/client/locales.ts'
 import type { SnapshotSelectorHook, Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import type { PickItem } from '../src/client/contract.ts'
@@ -25,9 +29,9 @@ function hookFor(store: ReturnType<WebviewStore['create']>): SnapshotSelectorHoo
   return (selector) => useSyncExternalStore(store.subscribe, () => selector(store.getSnapshot()))
 }
 
-function pick(): PickItem {
+function pick(id = 'p1', comment = ''): PickItem {
   return {
-    id: 'p1',
+    id,
     snapshot: {
       tagName: 'div', id: '', className: 'card', cssPath: 'div.card',
       fullPath: 'html > body > main > div.card:nth-of-type(1)',
@@ -39,143 +43,177 @@ function pick(): PickItem {
         backgroundColor: '#fff', margin: '0px', padding: '8px', width: '100px', height: '50px',
       },
     },
-    comment: '',
+    comment,
+  }
+}
+
+/** A full picker surface stub (the component only drives it, never reads it). */
+function mockPickerSurface(): PickerSurface {
+  return {
+    activate: vi.fn(),
+    deactivate: vi.fn(),
+    isActive: () => false,
+    onPick: null,
+    onCancel: null,
+    onMarkClick: null,
+    onCommentCommit: null,
+    onCommentDismiss: null,
+    commentPlaceholder: '',
+    syncMarkers: vi.fn(),
+    openComment: vi.fn(),
+    closeComment: vi.fn(),
   }
 }
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
-function renderPanel(sendText: WebviewInjected['sendText'] = vi.fn(async () => {})) {
+function renderView(sync: ReturnType<typeof vi.fn> = vi.fn()) {
   const store = createWebviewStore().create()
   render(
-    <WebviewHeaderAction
+    <WebviewView
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       {...({} as any)}
       useStore={hookFor(store)}
       actions={store.actions}
-      sendText={sendText}
+      syncAnnotations={sync as WebviewInjected['syncAnnotations']}
+      t={t}
+    />,
+  )
+  return { store, sync }
+}
+
+function renderDock() {
+  const store = createWebviewStore().create()
+  render(
+    <DraftOverlayBar
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {...({} as any)}
+      useStore={hookFor(store)}
+      actions={store.actions}
+      syncAnnotations={vi.fn()}
       t={t}
     />,
   )
   return store
 }
 
-describe('WebviewHeaderAction', () => {
-  it('opens the floating panel from the header toggle', () => {
-    renderPanel()
-    expect(screen.queryByPlaceholderText(zh['panel.urlPlaceholder'])).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: zh['header.action'] }))
+describe('WebviewView (preview tab)', () => {
+  it('renders the URL row and the empty state without a URL', () => {
+    renderView()
     expect(screen.getByPlaceholderText(zh['panel.urlPlaceholder'])).toBeTruthy()
+    expect(screen.getByText(zh['panel.noUrl'])).toBeTruthy()
+    expect(document.querySelector('iframe')).toBeNull()
   })
 
   it('navigates to the proxy URL on Enter and clears stale picks', async () => {
-    const store = renderPanel()
-    act(() => { store.actions.open('http://old/'); store.actions.addPick(pick()) })
+    const { store } = renderView()
+    act(() => { store.actions.addPick(pick()) })
     const input = screen.getByPlaceholderText(zh['panel.urlPlaceholder'])
     fireEvent.change(input, { target: { value: 'http://localhost:5173/' } })
     await waitFor(() => expect(store.getSnapshot().url).toBe('http://localhost:5173/'))
     fireEvent.keyDown(input, { key: 'Enter' })
-    expect(store.getSnapshot().url).toBe('http://localhost:5173/')
     expect(store.getSnapshot().picks).toEqual([])
     const frame = document.querySelector('iframe') as HTMLIFrameElement
     expect(frame?.src).toContain('webview-proxy/http%3A//localhost%3A5173/')
   })
 
-  it('closes via the close button', () => {
-    const store = renderPanel()
-    act(() => { store.actions.open() })
-    fireEvent.click(screen.getByTitle(zh['panel.close']))
-    expect(store.getSnapshot().open).toBe(false)
-    expect(screen.queryByPlaceholderText(zh['panel.urlPlaceholder'])).toBeNull()
+  it('renders no send button or floating-panel chrome (sending rides the stock composer)', () => {
+    renderView()
+    expect(document.querySelector('.wv-send')).toBeNull()
+    expect(document.querySelector('.wv-footer')).toBeNull()
+    expect(document.querySelector('.wv-toggle')).toBeNull()
+    expect(document.querySelector('.wv-resize')).toBeNull()
   })
 
-  it('sends the formatted annotation and clears picks on success', async () => {
-    const sendText = vi.fn(async () => {})
-    const store = renderPanel(sendText)
-    act(() => { store.actions.open('http://localhost:5173/'); store.actions.addPick(pick()) })
-    fireEvent.click(screen.getByRole('button', { name: zh['panel.send'] }))
-    await waitFor(() => expect(sendText).toHaveBeenCalledTimes(1))
-    const message = sendText.mock.calls[0]?.[0] as string
-    // Location-oriented XML: hint on the open tag, text identity + classes + full path.
-    expect(message).toContain('<annotation hint="')
-    expect(message).toContain('text="div &quot;x&quot;"')
-    expect(message).toContain('classes="card"')
-    expect(message).toContain('html > body > main > div.card:nth-of-type(1)')
-    expect(store.getSnapshot().picks).toEqual([])
+  it('syncs the annotation XML after commits and updates', async () => {
+    const { store, sync } = renderView()
+    act(() => {
+      store.actions.setUrl('http://localhost:5173/')
+      store.actions.addPick(pick('p1', ''))
+    })
+    // The assembled XML is location-oriented: hint on the open tag, text
+    // identity + classes + full path (the sync carries the formatAnnotation
+    // output verbatim).
+    await waitFor(() => {
+      const last = sync.mock.calls.at(-1)?.[0] as string
+      expect(last).toContain('<annotation hint="')
+      expect(last).toContain('text="div &quot;x&quot;"')
+      expect(last).toContain('classes="card"')
+      expect(last).toContain('html > body > main > div.card:nth-of-type(1)')
+    })
+    act(() => { store.actions.updateComment('p1', '按钮颜色太暗') })
+    await waitFor(() => {
+      const last = sync.mock.calls.at(-1)?.[0] as string
+      expect(last).toContain('按钮颜色太暗')
+    })
   })
 
-  it('preserves picks and surfaces the error when sending fails', async () => {
-    const sendText = vi.fn(async () => { throw new Error('network down') })
-    const store = renderPanel(sendText)
-    act(() => { store.actions.open('http://localhost:5173/'); store.actions.addPick(pick()) })
-    fireEvent.click(screen.getByRole('button', { name: zh['panel.send'] }))
-    await waitFor(() => expect(store.getSnapshot().error).not.toBeNull())
-    expect(store.getSnapshot().error).toContain('network down')
-    expect(store.getSnapshot().picks).toHaveLength(1)
-    expect(store.getSnapshot().sending).toBe(false)
+  it('syncs an empty string when the last pick is removed (clear passes through)', async () => {
+    const { store, sync } = renderView()
+    act(() => {
+      store.actions.setUrl('http://localhost:5173/')
+      store.actions.addPick(pick())
+    })
+    await waitFor(() => expect(sync.mock.calls.at(-1)?.[0]).toContain('<annotation'))
+    act(() => { store.actions.removePick('p1') })
+    await waitFor(() => expect(sync.mock.calls.at(-1)?.[0]).toBe(''))
   })
 
-  it('disables send without picks', () => {
-    const store = renderPanel()
-    act(() => { store.actions.open() })
-    expect((screen.getByRole('button', { name: zh['panel.send'] }) as HTMLButtonElement).disabled).toBe(true)
+  it('focuses the pick when focusPickId changes (openComment on the located element)', () => {
+    const surface = mockPickerSurface()
+    vi.spyOn(pickerModule, 'pickerOf').mockReturnValue(surface)
+    const { store } = renderView()
+    act(() => {
+      store.actions.setUrl('http://localhost:5173/')
+      store.actions.addPick(pick('p1', '按钮颜色太暗'))
+    })
+    // Seed the frame document so the cssPath re-query locates the element.
+    // A src'd jsdom iframe keeps an unparsed document (navigation is not
+    // implemented) — document.write() forces the parse.
+    const frame = document.querySelector('iframe') as HTMLIFrameElement
+    const doc = frame.contentDocument!
+    doc.write('<!doctype html><html><body><div class="card">x</div></body></html>')
+    doc.close()
+    act(() => { store.actions.setFocusPickId('p1') })
+    // The located element is the seeded frame node (realm-safe identity
+    // checks — expect.any(Element) would use cross-realm instanceof).
+    const call = surface.openComment.mock.calls[0] as [string, Element, string]
+    expect(call[0]).toBe('p1')
+    expect(call[1].className).toBe('card')
+    expect(call[2]).toBe('按钮颜色太暗')
+    // The signal is one-shot: consumed by the tab.
+    expect(store.getSnapshot().focusPickId).toBeNull()
   })
 
-  it('drags the splitter to resize the preview/annotations split', () => {
-    // jsdom lacks PointerEvent and pointer capture/layout: stub the capture
-    // surface and dispatch real MouseEvents (clientY is a MouseEvent member).
-    const proto = Element.prototype as unknown as Record<string, unknown>
-    const prevCapture = proto.setPointerCapture
-    const prevHas = proto.hasPointerCapture
-    const prevRelease = proto.releasePointerCapture
-    proto.setPointerCapture = () => {}
-    proto.hasPointerCapture = () => true
-    proto.releasePointerCapture = () => {}
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ height: 500 } as DOMRect)
-    try {
-      const store = renderPanel()
-      act(() => { store.actions.open('http://localhost:5173/') })
-      const separator = screen.getByRole('separator')
-      expect(Number(separator.getAttribute('aria-valuenow'))).toBe(60)
-      fireEvent(separator, new MouseEvent('pointerdown', { bubbles: true, cancelable: true, clientY: 100 }))
-      fireEvent(separator, new MouseEvent('pointermove', { bubbles: true, cancelable: true, clientY: 150 }))
-      // +50px over a 500px body moves the split by 0.1.
-      expect(store.getSnapshot().split).toBeCloseTo(0.7, 5)
-      fireEvent(separator, new MouseEvent('pointerup', { bubbles: true, cancelable: true, clientY: 150 }))
-    } finally {
-      proto.setPointerCapture = prevCapture
-      proto.hasPointerCapture = prevHas
-      proto.releasePointerCapture = prevRelease
-    }
+  it('renders the error strip when the store has an error', () => {
+    const { store } = renderView()
+    act(() => { store.actions.setError('boom') })
+    expect(screen.getByRole('alert').textContent).toContain('boom')
   })
 
-  it('intercepts unmodified http(s) link clicks while open and opens them in the panel', () => {
-    const store = renderPanel()
-    act(() => { store.actions.open() })
+  it('intercepts unmodified http(s) link clicks while mounted and navigates the tab', () => {
+    const { store } = renderView()
+    act(() => { store.actions.addPick(pick()) })
     const link = document.createElement('a')
     link.href = 'http://external.example/page'
     link.textContent = 'go'
     document.body.appendChild(link)
     const event = new MouseEvent('click', { bubbles: true, cancelable: true })
-    const dispatched = link.dispatchEvent(event)
-    expect(dispatched).toBe(false) // preventDefault ran
+    expect(link.dispatchEvent(event)).toBe(false) // preventDefault ran
     expect(store.getSnapshot().url).toBe('http://external.example/page')
+    expect(store.getSnapshot().picks).toEqual([])
     link.remove()
   })
 
-  it('does not intercept clicks when the panel is closed', () => {
-    renderPanel()
-    const link = document.createElement('a')
-    link.href = 'http://external.example/page'
-    document.body.appendChild(link)
-    const event = new MouseEvent('click', { bubbles: true, cancelable: true })
-    expect(link.dispatchEvent(event)).toBe(true)
-    link.remove()
-  })
-
-  it('does not intercept modifier clicks or non-http links', () => {
-    const store = renderPanel()
-    act(() => { store.actions.open() })
+  it('does not intercept clicks inside [data-webview-ui], modifier clicks, or non-http links', () => {
+    renderView()
+    const chrome = document.createElement('div')
+    chrome.dataset.webviewUi = ''
+    const inside = document.createElement('a')
+    inside.href = 'http://external.example/page'
+    chrome.appendChild(inside)
+    document.body.appendChild(chrome)
+    expect(inside.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))).toBe(true)
     const link = document.createElement('a')
     link.href = 'http://external.example/page'
     document.body.appendChild(link)
@@ -185,7 +223,33 @@ describe('WebviewHeaderAction', () => {
     other.href = '/internal'
     document.body.appendChild(other)
     expect(other.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))).toBe(true)
+    chrome.remove()
     link.remove()
     other.remove()
+  })
+})
+
+describe('DraftOverlayBar (annotation dock)', () => {
+  it('renders nothing without picks', () => {
+    renderDock()
+    expect(document.querySelector('.wv-annotations-bar')).toBeNull()
+  })
+
+  it('renders a chip per pick; chip click writes the focus signal, remove deletes', () => {
+    const store = renderDock()
+    act(() => { store.actions.addPick(pick('p1', '按钮颜色太暗')) })
+    const bar = document.querySelector('.wv-annotations-bar') as HTMLDivElement
+    expect(bar).toBeTruthy()
+    expect(bar.querySelectorAll('.wv-chip')).toHaveLength(1)
+    expect(bar.textContent).toContain('1')
+    expect(bar.textContent).toContain('div.card')
+    expect(bar.textContent).toContain('按钮颜色太暗')
+    // Chip click → the preview tab's focus signal.
+    fireEvent.click(bar.querySelector('.wv-chip') as HTMLDivElement)
+    expect(store.getSnapshot().focusPickId).toBe('p1')
+    // Hover-remove deletes the pick.
+    fireEvent.click(bar.querySelector('.wv-chip-remove') as HTMLButtonElement)
+    expect(store.getSnapshot().picks).toEqual([])
+    expect(store.getSnapshot().focusPickId).toBe('p1') // untouched by removal
   })
 })

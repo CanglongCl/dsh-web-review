@@ -226,16 +226,26 @@ export async function connectWorkspace(page: Page, root: string, name = 'workspa
   // composer can satisfy the wait below while the dialog still covers the
   // page, derailing every later gesture.
   await dialog.waitFor({ state: 'detached', timeout: 15_000 })
-  const composer = page.locator('textarea:enabled[placeholder="Describe what you want to build"]')
+  // The startup initial-selection may open (or create) a blank session in the
+  // most recent workspace BEFORE this connect lands; that session's hero shows
+  // the SAME hero composer, so the wait below must first confirm the CURRENT
+  // session is the freshly connected one. The hero's workspace chip names the
+  // current session's workspace — wait for this workspace's basename before
+  // sending the probe, or the 'hello' would go to the wrong (still blank)
+  // session and this scenario would boot into a session that never renders the
+  // view tablist.
+  const heroSeat = page.locator('[data-composer-seat]')
+  await heroSeat.getByText(name, { exact: true }).waitFor({ timeout: 20_000 })
+  const composer = heroSeat.locator('textarea:enabled[placeholder="Describe what you want to build"]')
   await composer.waitFor({ timeout: 20_000 })
   // Leave the blank state: the conversation session header (and with it the
-  // webview toggle slot) only renders once the session holds a message. The
-  // probe message fails fast against the dead provider endpoint, so the turn
-  // settles and the header stays mounted; wait for the toggle here so callers
-  // never race the remount window.
+  // view tablist — [Chat] [Preview]) only renders once the session holds a
+  // message. The probe message fails fast against the dead provider endpoint,
+  // so the turn settles and the header stays mounted; wait for the Preview
+  // tab here so callers never race the remount window.
   await composer.fill('hello')
   await composer.press('Enter')
-  await page.locator('.wv-toggle').waitFor({ state: 'visible', timeout: 30_000 })
+  await page.getByRole('tab', { name: 'Preview' }).waitFor({ state: 'visible', timeout: 30_000 })
 }
 
 /** Poll until a click succeeds: the session header re-mounts while a turn

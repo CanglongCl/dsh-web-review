@@ -1,39 +1,25 @@
 /**
- * Webview store: the panel's shared viewing/interaction state. Business data
- * (sessions, the conversation) lives in the object layer; this store carries
- * panel geometry, navigation drafts, and the annotation picks per session.
+ * Webview store: the shared viewing/interaction state for the preview tab and
+ * the annotation dock. Business data (sessions, the conversation) lives in the
+ * object layer; this store carries the navigation draft, pick mode, the
+ * annotation picks shared by both registrations, and the focus signal the dock
+ * sends to the preview tab (chip click → locate the element in the iframe).
  */
 import { defineStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PickItem } from './contract.ts'
 
 export interface WebviewState {
-  /** Panel visibility (floating overlay on the right edge). */
-  open: boolean
-  /** Panel width in px (drag-resized). */
-  width: number
   /** Current URL input (and loaded URL). */
   url: string
   /** Element picker active inside the iframe. */
   pickMode: boolean
   /** Annotation entries, each with its own comment. */
   picks: PickItem[]
-  /** Vertical split (0..1): preview iframe share of the body height. */
-  split: number
-  /** A send is in flight. */
-  sending: boolean
-  /** Last user-visible error (navigation or send), cleared on next gesture. */
+  /** Last user-visible error, cleared on the next gesture. */
   error: string | null
+  /** One-shot focus signal: a dock chip clicked this pick id; the preview tab locates it (no clamping). */
+  focusPickId: string | null
 }
-
-/** Width clamp range for the floating panel. */
-export const PANEL_WIDTH_MIN = 320
-export const PANEL_WIDTH_MAX = 960
-export const PANEL_WIDTH_DEFAULT = 440
-
-/** Preview/annotations split clamp range (share of the body height). */
-export const SPLIT_MIN = 0.25
-export const SPLIT_MAX = 0.75
-export const SPLIT_DEFAULT = 0.6
 
 /**
  * Store factory: state + the complete write set. Components write only
@@ -43,33 +29,14 @@ export const SPLIT_DEFAULT = 0.6
 export function createWebviewStore() {
   return defineStore({
     init: (): WebviewState => ({
-      open: false,
-      width: PANEL_WIDTH_DEFAULT,
       url: '',
       pickMode: false,
       picks: [],
-      split: SPLIT_DEFAULT,
-      sending: false,
       error: null,
+      focusPickId: null,
     }),
     actions: {
-      open: (d, url?: string) => {
-        d.open = true
-        if (url !== undefined && url !== '') {
-          d.url = url
-          // A new page invalidates the previous annotation picks.
-          d.picks = []
-          d.pickMode = false
-        }
-      },
-      close: (d) => { d.open = false; d.pickMode = false },
       setUrl: (d, url: string) => { d.url = url },
-      setWidth: (d, width: number) => {
-        d.width = Math.min(PANEL_WIDTH_MAX, Math.max(PANEL_WIDTH_MIN, Math.round(width)))
-      },
-      setSplit: (d, split: number) => {
-        d.split = Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, split))
-      },
       togglePickMode: (d) => { d.pickMode = !d.pickMode },
       // Commit keeps pick mode armed so the user can annotate the next
       // element without re-clicking the pick button (Esc exits).
@@ -79,8 +46,8 @@ export function createWebviewStore() {
       },
       removePick: (d, id: string) => { d.picks = d.picks.filter((p) => p.id !== id) },
       clearPicks: (d) => { d.picks = [] },
-      setSending: (d, sending: boolean) => { d.sending = sending },
       setError: (d, error: string | null) => { d.error = error },
+      setFocusPickId: (d, id: string | null) => { d.focusPickId = id },
     },
   })
 }

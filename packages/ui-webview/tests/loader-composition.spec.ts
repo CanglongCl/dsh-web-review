@@ -21,6 +21,7 @@ import Include from '@cordisjs/plugin-include'
 import HttpServer from '@deepseek-ai/dsh-host-webserver'
 import * as plugin from '../src/index.ts'
 import { PROXY_PREFIX } from '../src/index.ts'
+import { MAX_ANNOTATION_BODY } from '../src/prompt-inject.ts'
 
 const TARGET_HTML = `<!doctype html>
 <html><head>
@@ -181,5 +182,59 @@ describe('/webview-proxy (real Loader + webserver composition)', () => {
     expect(response.status).toBe(502)
     const put = await fetch(`http://127.0.0.1:${port}${proxyPath(fixtureUrl + '/')}`, { method: 'PUT' })
     expect(put.status).toBe(405)
+  })
+})
+
+describe('/webview-annotations (real Loader + webserver composition)', () => {
+  it('accepts a valid POST body with 204', async () => {
+    await loadComposition()
+    const response = await fetch(`http://127.0.0.1:${port}/webview-annotations`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId: 'session-1', xml: '<annotation hint="x"/>' }),
+    })
+    expect(response.status).toBe(204)
+  })
+
+  it('accepts an empty xml (annotation cleared) with 204', async () => {
+    await loadComposition()
+    const response = await fetch(`http://127.0.0.1:${port}/webview-annotations`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId: 'session-1', xml: '' }),
+    })
+    expect(response.status).toBe(204)
+  })
+
+  it('rejects malformed bodies and empty sessionId with 400', async () => {
+    await loadComposition()
+    const bad = await fetch(`http://127.0.0.1:${port}/webview-annotations`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: 'not json',
+    })
+    expect(bad.status).toBe(400)
+    const empty = await fetch(`http://127.0.0.1:${port}/webview-annotations`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId: '', xml: '<annotation/>' }),
+    })
+    expect(empty.status).toBe(400)
+  })
+
+  it('rejects oversized bodies with 413', async () => {
+    await loadComposition()
+    const response = await fetch(`http://127.0.0.1:${port}/webview-annotations`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId: 'session-1', xml: 'x'.repeat(MAX_ANNOTATION_BODY) }),
+    })
+    expect(response.status).toBe(413)
+  })
+
+  it('rejects non-POST methods with 405', async () => {
+    await loadComposition()
+    const response = await fetch(`http://127.0.0.1:${port}/webview-annotations`)
+    expect(response.status).toBe(405)
   })
 })

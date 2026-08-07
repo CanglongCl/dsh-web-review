@@ -60,6 +60,9 @@ importers:
       '@cordisjs/plugin-loader':
         specifier: link:/Users/canglong/Program/deepseek-harness/vendor/loader
         version: link:../../../deepseek-harness/vendor/loader
+      '@deepseek-ai/dsh-agent':
+        specifier: link:/Users/canglong/.dsh/source/staging-20260805T141019Z/packages/core/agent
+        version: link:../../../../.dsh/source/staging-20260805T141019Z/packages/core/agent
       '@deepseek-ai/dsh-client-locale':
         specifier: link:/Users/canglong/Program/deepseek-harness/packages/client/locale
         version: link:../../../deepseek-harness/packages/client/locale

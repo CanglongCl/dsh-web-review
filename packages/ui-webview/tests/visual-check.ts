@@ -13,7 +13,7 @@ try {
   const page = await newPage(browser)
   await page.goto(services.webUrl)
   await connectWorkspace(page, services.workspaceRoot, 'check')
-  await clickWhenStable(page, page.getByRole('button', { name: 'Web preview' }))
+  await clickWhenStable(page, page.getByRole('tab', { name: 'Preview' }))
   const urlInput = page.getByPlaceholder('Enter a URL and press Enter (e.g. http://localhost:5173)')
   await urlInput.waitFor({ timeout: 15_000 })
   await urlInput.fill(services.demoUrl)
@@ -45,7 +45,7 @@ try {
 
   const dump = async (): Promise<string> => {
     const rows: string[] = []
-    const sels = ['.wv-hint', '.wv-chips-label', '.wv-chips-count', '.wv-chip', '.wv-chip-index', '.wv-chip-label', '.wv-chip-comment', '.wv-send']
+    const sels = ['.wv-hint', '.wv-annotations-label', '.wv-chip', '.wv-chip-index', '.wv-chip-label', '.wv-chip-comment']
     for (const sel of sels) {
       const el = document.querySelector(sel)
       if (el === null) continue
