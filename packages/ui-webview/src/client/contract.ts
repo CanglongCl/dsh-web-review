@@ -8,7 +8,10 @@ export interface ElementSnapshot {
   tagName: string
   id: string
   className: string
+  /** Shortest unique CSS selector (re-queryable). */
   cssPath: string
+  /** Full DOM path: the complete ancestor chain with nth-of-type indices. */
+  fullPath: string
   /** Truncated to OUTER_HTML_CAP chars. */
   outerHTML: string
   /** Truncated to TEXT_CAP chars. */

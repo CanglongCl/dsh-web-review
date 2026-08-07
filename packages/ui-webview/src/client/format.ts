@@ -8,8 +8,11 @@ import type { PickItem } from './contract.ts'
 import type { WebviewKey } from './locales.ts'
 
 /**
- * Compose the user message for the AI: page context, one numbered entry per
- * pick (cssPath, snapshot, comment), and the closing instruction.
+ * Compose the user message for the AI as an XML-style annotation block: the
+ * page context plus one `<element>` entry per pick carrying the shortest CSS
+ * selector and the FULL DOM path, the truncated snapshot in CDATA, and the
+ * user's comment; a closing instruction follows. Template strings are
+ * product copy pinned in locales.ts; this module only composes them.
  * @param url - the annotated page URL.
  * @param title - the annotated page title (may be empty).
  * @param picks - the annotation entries (at least one; caller gates).
@@ -22,29 +25,21 @@ export function formatAnnotation(
   picks: readonly PickItem[],
   t: Translate<WebviewKey>,
 ): string {
-  const lines: string[] = [t('annotation.header'), t('annotation.page', { title, url }), '']
+  const lines: string[] = [t('annotation.open'), t('annotation.page', { title, url })]
   picks.forEach((pick, index) => {
     const s = pick.snapshot
-    const idPart = s.id !== '' ? `#${s.id}` : ''
-    const classPart = s.className !== ''
-      ? `.${s.className.trim().split(/\s+/).filter(Boolean).join('.')}`
-      : ''
-    lines.push(t('annotation.entry.title', { index: String(index + 1) }))
-    lines.push(t('annotation.entry.selector', { selector: s.cssPath }))
-    lines.push(t('annotation.entry.element', {
-      tag: s.tagName,
-      id: idPart,
-      classes: classPart,
-      width: String(s.rect.width),
-      height: String(s.rect.height),
-      x: String(s.rect.x),
-      y: String(s.rect.y),
+    lines.push(t('annotation.element.open', {
+      index: String(index + 1),
+      selector: s.cssPath,
+      path: s.fullPath,
     }))
-    lines.push(t('annotation.entry.snapshot', { html: s.outerHTML }))
+    lines.push(t('annotation.snapshot', { html: s.outerHTML }))
     const comment = pick.comment.trim()
-    lines.push(comment !== '' ? t('annotation.entry.comment', { comment }) : t('annotation.entry.noComment'))
-    lines.push('')
+    lines.push(comment !== '' ? t('annotation.comment', { comment }) : t('annotation.noComment'))
+    lines.push(t('annotation.element.close'))
   })
+  lines.push(t('annotation.close'))
+  lines.push('')
   lines.push(t('annotation.instruction'))
   return lines.join('\n')
 }

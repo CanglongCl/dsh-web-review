@@ -30,6 +30,7 @@ function pick(): PickItem {
     id: 'p1',
     snapshot: {
       tagName: 'div', id: '', className: 'card', cssPath: 'div.card',
+      fullPath: 'html > body > main:nth-of-type(1) > div.card:nth-of-type(1)',
       outerHTML: '<div class="card">x</div>', textContent: 'x',
       rect: { x: 0, y: 0, width: 100, height: 50 },
       computed: {
@@ -94,8 +95,10 @@ describe('WebviewHeaderAction', () => {
     fireEvent.click(screen.getByRole('button', { name: zh['panel.send'] }))
     await waitFor(() => expect(sendText).toHaveBeenCalledTimes(1))
     const message = sendText.mock.calls[0]?.[0] as string
-    expect(message).toContain(zh['annotation.header'])
-    expect(message).toContain('div.card')
+    // XML-style annotation block: open tag, element with selector + full path.
+    expect(message).toContain(zh['annotation.open'])
+    expect(message).toContain('selector="div.card"')
+    expect(message).toContain('html > body > main:nth-of-type(1) > div.card:nth-of-type(1)')
     expect(store.getSnapshot().picks).toEqual([])
   })
 

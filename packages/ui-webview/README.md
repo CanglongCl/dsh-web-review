@@ -39,12 +39,15 @@ open; modifier-click keeps the default new-tab behavior.
 
 ## Model Experience
 
-The annotation is a plain user message: one text block containing the page
-URL/title, per-element CSS selectors with truncated snapshots, the user's
-comments, and an instruction to modify the workspace source and report the
-changed files. No model-facing tool is registered; the model acts with the
-session's existing workspace tools (`tool-fs`, bash). Messages therefore
-cost only ordinary user-turn tokens.
+The annotation is a plain user message: an XML-style annotation block
+(`<annotation>` → `<page url title/>` + one `<element index selector path>`
+per pick, with the truncated snapshot and the user's comment in CDATA),
+followed by an instruction to modify the workspace source and report the
+changed files. Each element carries both the shortest unique CSS selector
+and the full DOM path (complete ancestor chain with nth-of-type indices) so
+the model can locate the source that produces it. No model-facing tool is
+registered; the model acts with the session's existing workspace tools
+(`tool-fs`, bash). Messages therefore cost only ordinary user-turn tokens.
 
 #### KV Cache effect
 

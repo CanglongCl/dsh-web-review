@@ -80,10 +80,19 @@ async function annotate(
   await frame.locator(selector).click()
   const commentInput = frame.locator('.dsh-wv-comment-input')
   await commentInput.waitFor({ timeout: 10_000 })
+  // The picked element keeps its outline while the comment field is open.
+  await expect.poll(
+    async () => frame.locator(selector).getAttribute('data-dsh-wv-selected'),
+    { timeout: 10_000 },
+  ).not.toBeNull()
   await commentInput.fill(comment)
   await commentInput.press('Enter')
-  // The floating field closes on commit.
+  // The floating field closes on commit, and the outline moves on.
   await commentInput.waitFor({ state: 'detached', timeout: 10_000 })
+  await expect.poll(
+    async () => frame.locator(selector).getAttribute('data-dsh-wv-selected'),
+    { timeout: 10_000 },
+  ).toBeNull()
 }
 
 describe('ui-webview e2e', () => {
@@ -143,11 +152,16 @@ describe('ui-webview e2e', () => {
     expect(await markers.nth(0).textContent()).toBe('1')
     expect(await markers.nth(1).textContent()).toBe('2')
 
-    // Clicking a marker re-expands that element's comment field with its value.
+    // Clicking a marker re-expands that element's comment field with its value
+    // and re-outlines the element.
     await markers.nth(1).click()
     const commentInput = frame.locator('.dsh-wv-comment-input')
     await commentInput.waitFor({ timeout: 10_000 })
     expect(await commentInput.inputValue()).toBe('Increase the spacing.')
+    await expect.poll(
+      async () => frame.locator('.card:nth-of-type(2) button').getAttribute('data-dsh-wv-selected'),
+      { timeout: 10_000 },
+    ).not.toBeNull()
     await page.close()
   })
 
@@ -164,11 +178,17 @@ describe('ui-webview e2e', () => {
     const send = page.getByRole('button', { name: 'Add to chat and send' })
     await expect.poll(async () => send.isEnabled(), { timeout: 10_000 }).toBe(true)
     await send.click()
+    // The annotation lands as an XML-style block with the selector and the
+    // FULL DOM path (scope-addressed send).
     await expect.poll(
-      async () => page.getByText('[Page change request]').count(),
+      async () => page.getByText('<annotation>').count(),
       { timeout: 20_000 },
     ).toBeGreaterThan(0)
-    await expect.poll(async () => page.getByText('CSS selector: .btn-primary').count(), { timeout: 10_000 }).toBeGreaterThan(0)
+    await expect.poll(async () => page.getByText('selector=".btn-primary"').count(), { timeout: 10_000 }).toBeGreaterThan(0)
+    await expect.poll(
+      async () => page.getByText(/path="html > body > main\.cards > div\.card > button\.btn-primary"/).count(),
+      { timeout: 10_000 },
+    ).toBeGreaterThan(0)
     await expect.poll(async () => page.locator('.wv-chip').count(), { timeout: 10_000 }).toBe(0)
     await expect.poll(async () => page.getByText('No comments yet').count(), { timeout: 10_000 }).toBeGreaterThan(0)
     await page.close()

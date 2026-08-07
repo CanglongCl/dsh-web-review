@@ -9,7 +9,7 @@ function pick(id: string): PickItem {
   return {
     id,
     snapshot: {
-      tagName: 'div', id: '', className: '', cssPath: 'div',
+      tagName: 'div', id: '', className: '', cssPath: 'div', fullPath: 'html > body > div:nth-of-type(1)',
       outerHTML: '<div></div>', textContent: '',
       rect: { x: 0, y: 0, width: 0, height: 0 },
       computed: {

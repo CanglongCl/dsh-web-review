@@ -26,6 +26,14 @@ try {
   await frame.locator('button.btn-primary').click()
   const input = frame.locator('.dsh-wv-comment-input')
   await input.waitFor({ timeout: 10_000 })
+
+  // While the comment field is open, the picked element keeps its outline.
+  const selected = await frame.locator('button.btn-primary').evaluate((el) => {
+    const cs = getComputedStyle(el)
+    return `selected outline: ${cs.outlineWidth} ${cs.outlineStyle} ${cs.outlineColor} offset:${cs.outlineOffset}`
+  })
+  console.log(selected)
+
   await input.fill('darker')
   await input.press('Enter')
   await frame.locator('.card:nth-of-type(2) button').click()

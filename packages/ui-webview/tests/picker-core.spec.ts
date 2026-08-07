@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 /**
  * Picker-core suite: cssPath generation (delegated to css-selector-generator
- * — assertions pin its shortest-unique behavior for our priority config) and
- * snapshot caps (jsdom).
+ * — assertions pin its shortest-unique behavior for our priority config),
+ * the full DOM path, and snapshot caps (jsdom).
  */
 import { describe, expect, it } from 'vitest'
-import { OUTER_HTML_CAP, TEXT_CAP, cssPath, snapshotOf, truncate } from '../src/client/picker-core.ts'
+import { OUTER_HTML_CAP, TEXT_CAP, cssPath, fullPathOf, snapshotOf, truncate } from '../src/client/picker-core.ts'
 
 describe('truncate', () => {
   it('keeps short values and lands exactly at the cap for long ones', () => {
@@ -45,6 +45,33 @@ describe('cssPath', () => {
   })
 })
 
+describe('fullPathOf', () => {
+  it('walks the complete ancestor chain, indexing only competing siblings', () => {
+    document.body.innerHTML = '<main><section class="cards"><div class="card"><button class="btn-primary">x</button></div></section></main>'
+    const el = document.querySelector('button') as Element
+    expect(fullPathOf(el)).toBe('html > body > main > section.cards > div.card > button.btn-primary')
+  })
+
+  it('adds nth-of-type where same-tag siblings compete', () => {
+    document.body.innerHTML = '<main><div class="card">a</div><div class="card">b</div></main>'
+    const second = document.querySelectorAll('.card')[1] as Element
+    expect(fullPathOf(second)).toBe('html > body > main > div.card:nth-of-type(2)')
+  })
+
+  it('uses the id instead of an index on id-bearing levels', () => {
+    document.body.innerHTML = '<div id="app"><div class="card"><p>x</p></div></div>'
+    const el = document.querySelector('p') as Element
+    expect(fullPathOf(el)).toBe('html > body > div#app > div.card > p')
+  })
+
+  it('excludes the plugin chrome classes (dsh-wv-*) from the path', () => {
+    document.body.innerHTML = '<main><div class="card"><button>x</button></div></main>'
+    document.documentElement.classList.add('dsh-wv-picking')
+    const el = document.querySelector('button') as Element
+    expect(fullPathOf(el)).toBe('html > body > main > div.card > button')
+  })
+})
+
 describe('snapshotOf', () => {
   it('captures the exact contract fields with caps enforced', () => {
     document.body.innerHTML = `<div id="card" class="card primary" style="margin: 4px; padding: 8px;">
@@ -57,6 +84,7 @@ describe('snapshotOf', () => {
     expect(snap.id).toBe('card')
     expect(snap.className).toBe('card primary')
     expect(snap.cssPath).toBe('#card')
+    expect(snap.fullPath).toBe('html > body > div#card')
     expect(snap.outerHTML.length).toBe(OUTER_HTML_CAP)
     expect(snap.textContent.length).toBe(TEXT_CAP)
     expect(snap.rect).toMatchObject({ x: expect.any(Number), y: expect.any(Number), width: expect.any(Number), height: expect.any(Number) })

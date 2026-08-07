@@ -32,6 +32,11 @@ const PICKER_STYLE = `
   outline-offset: -2px !important;
   background-color: rgba(65, 118, 230, 0.10) !important;
 }
+[data-dsh-wv-selected] {
+  outline: 2px solid #679efe !important;
+  outline-offset: 2px !important;
+  background-color: rgba(65, 118, 230, 0.10) !important;
+}
 .dsh-wv-picking, .dsh-wv-picking * { cursor: crosshair !important; }
 .dsh-wv-marker {
   position: fixed !important;
@@ -126,6 +131,7 @@ export const PICKER_SCRIPT = `(function () {
   if (window.__dshWebviewPicker) return;
   var active = false;
   var hovered = null;
+  var selectedEl = null; // the element whose comment field is open
   var markers = new Map(); // id -> { el, circle }
   var comment = null;      // { wrap, input, el, id }
   var repositionQueued = false;
@@ -148,12 +154,24 @@ export const PICKER_SCRIPT = `(function () {
   function clearHover() {
     if (hovered) { hovered.removeAttribute('data-dsh-wv-hover'); hovered = null; }
   }
+  function setSelected(el) {
+    if (selectedEl === el) return;
+    clearSelected();
+    selectedEl = el;
+    selectedEl.setAttribute('data-dsh-wv-selected', '');
+  }
+  function clearSelected() {
+    if (selectedEl) {
+      selectedEl.removeAttribute('data-dsh-wv-selected');
+      selectedEl = null;
+    }
+  }
   function onMouseOver(e) {
     if (!active) return;
     var el = e.target;
     if (!(el instanceof Element)) return;
     if (el === document.documentElement || el === document.body) return;
-    if (isChrome(el)) return;
+    if (isChrome(el) || el === selectedEl) return;
     if (hovered === el) return;
     clearHover();
     hovered = el;
@@ -250,6 +268,7 @@ export const PICKER_SCRIPT = `(function () {
   }
   function openComment(id, element, value) {
     closeComment();
+    setSelected(element);
     var wrap = document.createElement('div');
     wrap.className = 'dsh-wv-comment';
     var input = document.createElement('input');
@@ -286,6 +305,7 @@ export const PICKER_SCRIPT = `(function () {
       comment.wrap.remove();
       comment = null;
     }
+    clearSelected();
   }
 
   window.__dshWebviewPicker = {
@@ -296,6 +316,7 @@ export const PICKER_SCRIPT = `(function () {
     deactivate: function () {
       active = false;
       clearHover();
+      clearSelected();
       document.documentElement.classList.remove('dsh-wv-picking');
     },
     isActive: function () { return active; },
