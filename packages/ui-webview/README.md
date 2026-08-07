@@ -39,15 +39,17 @@ open; modifier-click keeps the default new-tab behavior.
 
 ## Model Experience
 
-The annotation is a plain user message: an XML-style annotation block
-(`<annotation>` → `<page url title/>` + one `<element index selector path>`
-per pick, with the truncated snapshot and the user's comment in CDATA),
-followed by an instruction to modify the workspace source and report the
-changed files. Each element carries both the shortest unique CSS selector
-and the full DOM path (complete ancestor chain with nth-of-type indices) so
-the model can locate the source that produces it. No model-facing tool is
-registered; the model acts with the session's existing workspace tools
-(`tool-fs`, bash). Messages therefore cost only ordinary user-turn tokens.
+The annotation is a plain user message: an XML-style annotation block built
+for **locating source code**, not describing pixels. Each element carries
+searchable literals — the accessible text identity (`button "提交"`) and
+either the framework source anchor (`source="src/components/Hero.tsx:12"`
++ component chain, read from React/Vue/Svelte dev-mode metadata) or the
+stable class names + full DOM path when no framework metadata exists —
+plus the user's comment in CDATA. Raw DOM artifacts (outerHTML, computed
+styles, coordinates) are deliberately omitted. Long URLs are shortened to
+route + query summary. No model-facing tool is registered; the model acts
+with the session's existing workspace tools (`tool-fs`, bash). Messages
+therefore cost only ordinary user-turn tokens.
 
 #### KV Cache effect
 

@@ -1,4 +1,5 @@
 import { getCssSelector } from 'css-selector-generator'
+import { sourceAnchorOf } from './source-anchor.ts'
 
 /**
  * Picker core: snapshot capture helpers for picked elements (browser half).
@@ -19,12 +20,73 @@ import { getCssSelector } from 'css-selector-generator'
 export const OUTER_HTML_CAP = 1500
 /** Cap for the textContent snapshot. */
 export const TEXT_CAP = 300
+/** Cap for the accessible label. */
+export const LABEL_CAP = 48
 
 /** Truncate to `cap` characters (ellipsis included in the cap). */
 export function truncate(value: string, cap: number): string {
   if (value.length <= cap) return value
   const head = Math.max(0, cap - 1)
   return `${value.slice(0, head)}…`
+}
+
+/**
+ * Accessible label of an element: aria-label/title/placeholder/alt first,
+ * else the visible text — the human-readable identity that also exists as a
+ * string literal in source code (and is therefore searchable by the AI).
+ */
+export function accessibleLabel(el: Element): string {
+  const direct = el.getAttribute('aria-label')
+    ?? el.getAttribute('title')
+    ?? el.getAttribute('placeholder')
+    ?? el.getAttribute('alt')
+  if (direct !== null && direct.trim() !== '') return truncate(direct.trim(), LABEL_CAP)
+  const text = (el.textContent ?? '').replace(/\s+/g, ' ').trim()
+  return truncate(text, LABEL_CAP)
+}
+
+/** Explicit or implicit ARIA role of an element ('' when none applies). */
+export function roleOf(el: Element): string {
+  const explicit = el.getAttribute('role')
+  if (explicit !== null) return explicit.split(/\s+/)[0] ?? ''
+  const tag = el.tagName.toLowerCase()
+  if (tag === 'button') return 'button'
+  if (tag === 'a' && el.getAttribute('href') !== null) return 'link'
+  if (tag === 'input') return 'textbox'
+  if (tag === 'select') return 'combobox'
+  if (tag === 'textarea') return 'textbox'
+  if (/^h[1-6]$/.test(tag)) return 'heading'
+  if (tag === 'img') return 'img'
+  return ''
+}
+
+/**
+ * Semantic class names: filter out utility classes (layout/spacing/type
+ * tokens that are assembled at build time and don't exist verbatim in
+ * source), state variants (`hover:`/`focus:`), and hashed/opaque tokens
+ * (css-*, CSS-module hashes, UUIDs) that are meaningless to search.
+ */
+export function stableClassesOf(el: Element): string[] {
+  return Array.from(el.classList).filter(isStableClass)
+}
+
+const UTILITY_CLASS =
+  /^(?:m[trblxy]?|p[trblxy]?|w|h|min-w|max-w|min-h|max-h|inset|top|right|bottom|left|translate|scale|rotate|text|bg|border|rounded|shadow|ring|opacity|z|flex|grid|gap|space|items|justify|content|self|place|font|leading|tracking)-(?:.+)$/
+
+/** Bare utility tokens that never exist verbatim in source (assembled at build time). */
+const BARE_UTILITY = new Set([
+  'flex', 'grid', 'block', 'inline', 'inline-flex', 'inline-block', 'hidden',
+  'relative', 'absolute', 'fixed', 'sticky', 'static', 'container',
+])
+
+function isStableClass(cls: string): boolean {
+  if (cls.includes(':')) return false
+  if (/^(sm|md|lg|xl|2xl|hover|focus|active|disabled)$/.test(cls)) return false
+  if (cls.startsWith('css-') || /^_?[a-f0-9]{6,}$/i.test(cls)) return false
+  if (/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}/i.test(cls)) return false
+  if (/^dsh-wv-/.test(cls)) return false
+  if (UTILITY_CLASS.test(cls) || BARE_UTILITY.has(cls)) return false
+  return true
 }
 
 /** Selector-type priority: id → class → tag → nth-of-type (order = priority). */
@@ -91,6 +153,10 @@ export function snapshotOf(el: Element): {
   className: string
   cssPath: string
   fullPath: string
+  label: string
+  role: string
+  stableClasses: string[]
+  anchor: ReturnType<typeof sourceAnchorOf>
   outerHTML: string
   textContent: string
   rect: { x: number; y: number; width: number; height: number }
@@ -114,6 +180,10 @@ export function snapshotOf(el: Element): {
     className: typeof el.className === 'string' ? el.className : '',
     cssPath: cssPath(el),
     fullPath: fullPathOf(el),
+    label: accessibleLabel(el),
+    role: roleOf(el),
+    stableClasses: stableClassesOf(el),
+    anchor: sourceAnchorOf(el),
     outerHTML: truncate(el.outerHTML, OUTER_HTML_CAP),
     textContent: truncate(el.textContent ?? '', TEXT_CAP),
     rect: {

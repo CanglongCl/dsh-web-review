@@ -178,13 +178,15 @@ describe('ui-webview e2e', () => {
     const send = page.getByRole('button', { name: 'Add to chat and send' })
     await expect.poll(async () => send.isEnabled(), { timeout: 10_000 }).toBe(true)
     await send.click()
-    // The annotation lands as an XML-style block with the selector and the
-    // FULL DOM path (scope-addressed send).
+    // The annotation lands as a location-oriented XML block: text identity +
+    // stable classes + full DOM path (the demo page has no framework, so no
+    // source anchor tier), via the scope-addressed send.
     await expect.poll(
       async () => page.getByText('<annotation>').count(),
       { timeout: 20_000 },
     ).toBeGreaterThan(0)
-    await expect.poll(async () => page.getByText('selector=".btn-primary"').count(), { timeout: 10_000 }).toBeGreaterThan(0)
+    await expect.poll(async () => page.getByText('text="button &quot;提交&quot;"').count(), { timeout: 10_000 }).toBeGreaterThan(0)
+    await expect.poll(async () => page.getByText('classes="btn-primary"').count(), { timeout: 10_000 }).toBeGreaterThan(0)
     await expect.poll(
       async () => page.getByText(/path="html > body > main\.cards > div\.card > button\.btn-primary"/).count(),
       { timeout: 10_000 },

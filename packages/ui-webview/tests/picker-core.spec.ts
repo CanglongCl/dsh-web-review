@@ -2,10 +2,14 @@
 /**
  * Picker-core suite: cssPath generation (delegated to css-selector-generator
  * — assertions pin its shortest-unique behavior for our priority config),
- * the full DOM path, and snapshot caps (jsdom).
+ * the full DOM path, identity helpers (label/role/stable classes), and
+ * snapshot caps (jsdom).
  */
 import { describe, expect, it } from 'vitest'
-import { OUTER_HTML_CAP, TEXT_CAP, cssPath, fullPathOf, snapshotOf, truncate } from '../src/client/picker-core.ts'
+import {
+  OUTER_HTML_CAP, TEXT_CAP, accessibleLabel, cssPath, fullPathOf, roleOf,
+  snapshotOf, stableClassesOf, truncate,
+} from '../src/client/picker-core.ts'
 
 describe('truncate', () => {
   it('keeps short values and lands exactly at the cap for long ones', () => {
@@ -72,6 +76,30 @@ describe('fullPathOf', () => {
   })
 })
 
+describe('identity helpers', () => {
+  it('accessibleLabel prefers aria-label/title, falls back to visible text', () => {
+    document.body.innerHTML = '<button aria-label="保存">save</button><button title="删除">x</button><div class="card"><p>卡片标题</p></div>'
+    expect(accessibleLabel(document.querySelector('button[aria-label]') as Element)).toBe('保存')
+    expect(accessibleLabel(document.querySelector('button[title]') as Element)).toBe('删除')
+    expect(accessibleLabel(document.querySelector('.card') as Element)).toBe('卡片标题')
+  })
+
+  it('roleOf maps tags and explicit roles', () => {
+    document.body.innerHTML = '<button>b</button><a href="/x">l</a><h2>t</h2><input><div role="tab">t</div><span>s</span>'
+    expect(roleOf(document.querySelector('button') as Element)).toBe('button')
+    expect(roleOf(document.querySelector('a') as Element)).toBe('link')
+    expect(roleOf(document.querySelector('h2') as Element)).toBe('heading')
+    expect(roleOf(document.querySelector('input') as Element)).toBe('textbox')
+    expect(roleOf(document.querySelector('[role="tab"]') as Element)).toBe('tab')
+    expect(roleOf(document.querySelector('span') as Element)).toBe('')
+  })
+
+  it('stableClassesOf drops utility, hashed, variant, and chrome classes', () => {
+    document.body.innerHTML = '<div class="btn-primary m-2 hover:bg-red css-1a2b3c flex text-sm card dsh-wv-mark">x</div>'
+    expect(stableClassesOf(document.querySelector('div') as Element)).toEqual(['btn-primary', 'card'])
+  })
+})
+
 describe('snapshotOf', () => {
   it('captures the exact contract fields with caps enforced', () => {
     document.body.innerHTML = `<div id="card" class="card primary" style="margin: 4px; padding: 8px;">
@@ -85,6 +113,12 @@ describe('snapshotOf', () => {
     expect(snap.className).toBe('card primary')
     expect(snap.cssPath).toBe('#card')
     expect(snap.fullPath).toBe('html > body > div#card')
+    // Visible-text fallback label (the long span/p children, capped).
+    expect(snap.label.startsWith('ttttt')).toBe(true)
+    expect(snap.label.length).toBeLessThanOrEqual(48)
+    expect(snap.role).toBe('')
+    expect(snap.stableClasses).toEqual(['card', 'primary'])
+    expect(snap.anchor).toBeNull()
     expect(snap.outerHTML.length).toBe(OUTER_HTML_CAP)
     expect(snap.textContent.length).toBe(TEXT_CAP)
     expect(snap.rect).toMatchObject({ x: expect.any(Number), y: expect.any(Number), width: expect.any(Number), height: expect.any(Number) })

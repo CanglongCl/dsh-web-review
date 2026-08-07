@@ -8,10 +8,18 @@ export interface ElementSnapshot {
   tagName: string
   id: string
   className: string
-  /** Shortest unique CSS selector (re-queryable). */
+  /** Shortest unique CSS selector (runtime anchor for marker rebuilds). */
   cssPath: string
   /** Full DOM path: the complete ancestor chain with nth-of-type indices. */
   fullPath: string
+  /** Accessible label (aria-label/title/placeholder/alt, else visible text). */
+  label: string
+  /** Explicit or implicit ARIA role (button, link, heading, …). */
+  role: string
+  /** Semantic (non-utility, non-hashed) class names, in document order. */
+  stableClasses: string[]
+  /** Framework source anchor (file/line/component) or null. */
+  anchor: import('./source-anchor.ts').SourceAnchor | null
   /** Truncated to OUTER_HTML_CAP chars. */
   outerHTML: string
   /** Truncated to TEXT_CAP chars. */
