@@ -45,13 +45,16 @@ function pick(comment: string, snapshot: PickItem['snapshot'] = baseSnapshot()):
 describe('formatAnnotation', () => {
   it('no anchor: text identity + stable classes + full path, no DOM artifacts', () => {
     const out = formatAnnotation('http://localhost:5173/', '魔法 UI 演示页', [pick('按钮颜色太暗')], t)
-    expect(out).toContain(zh['annotation.open'])
+    expect(out).toContain('<annotation hint="')
+    expect(out).toContain(zh['annotation.hint'])
     expect(out).toContain('  <page url="http://localhost:5173/" title="魔法 UI 演示页"/>')
     expect(out).toContain('  <element index="1" text="button &quot;提交&quot;" classes="btn-primary"')
     expect(out).toContain('path="html > body > main > div.card > button.btn-primary"')
     expect(out).toContain('    <comment><![CDATA[按钮颜色太暗]]></comment>')
     expect(out).toContain(zh['annotation.close'])
-    expect(out).toContain(zh['annotation.instruction'])
+    // The message ends with </annotation> — no trailing instruction paragraph.
+    expect(out.trimEnd().endsWith(zh['annotation.close'])).toBe(true)
+    expect(out).not.toContain('instruction')
     // Location-oriented: no selector, no outerHTML snapshot, no rect/computed.
     expect(out).not.toContain('selector=')
     expect(out).not.toContain('snapshot')
@@ -75,10 +78,14 @@ describe('formatAnnotation', () => {
     expect(out).toContain('query="date_from=2026-05-23, date_to=2026-06-22, sort=desc, +1 more"')
   })
 
-  it('marks entries without a comment explicitly', () => {
+  it('omits the comment node when the comment is empty', () => {
     const out = formatAnnotation('http://h/', '', [pick('   ')], t)
-    expect(out).toContain(zh['annotation.noComment'])
+    expect(out).not.toContain('<comment>')
     expect(out).not.toContain(']]></comment>')
+    // The element closes right after the open tag.
+    expect(out).toContain(
+      '<element index="1" text="button &quot;提交&quot;" classes="btn-primary" path="html > body > main > div.card > button.btn-primary">\n  </element>',
+    )
   })
 
   it('numbers multiple entries', () => {

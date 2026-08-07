@@ -96,8 +96,8 @@ describe('WebviewHeaderAction', () => {
     fireEvent.click(screen.getByRole('button', { name: zh['panel.send'] }))
     await waitFor(() => expect(sendText).toHaveBeenCalledTimes(1))
     const message = sendText.mock.calls[0]?.[0] as string
-    // Location-oriented XML: text identity + classes + full path (no anchor in the fixture).
-    expect(message).toContain(zh['annotation.open'])
+    // Location-oriented XML: hint on the open tag, text identity + classes + full path.
+    expect(message).toContain('<annotation hint="')
     expect(message).toContain('text="div &quot;x&quot;"')
     expect(message).toContain('classes="card"')
     expect(message).toContain('html > body > main > div.card:nth-of-type(1)')

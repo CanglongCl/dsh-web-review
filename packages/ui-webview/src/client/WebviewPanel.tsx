@@ -398,7 +398,7 @@ export function WebviewHeaderAction({ useStore, actions, sendText, t }: WebviewS
           </div>
           {state.pickMode && <div className="wv-hint">{t('panel.pick.hint')}</div>}
           <div className="wv-body" ref={bodyRef}>
-            <div className="wv-frame-wrap" style={{ flexBasis: `${state.split * 100}%` }}>
+            <div className="wv-frame-wrap">
               {frameSrc !== undefined
                 ? (
                   <iframe
@@ -423,7 +423,7 @@ export function WebviewHeaderAction({ useStore, actions, sendText, t }: WebviewS
               onPointerMove={onSplitMove}
               onPointerUp={onSplitEnd}
             />
-            <div className="wv-chips">
+            <div className="wv-chips" style={{ maxHeight: `${(1 - state.split) * 100}%` }}>
               <div className="wv-chips-head">
                 <span className="wv-chips-label">{t('panel.picks.title')}</span>
                 {state.picks.length > 0 && (

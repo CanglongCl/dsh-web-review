@@ -172,7 +172,7 @@ export const WEBVIEW_CSS = `
   min-height: 0;
 }
 .wv-frame-wrap {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-height: 140px;
   position: relative;
   overflow: hidden;
@@ -222,8 +222,8 @@ export const WEBVIEW_CSS = `
 
 /* ---------- comment chip bar (horizontal, left-to-right) ---------- */
 .wv-chips {
-  flex: 1 1 auto;
-  min-height: 84px;
+  flex: 0 1 auto;
+  min-height: 56px;
   display: flex;
   flex-wrap: wrap;
   align-content: flex-start;

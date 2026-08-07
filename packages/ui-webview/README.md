@@ -39,17 +39,21 @@ open; modifier-click keeps the default new-tab behavior.
 
 ## Model Experience
 
-The annotation is a plain user message: an XML-style annotation block built
-for **locating source code**, not describing pixels. Each element carries
-searchable literals — the accessible text identity (`button "提交"`) and
-either the framework source anchor (`source="src/components/Hero.tsx:12"`
-+ component chain, read from React/Vue/Svelte dev-mode metadata) or the
-stable class names + full DOM path when no framework metadata exists —
-plus the user's comment in CDATA. Raw DOM artifacts (outerHTML, computed
-styles, coordinates) are deliberately omitted. Long URLs are shortened to
-route + query summary. No model-facing tool is registered; the model acts
-with the session's existing workspace tools (`tool-fs`, bash). Messages
-therefore cost only ordinary user-turn tokens.
+The annotation is a plain user message: an XML-style annotation block (in
+English, regardless of UI locale) built for **locating source code**, not
+describing pixels. `<annotation hint="...">` carries a one-line hint — the
+block is annotations marked by the user in the right-side preview panel and
+each `comment` is the user's input to apply; the message ends there, with no
+trailing instructions. Each element carries searchable literals — the
+accessible text identity (`button "提交"`) and either the framework source
+anchor (`source="src/components/Hero.tsx:12"` + component chain, read from
+React/Vue/Svelte dev-mode metadata) or the stable class names + full DOM
+path when no framework metadata exists. A non-empty user comment is the
+only child (CDATA); empty comments emit no comment node. Raw DOM artifacts
+(outerHTML, computed styles, coordinates) are deliberately omitted. Long
+URLs are shortened to route + query summary. No model-facing tool is
+registered; the model acts with the session's existing workspace tools
+(`tool-fs`, bash). Messages therefore cost only ordinary user-turn tokens.
 
 #### KV Cache effect
 

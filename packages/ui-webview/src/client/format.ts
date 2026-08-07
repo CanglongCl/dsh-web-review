@@ -75,7 +75,7 @@ export function formatAnnotation(
   t: Translate<WebviewKey>,
 ): string {
   const { route, query } = shortenUrl(url)
-  const lines: string[] = [t('annotation.open')]
+  const lines: string[] = [t('annotation.open', { hint: t('annotation.hint') })]
   lines.push(query === ''
     ? t('annotation.page', { url: escapeXmlAttr(route), title: escapeXmlAttr(title) })
     : t('annotation.pageWithQuery', {
@@ -104,11 +104,10 @@ export function formatAnnotation(
       }))
     }
     const comment = pick.comment.trim()
-    lines.push(comment !== '' ? t('annotation.comment', { comment }) : t('annotation.noComment'))
+    // No comment node for empty comments — the element stands alone.
+    if (comment !== '') lines.push(t('annotation.comment', { comment }))
     lines.push(t('annotation.element.close'))
   })
   lines.push(t('annotation.close'))
-  lines.push('')
-  lines.push(t('annotation.instruction'))
   return lines.join('\n')
 }

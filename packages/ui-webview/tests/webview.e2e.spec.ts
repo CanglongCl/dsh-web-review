@@ -182,7 +182,7 @@ describe('ui-webview e2e', () => {
     // stable classes + full DOM path (the demo page has no framework, so no
     // source anchor tier), via the scope-addressed send.
     await expect.poll(
-      async () => page.getByText('<annotation>').count(),
+      async () => page.getByText('<annotation hint=').count(),
       { timeout: 20_000 },
     ).toBeGreaterThan(0)
     await expect.poll(async () => page.getByText('text="button &quot;提交&quot;"').count(), { timeout: 10_000 }).toBeGreaterThan(0)

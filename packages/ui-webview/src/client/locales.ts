@@ -26,16 +26,15 @@ export const zh = {
   'panel.navFailed': '页面加载失败：{message}',
   'panel.noUrl': '请输入网址',
   'panel.error.send': '发送失败：{message}',
-  'annotation.open': '<annotation>',
+  'annotation.open': '<annotation hint="{hint}">',
+  'annotation.hint': 'Annotations below were marked by the user in the right-side preview panel; each comment is the user\'s input — apply the requested changes to the corresponding elements',
   'annotation.page': '  <page url="{url}" title="{title}"/>',
   'annotation.pageWithQuery': '  <page url="{url}" query="{query}" title="{title}"/>',
   'annotation.element.anchor': '  <element index="{index}" text="{text}" source="{source}" component="{component}">',
   'annotation.element.open': '  <element index="{index}" text="{text}" classes="{classes}" path="{path}">',
   'annotation.element.close': '  </element>',
   'annotation.comment': '    <comment><![CDATA[{comment}]]></comment>',
-  'annotation.noComment': '    <comment><!-- 无评论：请检查该元素是否存在问题 --></comment>',
   'annotation.close': '</annotation>',
-  'annotation.instruction': '请根据以上注释中选中的元素与修改需求，在当前工作区中定位并修改对应的前端源码（优先找到产生该元素的组件与样式文件）。修改完成后，请简要说明修改了哪些文件以及为什么。',
 } as const
 
 /** English dictionary (same keys as {@link zh}). */
@@ -60,16 +59,15 @@ export const en: Record<WebviewKey, string> = {
   'panel.navFailed': 'Page failed to load: {message}',
   'panel.noUrl': 'Enter a URL first',
   'panel.error.send': 'Send failed: {message}',
-  'annotation.open': '<annotation>',
+  'annotation.open': '<annotation hint="{hint}">',
+  'annotation.hint': 'Annotations below were marked by the user in the right-side preview panel; each comment is the user\'s input — apply the requested changes to the corresponding elements',
   'annotation.page': '  <page url="{url}" title="{title}"/>',
   'annotation.pageWithQuery': '  <page url="{url}" query="{query}" title="{title}"/>',
   'annotation.element.anchor': '  <element index="{index}" text="{text}" source="{source}" component="{component}">',
   'annotation.element.open': '  <element index="{index}" text="{text}" classes="{classes}" path="{path}">',
   'annotation.element.close': '  </element>',
   'annotation.comment': '    <comment><![CDATA[{comment}]]></comment>',
-  'annotation.noComment': '    <comment><!-- no comment; please inspect this element --></comment>',
   'annotation.close': '</annotation>',
-  'annotation.instruction': 'Based on the annotations above, locate and modify the corresponding frontend source in the current workspace (prefer the component and style files that produce the elements). When done, briefly state which files you changed and why.',
 }
 
 /** The `webview` namespace key union (zh is the key-set source of truth). */
