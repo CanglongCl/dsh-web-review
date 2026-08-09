@@ -36,7 +36,7 @@ describe('package directory import (Loader resolution path)', () => {
       hasApply: boolean
     }
     expect(parsed.name).toBe('ui-webview')
-    expect(parsed.inject).toEqual(['httpServer'])
+    expect(parsed.inject).toEqual(['httpServer', 'agents'])
     expect(parsed.hasApply).toBe(true)
   })
 })

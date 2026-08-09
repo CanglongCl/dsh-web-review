@@ -142,7 +142,7 @@ export function fullPathOf(el: Element): string {
 }
 
 /**
- * Snapshot a picked element: exact keys shared with format.ts; caps enforced
+ * Snapshot a picked element: exact keys mapped by annotation-snapshot.ts; caps enforced
  * here (OUTER_HTML_CAP / TEXT_CAP).
  * @param el - the picked element (untrusted page DOM, read-only).
  * @returns the snapshot.

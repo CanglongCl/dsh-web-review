@@ -1,6 +1,6 @@
 /**
  * Internal contract types for the webview panel (browser half). Exact keys
- * shared with format.ts — snapshot field names are contract.
+ * mapped into annotation-contract.ts by annotation-snapshot.ts.
  */
 
 /** One picked element's snapshot (caps enforced at capture in picker-core). */

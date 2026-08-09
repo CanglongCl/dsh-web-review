@@ -1,33 +1,10 @@
 /**
- * Webview e2e scenarios (harness web-e2e style: vitest + Playwright, DOM
- * assertions via expect.poll over locators): real GUI + real proxy + real
- * demo page. The preview is a conversation view TAB now (plan §2): boot opens
- * the 'Preview' tab from the conversation header's tablist, loads the demo
- * page through the proxy into the same-origin iframe, and annotates elements.
- * Scenarios:
- *  1. the Preview tab opens and the proxied demo page renders in the wv-frame
- *     iframe (tab activation asserted via aria-selected);
- *  2. annotation flow: pick mode → click an element in the iframe → a
- *     floating comment field appears next to it → Enter commits a chip into
- *     the dock strip above the composer and a numbered marker over the
- *     element; clicking the dock chip re-outlines the element and re-opens
- *     its comment;
- *  3. echo layer: two annotations → two chips and two markers with matching
- *     numbers; clicking a marker re-expands that element's comment field
- *     with its stored value;
- *  4. the FULL loop: annotate, type a short message into the STOCK composer
- *     and click the dsh send button → the annotation XML lands as a
- *     user-content prefix of that message in the transcript (this pins the
- *     node-half agent/prompt-submit injection with the real host);
- *  5. no annotations → the same send carries no '<annotation' prefix
- *     (clearing the last annotation syncs an empty xml; next() passes the
- *     message through unchanged).
- * No API key is required: with a real key the probe message succeeds, and
- * without one the dead-loopback provider makes the probe turn settle fast —
- * either way the sent user message lands in the transcript.
+ * Real GUI + proxy + picker + separate `agent.inject` context acceptance.
+ * Fixed sleeps are deliberately absent: the composer capsule's synced state
+ * is the browser-visible host acknowledgement boundary.
  */
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
-import type { Browser, Page } from 'playwright'
+import type { Browser, FrameLocator, Page } from 'playwright'
 import {
   chromium,
   clickWhenStable,
@@ -51,237 +28,196 @@ afterAll(async () => {
   await services?.stop()
 }, 30_000)
 
-/** Boot the GUI, connect a per-test workspace (isolated sessions), and open the Preview tab. */
 async function bootWithPanel(page: Page, name: string): Promise<void> {
   await page.goto(services.webUrl)
   await connectWorkspace(page, services.workspaceRoot, name)
-  // The preview is a conversation view tab now (no header toggle button): the
-  // conversation header's tablist holds [Chat] [Preview], and the active tab
-  // carries aria-selected="true". The header re-mounts while a turn settles,
-  // so the click is retried, then the activation state is asserted.
   const previewTab = page.getByRole('tab', { name: 'Preview' })
   await clickWhenStable(page, previewTab)
   await expect.poll(
     async () => previewTab.getAttribute('aria-selected'),
-    { timeout: 10_000, message: 'the Preview tab should be the active conversation view' },
+    { timeout: 10_000, message: 'Preview should be the active conversation view' },
   ).toBe('true')
   await page.getByPlaceholder('Enter a URL and press Enter (e.g. http://localhost:5173)').waitFor({ timeout: 15_000 })
 }
 
-/** Load the demo page through the proxy and wait for the hero to render. */
-async function loadDemoPage(page: Page): Promise<import('playwright').FrameLocator> {
-  const urlInput = page.getByPlaceholder('Enter a URL and press Enter (e.g. http://localhost:5173)')
-  await urlInput.fill(services.demoUrl)
-  await urlInput.press('Enter')
-  const frame = page.frameLocator('iframe.wv-frame')
+async function loadDemoPage(page: Page): Promise<FrameLocator> {
+  const input = page.getByPlaceholder('Enter a URL and press Enter (e.g. http://localhost:5173)')
+  await input.fill(services.demoUrl)
+  await input.press('Enter')
+  const frame = page.frameLocator('iframe[title="Web preview"]')
   await expect.poll(
     async () => frame.locator('h1').textContent(),
-    { timeout: 20_000, message: 'proxied demo page should render in the iframe' },
+    { timeout: 20_000, message: 'proxied demo page should render' },
   ).toBe('魔法 UI 演示页')
   return frame
 }
 
-/** Pick one element: arm pick mode (idempotent — it stays armed after a
- * commit), click it, commit the floating comment. */
-async function annotate(
-  page: Page,
-  frame: import('playwright').FrameLocator,
-  selector: string,
-  comment: string,
-): Promise<void> {
-  // The pick toggle only enables once the picker is injected into the
-  // same-origin frame (after the iframe load); wait for it before clicking.
-  const pickBtn = page.getByRole('button', { name: /^Pick element$|^Stop picking$/ })
-  await expect.poll(
-    async () => pickBtn.isEnabled(),
-    { timeout: 15_000, message: 'the pick button should be enabled' },
-  ).toBe(true)
-  if ((await pickBtn.getAttribute('aria-pressed')) !== 'true') {
-    await pickBtn.click()
-  }
+async function annotate(page: Page, frame: FrameLocator, selector: string, comment: string): Promise<void> {
+  const pick = page.getByRole('button', { name: /^Pick element$|^Stop picking$/ })
+  await expect.poll(async () => pick.isEnabled(), { timeout: 15_000 }).toBe(true)
+  if ((await pick.getAttribute('aria-pressed')) !== 'true') await pick.click()
   await frame.locator(selector).click()
-  const commentInput = frame.locator('.dsh-wv-comment-input')
-  await commentInput.waitFor({ timeout: 10_000 })
-  // The picked element keeps its outline while the comment field is open.
+  const input = frame.locator('.dsh-wv-comment-input')
+  await input.waitFor({ timeout: 10_000 })
   await expect.poll(
     async () => frame.locator(selector).getAttribute('data-dsh-wv-selected'),
     { timeout: 10_000 },
   ).not.toBeNull()
-  await commentInput.fill(comment)
-  await commentInput.press('Enter')
-  // The floating field closes on commit, and the outline moves on.
-  await commentInput.waitFor({ state: 'detached', timeout: 10_000 })
-  await expect.poll(
-    async () => frame.locator(selector).getAttribute('data-dsh-wv-selected'),
-    { timeout: 10_000 },
-  ).toBeNull()
+  await input.fill(comment)
+  await input.press('Enter')
+  await input.waitFor({ state: 'detached', timeout: 10_000 })
 }
 
-/** Send one message through the STOCK composer: type into the native box and
- * click the dsh primary send button. The primary button doubles as 'Stop
- * generating' while a turn runs (the blank-state probe may still be settling
- * with a real provider key), so wait for the idle 'Send message' label and an
- * enabled button before clicking — a click during the running turn would stop
- * it instead of sending. */
+async function waitForAnnotationSync(page: Page): Promise<void> {
+  const capsule = page.locator('[data-webview-annotation-capsule]')
+  await capsule.waitFor({ timeout: 10_000 })
+  await expect.poll(
+    async () => capsule.getAttribute('data-sync-status'),
+    { timeout: 15_000, message: 'annotation context should be acknowledged by the host' },
+  ).toBe('synced')
+}
+
 async function sendViaComposer(page: Page, text: string): Promise<void> {
   const composer = page.getByPlaceholder('Message the agent')
   await composer.waitFor({ timeout: 15_000 })
-  await expect.poll(
-    async () => composer.isEditable(),
-    { timeout: 45_000, message: 'the stock composer should be editable' },
-  ).toBe(true)
+  await expect.poll(async () => composer.isEditable(), { timeout: 45_000 }).toBe(true)
   await composer.fill(text)
   const send = page.getByRole('button', { name: 'Send message' })
-  await expect.poll(
-    async () => send.isEnabled(),
-    { timeout: 45_000, message: 'the dsh send button should be enabled' },
-  ).toBe(true)
+  await expect.poll(async () => send.isEnabled(), { timeout: 45_000 }).toBe(true)
   await send.click()
 }
 
+async function openLastContext(page: Page): Promise<import('playwright').Locator> {
+  const rows = page.locator('[data-chat-flow-kind="context"]')
+  await expect.poll(async () => rows.count(), { timeout: 30_000 }).toBeGreaterThan(0)
+  const row = rows.last()
+  await row.getByText('Context injection', { exact: true }).click()
+  const body = row.locator('[data-context-injection-body]')
+  await body.waitFor({ timeout: 10_000 })
+  return body
+}
+
 describe('ui-webview e2e', () => {
-  it('opens the Preview tab and renders the demo page through the proxy iframe', async () => {
+  it('opens Preview and renders the same-origin proxy iframe', async () => {
     const page = await newPage(browser)
     onTestFailed(() => saveFailureShot(page, 'proxy-navigation'))
     await bootWithPanel(page, 'proxy-nav')
-    const frame = await loadDemoPage(page)
-    // The proxied document is same-origin: the iframe src rides the proxy path.
-    expect(await page.locator('iframe.wv-frame').getAttribute('src')).toContain('/webview-proxy/http%3A//127.0.0.1%3A')
+    await loadDemoPage(page)
+    expect(await page.locator('iframe[title="Web preview"]').getAttribute('src'))
+      .toContain('/webview-proxy/http%3A//127.0.0.1%3A')
     await page.close()
   })
 
-  it('annotates an element: the floating comment commits a dock chip and a marker; clicking the chip re-outlines the element', async () => {
+  it('commits one capsule/marker and exposes comment context on hover', async () => {
     const page = await newPage(browser)
     onTestFailed(() => saveFailureShot(page, 'annotation-flow'))
     await bootWithPanel(page, 'annotation-flow')
     const frame = await loadDemoPage(page)
-
-    // No annotations yet: the dock strip renders nothing.
-    expect(await page.locator('.wv-annotations-bar').count()).toBe(0)
+    expect(await page.locator('[data-webview-annotations]').count()).toBe(0)
 
     await annotate(page, frame, 'button.btn-primary', 'Make the button color darker.')
-
-    // One chip in the dock strip (the new overlay bar above the composer)
-    // with the element identity, and one numbered marker over the element.
-    const bar = page.locator('.wv-annotations-bar')
-    await expect.poll(async () => bar.count(), { timeout: 10_000 }).toBe(1)
-    const chip = bar.locator('.wv-chip')
-    await expect.poll(async () => chip.count(), { timeout: 10_000 }).toBe(1)
-    expect(await chip.locator('.wv-chip-index').textContent()).toBe('1')
-    expect(await chip.locator('.wv-chip-label').textContent()).toBe('button.btn-primary')
+    await waitForAnnotationSync(page)
     await expect.poll(async () => frame.locator('.dsh-wv-marker').count(), { timeout: 10_000 }).toBe(1)
-    expect(await frame.locator('.dsh-wv-marker').first().textContent()).toBe('1')
+    expect(await frame.locator('.dsh-wv-marker').textContent()).toBe('1')
 
-    // Clicking the dock chip re-outlines the element and re-opens its comment
-    // with the stored value (the preview tab's focus signal).
-    await chip.click()
+    const capsule = page.locator('[data-webview-annotation-capsule]')
+    expect(await capsule.textContent()).toContain('1 comment')
+    await capsule.hover()
+    const details = page.locator('[data-webview-annotation-details]')
+    await details.waitFor({ timeout: 10_000 })
+    expect(await details.textContent()).toContain('button')
+    expect(await details.textContent()).toContain('提交')
+    expect(await details.textContent()).toContain('Make the button color darker.')
+
+    await details.locator('[data-webview-annotation-row] button').first().click()
     const commentInput = frame.locator('.dsh-wv-comment-input')
     await commentInput.waitFor({ timeout: 10_000 })
     expect(await commentInput.inputValue()).toBe('Make the button color darker.')
-    await expect.poll(
-      async () => frame.locator('button.btn-primary').getAttribute('data-dsh-wv-selected'),
-      { timeout: 10_000 },
-    ).not.toBeNull()
     await page.close()
   })
 
-  it('echoes multiple annotations: chips and markers in sync, marker click re-opens the comment', async () => {
+  it('keeps multiple detail rows and iframe markers in the same order', async () => {
     const page = await newPage(browser)
     onTestFailed(() => saveFailureShot(page, 'annotation-echo'))
     await bootWithPanel(page, 'annotation-echo')
     const frame = await loadDemoPage(page)
-
-    // Pick mode stays armed after a commit: two elements in a row.
     await annotate(page, frame, 'button.btn-primary', 'Make the submit darker.')
     await annotate(page, frame, '.card:nth-of-type(2) button', 'Increase the spacing.')
-
-    const chips = page.locator('.wv-annotations-bar .wv-chip')
-    await expect.poll(async () => chips.count(), { timeout: 10_000 }).toBe(2)
-    expect(await chips.nth(0).locator('.wv-chip-index').textContent()).toBe('1')
-    expect(await chips.nth(1).locator('.wv-chip-index').textContent()).toBe('2')
+    await waitForAnnotationSync(page)
 
     const markers = frame.locator('.dsh-wv-marker')
     await expect.poll(async () => markers.count(), { timeout: 10_000 }).toBe(2)
     expect(await markers.nth(0).textContent()).toBe('1')
     expect(await markers.nth(1).textContent()).toBe('2')
 
-    // Clicking a marker re-expands that element's comment field with its value
-    // and re-outlines the element.
+    await page.locator('[data-webview-annotation-capsule]').hover()
+    const rows = page.locator('[data-webview-annotation-row]')
+    await expect.poll(async () => rows.count(), { timeout: 10_000 }).toBe(2)
+    expect(await rows.nth(0).textContent()).toContain('Make the submit darker.')
+    expect(await rows.nth(1).textContent()).toContain('Increase the spacing.')
+
     await markers.nth(1).click()
-    const commentInput = frame.locator('.dsh-wv-comment-input')
-    await commentInput.waitFor({ timeout: 10_000 })
-    expect(await commentInput.inputValue()).toBe('Increase the spacing.')
-    await expect.poll(
-      async () => frame.locator('.card:nth-of-type(2) button').getAttribute('data-dsh-wv-selected'),
-      { timeout: 10_000 },
-    ).not.toBeNull()
+    const input = frame.locator('.dsh-wv-comment-input')
+    await input.waitFor({ timeout: 10_000 })
+    expect(await input.inputValue()).toBe('Increase the spacing.')
     await page.close()
   })
 
-  it('sends the annotation as a user-content prefix through the stock composer', async () => {
+  it('logs browser comments as a separate context before unchanged user input', async () => {
     const page = await newPage(browser)
-    onTestFailed(() => saveFailureShot(page, 'annotation-send'))
-    await bootWithPanel(page, 'annotation-send')
+    onTestFailed(() => saveFailureShot(page, 'annotation-context-send'))
+    await bootWithPanel(page, 'annotation-context-send')
     const frame = await loadDemoPage(page)
-
     await annotate(page, frame, 'button.btn-primary', 'Make the button color darker.')
-    // The annotation XML syncs to the node half trailing-throttled; let the
-    // POST land before sending so prompt-submit reads it.
-    await page.waitForTimeout(800)
-
-    // Send through the STOCK composer: the dsh input box + the dsh send
-    // button. The node half's agent/prompt-submit listener rewrites the
-    // prompt into XML + the user's own text.
+    await waitForAnnotationSync(page)
     await sendViaComposer(page, 'apply')
-
-    // The view ring mounts only the active view, so read the transcript from
-    // the Chat tab.
     await clickWhenStable(page, page.getByRole('tab', { name: 'Chat' }))
-    // The annotation lands as a location-oriented XML prefix: hint on the
-    // open tag, text identity + stable classes + full DOM path (the demo page
-    // has no framework, so no source anchor tier), all inside the user's own
-    // message that also carries the typed text.
-    await expect.poll(
-      async () => page.getByText('<annotation hint=').count(),
-      { timeout: 30_000, message: 'the annotation XML should appear in the transcript' },
-    ).toBeGreaterThan(0)
-    await expect.poll(async () => page.getByText('text="button &quot;提交&quot;"').count(), { timeout: 10_000 }).toBeGreaterThan(0)
-    await expect.poll(async () => page.getByText('classes="btn-primary"').count(), { timeout: 10_000 }).toBeGreaterThan(0)
-    await expect.poll(
-      async () => page.getByText(/path="html > body > main\.cards > div\.card > button\.btn-primary"/).count(),
-      { timeout: 10_000 },
-    ).toBeGreaterThan(0)
-    // The typed user content rides the SAME message, after the XML block.
-    await expect.poll(
-      async () => page.getByText(/<annotation[\s\S]*apply/).count(),
-      { timeout: 10_000, message: 'the annotation and the user text should be one message' },
-    ).toBeGreaterThan(0)
+
+    const contextBody = await openLastContext(page)
+    const contextText = await contextBody.textContent()
+    expect(contextText).toContain('# Browser comments')
+    expect(contextText).toContain('untrusted page evidence')
+    expect(contextText).toContain('Comment (user-authored)')
+    expect(contextText).toContain('Make the button color darker.')
+    expect(contextText).toContain('"kind": "plugin"')
+    expect(contextText).toContain('"plugin": "ui-webview"')
+
+    const userRows = page.locator('[data-chat-flow-kind="user"]')
+    const user = userRows.filter({ hasText: 'apply' }).last()
+    await user.waitFor({ timeout: 30_000 })
+    expect((await user.textContent())?.includes('# Browser comments')).toBe(false)
+    expect((await user.textContent())?.includes('<annotation')).toBe(false)
+
+    const ordered = await page.locator('[data-chat-flow]').evaluate((flow) => {
+      const items = Array.from(flow.querySelectorAll<HTMLElement>('[data-chat-flow-kind]'))
+      const contextIndex = items.findLastIndex(item => item.dataset.chatFlowKind === 'context')
+      const userIndex = items.findLastIndex(item => item.dataset.chatFlowKind === 'user' && item.textContent?.includes('apply') === true)
+      return { contextIndex, userIndex }
+    })
+    expect(ordered.contextIndex).toBeGreaterThanOrEqual(0)
+    expect(ordered.userIndex).toBeGreaterThan(ordered.contextIndex)
     await page.close()
   })
 
-  it('does not inject the annotation when the annotation is cleared before sending', async () => {
+  it('acknowledges a clearing context before hiding the capsule', async () => {
     const page = await newPage(browser)
     onTestFailed(() => saveFailureShot(page, 'annotation-clear-send'))
     await bootWithPanel(page, 'annotation-clear-send')
     const frame = await loadDemoPage(page)
-
     await annotate(page, frame, 'button.btn-primary', 'Make the button color darker.')
-    // Clear the annotation: removing the last pick syncs an empty xml, which
-    // makes the next send pass through unchanged.
-    await page.locator('.wv-annotations-bar .wv-chip-remove').click()
-    await expect.poll(async () => page.locator('.wv-chip').count(), { timeout: 10_000 }).toBe(0)
-    // The trailing-throttled clear POST must land before the send.
-    await page.waitForTimeout(800)
+    await waitForAnnotationSync(page)
 
-    await sendViaComposer(page, 'apply')
-
-    await clickWhenStable(page, page.getByRole('tab', { name: 'Chat' }))
+    await page.getByRole('button', { name: 'Clear all comments' }).click()
     await expect.poll(
-      async () => page.getByText('apply').count(),
-      { timeout: 30_000, message: 'the sent user message should appear in the transcript' },
-    ).toBeGreaterThan(0)
-    // No annotation was synced: the message passes through without the prefix.
-    expect(await page.getByText('<annotation hint=').count()).toBe(0)
+      async () => page.locator('[data-webview-annotations]').count(),
+      { timeout: 15_000, message: 'capsule hides only after the clearing context is acknowledged' },
+    ).toBe(0)
+    await sendViaComposer(page, 'apply')
+    await clickWhenStable(page, page.getByRole('tab', { name: 'Chat' }))
+    const contextBody = await openLastContext(page)
+    expect(await contextBody.textContent()).toContain('There are no active browser comments.')
+    expect(await page.locator('[data-chat-flow-kind="user"]').filter({ hasText: 'apply' }).last().textContent())
+      .not.toContain('# Browser comments')
     await page.close()
   })
 })

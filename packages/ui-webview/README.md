@@ -1,83 +1,102 @@
 # @limao/ui-webview
 
-Webui webview panel plugin: open a URL in a floating right-edge iframe, pick
-elements and comment on them, then send the annotation into the conversation
-so the model modifies the corresponding frontend source in the session
-workspace.
+External `dsh web` plugin that adds a Preview conversation tab, same-origin
+page proxy, in-frame element picker, and browser-comment context injection.
+The harness checkout is not modified.
 
-The package is **loaded externally by `dsh web`** — zero changes to the
-deepseek-harness source tree. See [AGENTS.md](../../../AGENTS.md) for the
-loading model, proxy contract, picker contract, and development rules.
+See the repository [AGENTS.md](../../AGENTS.md) for loading, proxy, picker,
+context, and testing contracts. The accepted implementation design lives in
+[docs/webview-ui-plan.md](../../docs/webview-ui-plan.md).
 
 ## Usage
 
 ```bash
-pnpm install            # dev deps + file: type links into the harness checkout
-pnpm gen-config         # regenerate cordis.yml + entry-name.json (after moving the repo)
-pnpm dev                # harness prep (once) + dsh web --dev --port 3090 + tsdown watch
+pnpm install
+pnpm gen-config      # regenerate machine-specific launch files after moving the repo
+pnpm dev             # dsh web + the external client-bundle watcher
+pnpm demo            # optional fixture page on port 5173
 ```
 
-Open `http://127.0.0.1:3090`, start a session (pick a workspace — the AI's
-file tools operate there), then:
+Open `http://127.0.0.1:3090`, connect the workspace whose source the agent may
+edit, then:
 
-1. Click **网页预览** in the conversation header — the floating panel opens.
-2. Enter a URL (e.g. `http://localhost:5173` from `node demo/server.mjs`),
-   press Enter. The page loads through the proxy so it stays same-origin and
-   elements can be picked.
-3. Click the **选择元素** icon (far right of the URL row), then click an
-   element in the page — a floating comment field appears next to it. Type a
-   comment and press Enter; the annotation joins the **注释** chip bar below
-   and a numbered circle echoes over the element in the preview. Repeat for
-   more elements; click a circle or a chip to re-open that element's comment.
-4. Click **加入对话并发送** — a structured annotation message is sent to the
-   session; the model locates and modifies the corresponding source in the
-   workspace.
-5. Click **↻** in the panel to refresh the page and see the changes.
+1. Open the **Preview** conversation tab.
+2. Enter a URL and press Enter. The page loads through `/webview-proxy` so the
+   picker can access its document.
+3. Toggle **Pick element**, click a page element, type a comment, and press
+   Enter. A numbered marker appears in the page and one compact annotation
+   capsule appears above the stock composer.
+4. Hover or keyboard-focus the capsule to inspect every target, comment, and
+   source/selector hint. Clicking a row reopens that comment in Preview.
+5. Wait for the capsule's synced check, then send the normal prompt through
+   the stock composer. The plugin never replaces the composer and never edits
+   the prompt.
+6. Refresh Preview after the agent edits the workspace source.
 
-Links in the GUI (chat messages, web cards) open in the panel when it is
-open; modifier-click keeps the default new-tab behavior.
+## Context model
 
-## Model Experience
+The browser sends a bounded structured snapshot to the plugin's node face. It
+does not send preformatted model text. The node face validates the session and
+every field, renders stable English `# Browser comments` context, creates a
+plugin-sourced user-role message, and commits it through `agent.inject`.
 
-The annotation is a plain user message: an XML-style annotation block (in
-English, regardless of UI locale) built for **locating source code**, not
-describing pixels. `<annotation hint="...">` carries a one-line hint — the
-block is annotations marked by the user in the right-side preview panel and
-each `comment` is the user's input to apply; the message ends there, with no
-trailing instructions. Each element carries searchable literals — the
-accessible text identity (`button "提交"`) and either the framework source
-anchor (`source="src/components/Hero.tsx:12"` + component chain, read from
-React/Vue/Svelte dev-mode metadata) or the stable class names + full DOM
-path when no framework metadata exists. A non-empty user comment is the
-only child (CDATA); empty comments emit no comment node. Raw DOM artifacts
-(outerHTML, computed styles, coordinates) are deliberately omitted. Long
-URLs are shortened to route + query summary. No model-facing tool is
-registered; the model acts with the session's existing workspace tools
-(`tool-fs`, bash). Messages therefore cost only ordinary user-turn tokens.
+This creates two distinct logged records:
 
-#### KV Cache effect
+1. a **Context injection** record sourced from `ui-webview`; and
+2. the user's unchanged stock-composer message.
 
-None — no provider request shape is altered.
+Each non-empty snapshot says that it supersedes older browser-comment
+snapshots. Clearing an active set injects an explicit empty snapshot. Identical
+snapshots are deduplicated per live session, and session state is released on
+`agent/disposed`.
 
-## Known Limitations and Deferred Work
+The format separates trust domains:
 
-- **Selector generation** is delegated to `css-selector-generator` (`['id', 'class', 'tag', 'nthoftype']` priority, shortest-unique output); its nth-of-type segments are relative to the page's live DOM, so adding/removing identical siblings can renumber them — same tradeoff as any index-based selector.
-- **Proxy fidelity** (documented, do not "fix" into breakage): absolute URLs
-  hardcoded in page JS (`fetch('http://host/api')`, WebSocket endpoints) are
-  not rewritten; root-relative (`/api`) and relative calls work through the
-  injected `<base>`. Dev-server HMR websockets do not survive the proxy.
-  Server-side fetch carries no browser cookies — login-gated pages cannot be
-  annotated (element picking requires the same-origin proxy).
-- **The entry name is machine-specific**: `cordis.yml` and
-  `entry-name.json` embed this checkout's absolute path; moving the repo
-  requires `pnpm gen-config` (and a web-process restart). The package root's
-  `index.js` re-export exists for the Loader's directory import (ESM has no
-  directory resolution) — keep it in sync with `lib/index.js` (it only
-  re-exports, so it never needs edits).
-- **No auto-refresh after the model finishes**: the panel refresh button is
-  manual.
-- **One page at a time**: no tabs; switching URL clears the annotation picks.
-- **Regex-based HTML rewriting**: `>` inside quoted attribute values is
-  handled, but exotic markup (unquoted `>` in attributes, HTML inside
-  comments, template tags) can evade rewriting; such pages degrade to
-  pass-through behavior for the affected attributes.
+- page URL/title, target labels, selectors, paths, classes, and framework
+  anchors are explicitly marked as untrusted page evidence;
+- only `Comment (user-authored)` is treated as user input;
+- multiline comments are quoted so they cannot create sibling metadata;
+- `outerHTML`, computed styles, geometry, and screenshots are excluded.
+
+No model-facing tool is registered. The agent uses the workspace tools already
+available in the session.
+
+## Synchronization semantics
+
+Annotation changes POST immediately and in order; there is no timer and no
+silent best-effort fetch. The capsule distinguishes syncing, synced, and error
+states. A failed commit stays visible and clicking the capsule retries it.
+
+The stock composer currently exposes no public general pre-submit interceptor.
+Consequently the external plugin cannot make annotation commit and an
+arbitrary simultaneous Send click one atomic operation without returning to
+`agent/prompt-submit`. Treat the synced check as the ready boundary. The plugin
+does not claim success before the host acknowledges `agent.inject`.
+
+## Known limitations
+
+- **Same-origin trust boundary:** proxied page JavaScript currently executes on
+  the host origin because the picker uses direct frame references. Structured
+  validation prevents a page from supplying preformatted context, but it does
+  not isolate arbitrary scripts from host routes. A complete fix requires a
+  dedicated proxy origin and validated `postMessage` bridge. Only preview
+  trusted development pages until that architecture lands.
+- Absolute URLs embedded in page JavaScript and WebSocket endpoints are not
+  rewritten. Relative and root-relative resources work through the injected
+  `<base>`; dev-server HMR WebSockets do not.
+- Server-side proxy fetches carry no browser cookies, so login-gated pages
+  cannot be annotated.
+- The generated launch entry is machine-specific. Run `pnpm gen-config` after
+  moving the checkout, then restart the web process.
+- One page is active at a time; navigating clears its annotations.
+- Preview refresh after workspace edits is manual.
+- HTML attribute rewriting is intentionally narrow and regex-based; exotic
+  markup may degrade to pass-through behavior for affected attributes.
+
+## Verification
+
+```bash
+pnpm check          # typecheck, unit/composition tests, config contracts, build
+pnpm test:e2e       # real GUI/proxy/picker/context ordering acceptance
+pnpm check --e2e    # both ladders
+```

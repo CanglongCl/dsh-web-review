@@ -18,10 +18,13 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
 import Loader from '@cordisjs/plugin-loader'
 import Include from '@cordisjs/plugin-include'
+import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import HttpServer from '@deepseek-ai/dsh-host-webserver'
+import type { UserMessage } from '@deepseek-ai/dsh-llm'
+import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import * as plugin from '../src/index.ts'
 import { PROXY_PREFIX } from '../src/index.ts'
-import { MAX_ANNOTATION_BODY } from '../src/prompt-inject.ts'
+import { MAX_ANNOTATION_BODY, type AnnotationSnapshot } from '../src/annotation-contract.ts'
 
 const TARGET_HTML = `<!doctype html>
 <html><head>
@@ -91,6 +94,8 @@ async function loadComposition(): Promise<Context> {
   await writeFile(distIndex, '<head></head><body>shell</body>')
   const configPath = join(root, 'cordis.yml')
   await writeFile(configPath, [
+    "- name: '@deepseek-ai/dsh-agent'",
+    '',
     "- name: '@deepseek-ai/dsh-host-webserver'",
     '  config:',
     "    host: '127.0.0.1'",
@@ -106,6 +111,7 @@ async function loadComposition(): Promise<Context> {
   await context.plugin(Loader)
   context.loader.builtins.include = Include
   const modules = new Map<string, unknown>([
+    ['@deepseek-ai/dsh-agent', AgentRegistry],
     ['@deepseek-ai/dsh-host-webserver', HttpServer],
     ['ui-webview-test', plugin],
   ])
@@ -129,6 +135,40 @@ async function loadComposition(): Promise<Context> {
 
 function proxyPath(target: string): string {
   return `${PROXY_PREFIX}/${encodeURIComponent(target).replace(/%2F/g, '/')}`
+}
+
+function annotationSnapshot(sessionId = 'session-1', comments = 1): AnnotationSnapshot {
+  return {
+    sessionId,
+    page: { url: 'https://example.com/', title: 'Example Domain' },
+    comments: Array.from({ length: comments }, (_, index) => ({
+      id: `pick-${index + 1}`,
+      comment: 'Make this heading smaller.',
+      tagName: 'h1',
+      role: 'heading',
+      label: 'Example Domain',
+      cssPath: 'html > body > div > h1',
+      fullPath: 'html > body > div > h1',
+      stableClasses: [],
+      anchor: null,
+    })),
+  }
+}
+
+function registerStubAgent(rawId = 'session-1'): {
+  injected: UserMessage[]
+  dispose: () => void
+} {
+  if (context === undefined) throw new Error('composition is not loaded')
+  const id = SessionId(rawId)
+  const injected: UserMessage[] = []
+  const agent = {
+    id,
+    session: Session.create(id),
+    ctx: new Context(),
+    inject: (message: UserMessage) => { injected.push(message) },
+  } as unknown as Agent
+  return { injected, dispose: context.agents.register(agent) }
 }
 
 describe('/webview-proxy (real Loader + webserver composition)', () => {
@@ -186,40 +226,82 @@ describe('/webview-proxy (real Loader + webserver composition)', () => {
 })
 
 describe('/webview-annotations (real Loader + webserver composition)', () => {
-  it('accepts a valid POST body with 204', async () => {
+  it('injects a separate plugin context into a live agent and deduplicates it', async () => {
     await loadComposition()
-    const response = await fetch(`http://127.0.0.1:${port}/webview-annotations`, {
+    const { injected } = registerStubAgent()
+    const request = (): Promise<Response> => fetch(`http://127.0.0.1:${port}/webview-annotations`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId: 'session-1', xml: '<annotation hint="x"/>' }),
+      body: JSON.stringify(annotationSnapshot()),
     })
+    const response = await request()
     expect(response.status).toBe(204)
+    expect(response.headers.get('x-webview-annotation-result')).toBe('injected')
+    expect(injected).toHaveLength(1)
+    expect(injected[0]).toMatchObject({
+      role: 'user', source: { kind: 'plugin', plugin: 'ui-webview' },
+      content: [{ type: 'text', text: expect.stringContaining('# Browser comments') }],
+    })
+    const duplicate = await request()
+    expect(duplicate.headers.get('x-webview-annotation-result')).toBe('deduplicated')
+    expect(injected).toHaveLength(1)
   })
 
-  it('accepts an empty xml (annotation cleared) with 204', async () => {
+  it('injects clearing only after an active snapshot', async () => {
     await loadComposition()
-    const response = await fetch(`http://127.0.0.1:${port}/webview-annotations`, {
+    const { injected } = registerStubAgent()
+    const post = (body: AnnotationSnapshot): Promise<Response> => fetch(`http://127.0.0.1:${port}/webview-annotations`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId: 'session-1', xml: '' }),
+      body: JSON.stringify(body),
     })
-    expect(response.status).toBe(204)
+    const initialEmpty = await post(annotationSnapshot('session-1', 0))
+    expect(initialEmpty.headers.get('x-webview-annotation-result')).toBe('initial-empty')
+    expect(injected).toHaveLength(0)
+    await post(annotationSnapshot())
+    const cleared = await post(annotationSnapshot('session-1', 0))
+    expect(cleared.headers.get('x-webview-annotation-result')).toBe('cleared')
+    expect(injected).toHaveLength(2)
+    expect(injected[1]?.content[0]).toMatchObject({
+      type: 'text', text: expect.stringContaining('There are no active browser comments.'),
+    })
   })
 
-  it('rejects malformed bodies and empty sessionId with 400', async () => {
+  it('requires a live session and releases dedupe state on agent disposal', async () => {
     await loadComposition()
+    const body = JSON.stringify(annotationSnapshot())
+    const post = (): Promise<Response> => fetch(`http://127.0.0.1:${port}/webview-annotations`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body,
+    })
+    expect((await post()).status).toBe(404)
+    const first = registerStubAgent()
+    expect((await post()).status).toBe(204)
+    expect(first.injected).toHaveLength(1)
+    first.dispose()
+    const replacement = registerStubAgent()
+    expect((await post()).headers.get('x-webview-annotation-result')).toBe('injected')
+    expect(replacement.injected).toHaveLength(1)
+  })
+
+  it('rejects malformed/legacy bodies, missing content type and empty sessionId', async () => {
+    await loadComposition()
+    registerStubAgent()
     const bad = await fetch(`http://127.0.0.1:${port}/webview-annotations`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: 'not json',
     })
     expect(bad.status).toBe(400)
-    const empty = await fetch(`http://127.0.0.1:${port}/webview-annotations`, {
+    const legacy = await fetch(`http://127.0.0.1:${port}/webview-annotations`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ sessionId: '', xml: '<annotation/>' }),
     })
-    expect(empty.status).toBe(400)
+    expect(legacy.status).toBe(400)
+    const missingType = await fetch(`http://127.0.0.1:${port}/webview-annotations`, {
+      method: 'POST', body: JSON.stringify(annotationSnapshot()),
+    })
+    expect(missingType.status).toBe(415)
   })
 
   it('rejects oversized bodies with 413', async () => {
@@ -227,7 +309,7 @@ describe('/webview-annotations (real Loader + webserver composition)', () => {
     const response = await fetch(`http://127.0.0.1:${port}/webview-annotations`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId: 'session-1', xml: 'x'.repeat(MAX_ANNOTATION_BODY) }),
+      body: 'x'.repeat(MAX_ANNOTATION_BODY + 1),
     })
     expect(response.status).toBe(413)
   })

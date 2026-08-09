@@ -1,7 +1,7 @@
 /**
  * Computed-style verification (not part of the test suite): boots the e2e
  * services, annotates two elements, and dumps the resolved token styles of
- * the new surfaces (chip bar, chips, armed pick button, iframe markers) in
+ * the new surfaces (capsule, detail card, armed pick button, iframe markers) in
  * light and dark theme. Run with:
  *   pnpm exec tsx packages/ui-webview/tests/visual-check.ts
  */
@@ -18,7 +18,7 @@ try {
   await urlInput.waitFor({ timeout: 15_000 })
   await urlInput.fill(services.demoUrl)
   await urlInput.press('Enter')
-  const frame = page.frameLocator('iframe.wv-frame')
+  const frame = page.frameLocator('iframe[title="Web preview"]')
   await page.waitForTimeout(1500)
 
   // Arm pick mode: capture the armed icon button style, then annotate twice.
@@ -41,26 +41,33 @@ try {
   await input2.waitFor({ timeout: 10_000 })
   await input2.fill('spacing')
   await input2.press('Enter')
-  await page.locator('.wv-chip').nth(1).waitFor({ timeout: 10_000 })
+  const capsule = page.locator('[data-webview-annotation-capsule]')
+  await capsule.waitFor({ timeout: 10_000 })
+  await capsule.hover()
+  await page.locator('[data-webview-annotation-row]').nth(1).waitFor({ timeout: 10_000 })
 
   const dump = async (): Promise<string> => {
     const rows: string[] = []
-    const sels = ['.wv-hint', '.wv-annotations-label', '.wv-chip', '.wv-chip-index', '.wv-chip-label', '.wv-chip-comment']
+    const sels = [
+      '[data-webview-annotation-capsule]',
+      '[data-webview-annotation-details]',
+      '[data-webview-annotation-row]',
+    ]
     for (const sel of sels) {
       const el = document.querySelector(sel)
       if (el === null) continue
       const cs = getComputedStyle(el)
       rows.push(`${sel} | bg:${cs.backgroundColor} | color:${cs.color} | borderTop:${cs.borderTopColor} | font:${cs.fontSize}/${cs.lineHeight}/${cs.fontWeight} | radius:${cs.borderTopLeftRadius}`)
     }
-    const pickBtn = document.querySelector('.wv-icon-accent')
+    const pickBtn = document.querySelector('[aria-label="Stop picking"]')
     if (pickBtn !== null) {
       const cs = getComputedStyle(pickBtn)
-      rows.push(`.wv-icon-accent (pick armed) | bg:${cs.backgroundColor} | color:${cs.color}`)
+      rows.push(`[aria-label="Stop picking"] | bg:${cs.backgroundColor} | color:${cs.color}`)
     }
-    const panel = document.querySelector('.wv-panel')
+    const panel = document.querySelector('[data-webview-panel]')
     if (panel !== null) {
       const box = panel.getBoundingClientRect()
-      rows.push(`.wv-panel | rect ${Math.round(box.width)}x${Math.round(box.height)} @ (${Math.round(box.left)},${Math.round(box.top)})`)
+      rows.push(`[data-webview-panel] | rect ${Math.round(box.width)}x${Math.round(box.height)} @ (${Math.round(box.left)},${Math.round(box.top)})`)
     }
     return rows.join('\n')
   }

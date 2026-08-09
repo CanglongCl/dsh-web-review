@@ -1,47 +1,44 @@
 /**
  * ui-webview node half: the host-side `/webview-proxy` route that makes
  * iframe content same-origin so the browser half's picker can reach the DOM,
- * plus the `/webview-annotations` state-sync route (session → annotation XML)
- * and the `agent/prompt-submit` waterfall listener that rewrites the user's
- * send to carry the annotation XML as a user-content prefix.
+ * plus the `/webview-annotations` route that commits a separately logged,
+ * plugin-sourced browser-comment context to one live agent.
  *
- * Deliberately runtime-dependency-free (type-only imports only; fetch is a
- * Node builtin): the Loader imports this package from its own directory
- * outside the harness, which must not require a local node_modules. Any new
- * runtime dependency is a load-order regression — justify it (AGENTS.md).
+ * The node artifact remains self-contained: tsdown inlines the small DSH
+ * message/session helpers used by the annotation route, so loading the built
+ * external package does not require a local node_modules.
  *
  * The proxy route is a thin shell over the pure functions in rewrite.ts:
  * parse the path-encoded target, fetch it server-side (redirect-follow,
  * timeout, body cap, no cookies), strip CSP/XFO, rewrite HTML, pass
  * everything else through. POST forwards the body (rewritten form actions).
- * The annotations route and the prompt-submit rewrite are thin shells over
- * the pure functions in prompt-inject.ts (plan §2.3, §6 step 1).
+ * Annotation validation, stable formatting, dedupe and injection live in
+ * annotation-context.ts; this route remains a transport shell.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from 'cordis'
-import type { Agent, PromptDecision } from '@deepseek-ai/dsh-agent'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-host-webserver'
+import { MAX_ANNOTATION_BODY } from './annotation-contract.ts'
+import {
+  commitAnnotationSnapshot,
+  forgetAgent,
+  parseAnnotationBody,
+  readRequestBody,
+  type AnnotationCommitState,
+} from './annotation-context.ts'
 import {
   PROXY_PREFIX,
   decodeTarget,
   isHttpUrl,
   rewriteHtml,
 } from './rewrite.ts'
-import type { TextBlocks } from './prompt-inject.ts'
-import {
-  MAX_ANNOTATION_BODY,
-  injectDecision,
-  parseAnnotationBody,
-  readRequestBody,
-  setAnnotation,
-} from './prompt-inject.ts'
-
 export { PROXY_PREFIX } from './rewrite.ts'
 
 /** Plugin identity for diagnostics and the client-modules scan. */
 export const name = 'ui-webview'
 /** Services required before the routes register. */
-export const inject = ['httpServer']
+export const inject = ['httpServer', 'agents']
 
 /** Server-side fetch timeout in ms. */
 export const TIMEOUT_MS = 15_000
@@ -66,21 +63,24 @@ const TARGET_PREFIX = `${PROXY_PREFIX}/`
 const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'POST'])
 
 /**
- * Plugin body: register the proxy and annotations routes, plus the
- * `agent/prompt-submit` send-injection listener.
- * @param ctx - root context carrying the httpServer service.
+ * Plugin body: register the proxy and model-visible annotation context route.
+ * @param ctx - root context carrying the httpServer and live-agent services.
  */
 export function apply(ctx: Context): void {
-  const annotations = new Map<string, string>()
+  const annotations: AnnotationCommitState = new Map()
   ctx.effect(
     () => ctx.httpServer.register({ kind: 'prefix', path: PROXY_PREFIX, handler: proxyHandler }),
     'ui-webview: /webview-proxy route',
   )
   ctx.effect(
-    () => ctx.httpServer.register({ kind: 'exact', path: ANNOTATIONS_PREFIX, handler: annotationsHandler(annotations) }),
+    () => ctx.httpServer.register({
+      kind: 'exact',
+      path: ANNOTATIONS_PREFIX,
+      handler: annotationsHandler(ctx, annotations),
+    }),
     'ui-webview: /webview-annotations route',
   )
-  ctx.on('agent/prompt-submit', promptSubmitListener(annotations))
+  ctx.on('agent/disposed', (agent: Agent) => { forgetAgent(annotations, agent) })
 }
 
 /**
@@ -181,18 +181,24 @@ async function proxyHandler(req: IncomingMessage, res: ServerResponse): Promise<
 
 /**
  * Route handler for `/webview-annotations`: validate the POST body
- * (`{ sessionId, xml }`) and store the session → annotation XML mapping.
- * Thin shell over the pure functions in prompt-inject.ts.
- * @param map - the session → annotation XML store (per plugin instance).
+ * structured snapshot and inject its node-owned rendering into the live agent.
+ * @param ctx - context carrying the live-agent registry.
+ * @param state - per-session dedupe state.
  * @returns the route handler owning this store.
  */
 function annotationsHandler(
-  map: Map<string, string>,
+  ctx: Context,
+  state: AnnotationCommitState,
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   return async (req, res) => {
     if ((req.method ?? 'GET') !== 'POST') {
       res.writeHead(405, { allow: 'POST' })
       res.end()
+      return
+    }
+    if (!(req.headers['content-type'] ?? '').toString().toLowerCase().startsWith('application/json')) {
+      res.writeHead(415)
+      res.end('application/json required')
       return
     }
     let body: string | undefined
@@ -209,28 +215,26 @@ function annotationsHandler(
       res.end('bad request')
       return
     }
-    setAnnotation(map, parsed.sessionId, parsed.xml)
-    res.writeHead(204)
+    let result: ReturnType<typeof commitAnnotationSnapshot>
+    try {
+      result = commitAnnotationSnapshot(ctx.agents, state, parsed)
+    } catch (error) {
+      ctx.logger.warn(`annotation injection failed for session "${parsed.sessionId}": ${String(error)}`)
+      res.writeHead(409)
+      res.end('agent unavailable')
+      return
+    }
+    if (result === 'agent-not-found') {
+      res.writeHead(404)
+      res.end('session not found')
+      return
+    }
+    if (result === 'context-too-large') {
+      res.writeHead(413)
+      res.end('annotation context too large')
+      return
+    }
+    res.writeHead(204, { 'x-webview-annotation-result': result })
     res.end()
-  }
-}
-
-/**
- * `agent/prompt-submit` waterfall listener (plan §2.3): when the claiming
- * session has a non-blank annotation XML, return an `allow` whose content is
- * the annotation XML plus the user's own text; agent-loop rewrites the prompt
- * via `freezeMessage({ ...message, content })`, keeping the message
- * identity/source so the annotation lands as part of one ordinary user
- * message. No/blank annotation → `next()` passes through unchanged, zero
- * overhead.
- * @param map - the session → annotation XML store (per plugin instance).
- * @returns the waterfall listener owning this store.
- */
-function promptSubmitListener(
-  map: ReadonlyMap<string, string>,
-): (agent: Agent, message: TextBlocks, _signal: AbortSignal, next: () => Promise<PromptDecision>) => Promise<PromptDecision> {
-  return async (agent, message, _signal, next) => {
-    const decision = injectDecision(map, agent.id, message)
-    return decision === undefined ? next() : decision
   }
 }

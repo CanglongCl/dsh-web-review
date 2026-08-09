@@ -22,6 +22,7 @@
  * content and never writes into the page beyond its own attribute markers,
  * style sheet, and the marker/comment nodes it appends.
  */
+import { ANNOTATION_LIMITS } from '../annotation-contract.ts'
 import { cssPath, snapshotOf } from './picker-core.ts'
 import type { ElementSnapshot } from './contract.ts'
 
@@ -274,6 +275,7 @@ export const PICKER_SCRIPT = `(function () {
     var input = document.createElement('input');
     input.className = 'dsh-wv-comment-input';
     input.type = 'text';
+    input.maxLength = ${ANNOTATION_LIMITS.comment};
     input.placeholder = window.__dshWebviewPicker.commentPlaceholder || 'Comment';
     input.value = value || '';
     wrap.appendChild(input);

@@ -26,14 +26,23 @@ describe('createWebviewStore', () => {
   it('seeds the initial state', () => {
     const store = createWebviewStore().create()
     expect(store.getSnapshot()).toMatchObject({
-      url: '', pickMode: false, picks: [], error: null, focusPickId: null,
+      url: '', urlDraft: '', title: '', pickMode: false, picks: [], error: null, focusPickId: null,
+      annotationSync: 'idle', annotationSyncError: null,
     })
   })
 
   it('setUrl updates the navigation draft', () => {
     const store = createWebviewStore().create()
     store.actions.setUrl('http://localhost:5173/')
-    expect(store.getSnapshot().url).toBe('http://localhost:5173/')
+    expect(store.getSnapshot()).toMatchObject({
+      url: 'http://localhost:5173/', urlDraft: 'http://localhost:5173/',
+    })
+    store.actions.setUrlDraft('http://localhost:3000/')
+    expect(store.getSnapshot()).toMatchObject({
+      url: 'http://localhost:5173/', urlDraft: 'http://localhost:3000/',
+    })
+    store.actions.setTitle('Example')
+    expect(store.getSnapshot().title).toBe('Example')
   })
 
   it('pick lifecycle: add, comment, remove, clear; mode toggles', () => {
@@ -75,5 +84,9 @@ describe('createWebviewStore', () => {
     expect(store.getSnapshot().error).toBe('boom')
     store.actions.setError(null)
     expect(store.getSnapshot().error).toBeNull()
+    store.actions.setAnnotationSync('error', 'sync failed')
+    expect(store.getSnapshot()).toMatchObject({ annotationSync: 'error', annotationSyncError: 'sync failed' })
+    store.actions.setAnnotationSync('synced')
+    expect(store.getSnapshot()).toMatchObject({ annotationSync: 'synced', annotationSyncError: null })
   })
 })

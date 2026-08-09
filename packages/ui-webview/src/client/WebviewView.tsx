@@ -6,23 +6,22 @@
  * Interaction model: the pick button (icon-only, far right of the URL row)
  * arms pick mode; clicking an element in the iframe opens a floating comment
  * field next to it; Enter commits the annotation into the shared store (the
- * dock above the composer renders the chips), Esc dismisses. Each annotation
+ * dock above the composer renders the capsule/detail card), Esc dismisses. Each annotation
  * echoes as a numbered circle over its element — clicking a circle re-expands
- * that element's comment field, as does a dock chip via the focus signal.
+ * that element's comment field, as does a dock detail row via the focus signal.
  *
- * The annotation XML is assembled here after every picks/url change and pushed
- * through the injected syncAnnotations (throttled in apply); the node half
- * prefixes it onto the next user message at send time. The link interceptor
+ * The shared dock observes picks/url/title and commits the separate annotation
+ * context; this view never touches the user's composer message. The link interceptor
  * (document capture-phase click) is active for the whole tab mount — the
  * conversation view ring mounts this component only while the tab is active.
  *
  * Presentation follows the dsh web design system: shared atoms (Input) and
  * the ic_ds_* icon set from @deepseek-ai/dsh-client-ui-primitives, plus the
  * --dsw-alias-* token vocabulary for everything custom. State arrives via
- * useStore/actions, the sync path via the injected syncAnnotations callback;
- * no ctx, no contexts.
+ * useStore/actions; no ctx, no contexts.
  */
 import { useEffect, useRef, useState } from 'react'
+import clsx from 'clsx'
 import {
   IconCheckOutline16,
   IconLinkOutline16,
@@ -33,28 +32,18 @@ import {
   Input,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
+import { ANNOTATION_LIMITS, MAX_ANNOTATIONS } from '../annotation-contract.ts'
 import { proxyUrl } from '../rewrite.ts'
 import { ensurePicker, isSameOrigin, pickFromElement, pickerOf, type MarkerEntry, type PickerSurface } from './picker.ts'
-import { formatAnnotation } from './format.ts'
 import type { ElementSnapshot } from './contract.ts'
 import type { WebviewStore } from './stores.ts'
+import css from './WebviewView.module.css'
 
-/** The inject face shared by the preview tab and the annotation dock entries. */
-export interface WebviewInjected {
-  /**
-   * Sync the current annotation XML for this session to the node half's
-   * /webview-annotations route (trailing-throttled in apply); an empty xml
-   * clears the session's server-side annotation state (send passes through).
-   */
-  syncAnnotations: (xml: string) => void
-}
-
-/** Full composed props: runtime + store + locale + inject shares. */
+/** Full composed props: runtime + store + locale shares. */
 export type WebviewSlotProps =
   & PropsRuntime<'conversation.view'>
   & PropsStore<WebviewStore>
   & PropsLocale<'webview'>
-  & WebviewInjected
 
 /** Stable pick id without depending on crypto.randomUUID availability. */
 function pickId(): string {
@@ -66,13 +55,13 @@ function pickId(): string {
 function titleOf(frame: HTMLIFrameElement | null): string {
   if (frame === null) return ''
   try {
-    return frame.contentDocument?.title ?? ''
+    return (frame.contentDocument?.title ?? '').slice(0, ANNOTATION_LIMITS.pageTitle)
   } catch {
     return ''
   }
 }
 
-/** Compact element identity for the chips (dock + panel): tag#id.class1.class2. */
+/** Compact fallback element identity for the dock detail card. */
 export function elementLabel(s: ElementSnapshot): string {
   const id = s.id !== '' ? `#${s.id}` : ''
   const classes = s.className !== ''
@@ -82,18 +71,13 @@ export function elementLabel(s: ElementSnapshot): string {
 }
 
 /** The preview tab view (see module doc). */
-export function WebviewView({ useStore, actions, syncAnnotations, t }: WebviewSlotProps) {
+export function WebviewView({ useStore, actions, t }: WebviewSlotProps) {
   const state = useStore((s) => s)
   // Effect/event callbacks read the freshest state and props through refs.
   const stateRef = useRef(state)
   stateRef.current = state
   const actionsRef = useRef(actions)
   actionsRef.current = actions
-  const syncRef = useRef(syncAnnotations)
-  syncRef.current = syncAnnotations
-  const tRef = useRef(t)
-  tRef.current = t
-
   const frameRef = useRef<HTMLIFrameElement | null>(null)
   /** Live element references for each pick (echo markers + comment anchors). */
   const pickRefs = useRef(new Map<string, Element>())
@@ -149,6 +133,10 @@ export function WebviewView({ useStore, actions, syncAnnotations, t }: WebviewSl
     const pending = pendingRef.current
     if (pending !== null && pending.id === id) {
       pendingRef.current = null
+      if (stateRef.current.picks.length >= MAX_ANNOTATIONS) {
+        actions.setError(t('panel.pick.limit', { count: String(MAX_ANNOTATIONS) }))
+        return
+      }
       pickRefs.current.set(id, pending.el)
       actions.addPick(pickFromElement(pending.el, id, text))
     } else {
@@ -194,6 +182,7 @@ export function WebviewView({ useStore, actions, syncAnnotations, t }: WebviewSl
       e.preventDefault()
       // A new page invalidates the previous annotation picks.
       actionsRef.current.setUrl(href)
+      actionsRef.current.setTitle('')
       actionsRef.current.clearPicks()
     }
     document.addEventListener('click', handler, true)
@@ -207,8 +196,10 @@ export function WebviewView({ useStore, actions, syncAnnotations, t }: WebviewSl
     if (frame === null) return
     if (!isSameOrigin(frame)) {
       setPickerReady(false)
+      actionsRef.current.setTitle('')
       return
     }
+    actionsRef.current.setTitle(titleOf(frame))
     const picker = ensurePicker(frame)
     setPickerReady(picker !== null)
     if (picker !== null) {
@@ -233,19 +224,7 @@ export function WebviewView({ useStore, actions, syncAnnotations, t }: WebviewSl
     }
   }, [state.pickMode])
 
-  // Annotation sync: after any picks/url change, assemble the XML and push it
-  // to the node half (empty picks clear — the next send passes through).
-  useEffect(() => {
-    const current = stateRef.current
-    if (current.picks.length === 0) {
-      syncRef.current('')
-      return
-    }
-    if (current.url === '') return
-    syncRef.current(formatAnnotation(current.url, titleOf(frameRef.current), current.picks, tRef.current))
-  }, [state.picks, state.url])
-
-  // Focus signal: a dock chip clicked this pick id — locate the element in
+  // Focus signal: a dock detail row clicked this pick id — locate the element in
   // the frame (live ref, else re-anchor by cssPath) and re-open its comment.
   // The signal is one-shot: consumed here, so a later re-click re-triggers.
   useEffect(() => {
@@ -273,27 +252,32 @@ export function WebviewView({ useStore, actions, syncAnnotations, t }: WebviewSl
   const navigate = (url: string): void => {
     if (url === '') return
     actions.setUrl(url)
+    actions.setTitle('')
     actions.clearPicks()
   }
 
   const frameSrc = state.url !== '' ? proxyUrl(state.url) : undefined
   const pickDisabled = !pickerReady || state.url === ''
+  const visibleError = state.annotationSyncError ?? state.error
 
   return (
-    <div className="wv-panel" data-webview-ui>
-      <div className="wv-urlrow">
+    <div className={css.panel} data-webview-ui data-webview-panel="">
+      <div className={css.urlRow}>
         <Input
-          className="wv-url"
+          className={css.url ?? ''}
           icon={<IconLinkOutline16 size={16} />}
-          value={state.url}
+          value={state.urlDraft}
+          maxLength={ANNOTATION_LIMITS.pageUrl}
           placeholder={t('panel.urlPlaceholder')}
-          onChange={(e) => { actions.setUrl(e.target.value) }}
-          onKeyDown={(e) => { if (e.key === 'Enter') navigate(state.url) }}
+          onChange={(e) => {
+            actions.setUrlDraft(e.target.value)
+          }}
+          onKeyDown={(e) => { if (e.key === 'Enter') navigate(state.urlDraft) }}
           spellCheck={false}
         />
         <button
           type="button"
-          className="wv-icon"
+          className={css.icon}
           title={t('panel.refresh')}
           disabled={state.url === ''}
           onClick={() => { setFrameKey((k) => k + 1) }}
@@ -302,7 +286,7 @@ export function WebviewView({ useStore, actions, syncAnnotations, t }: WebviewSl
         </button>
         {state.url !== '' && (
           <a
-            className="wv-icon"
+            className={css.icon}
             href={state.url}
             target="_blank"
             rel="noopener noreferrer"
@@ -313,7 +297,7 @@ export function WebviewView({ useStore, actions, syncAnnotations, t }: WebviewSl
         )}
         <button
           type="button"
-          className={state.pickMode ? 'wv-icon wv-icon-accent' : 'wv-icon'}
+          className={clsx(css.icon, state.pickMode && css.iconAccent)}
           aria-pressed={state.pickMode || undefined}
           aria-label={state.pickMode ? t('panel.pick.off') : t('panel.pick')}
           title={state.pickMode ? t('panel.pick.off') : t('panel.pick')}
@@ -325,26 +309,27 @@ export function WebviewView({ useStore, actions, syncAnnotations, t }: WebviewSl
             : <IconListPenOutline16 size={16} />}
         </button>
       </div>
-      {state.error !== null && (
-        <div className="wv-error" role="alert" title={state.error}>
-          <IconWarningOutline16 size={14} className="wv-error-icon" />
-          <span>{state.error}</span>
+      {visibleError !== null && (
+        <div className={css.error} role="alert" title={visibleError} data-webview-error="">
+          <IconWarningOutline16 size={14} className={css.errorIcon} />
+          <span>{visibleError}</span>
         </div>
       )}
-      {state.pickMode && <div className="wv-hint">{t('panel.pick.hint')}</div>}
-      <div className="wv-body">
-        <div className="wv-frame-wrap">
+      {state.pickMode && <div className={css.hint}>{t('panel.pick.hint')}</div>}
+      <div className={css.body}>
+        <div className={css.frameWrap}>
           {frameSrc !== undefined
             ? (
               <iframe
                 key={frameKey}
                 ref={frameRef}
-                className="wv-frame"
+                className={css.frame}
                 src={frameSrc}
+                title={t('panel.frame')}
                 onLoad={onFrameLoad}
               />
             )
-            : <div className="wv-frame-overlay">{t('panel.noUrl')}</div>}
+            : <div className={css.frameOverlay}>{t('panel.noUrl')}</div>}
         </div>
       </div>
     </div>

@@ -36,9 +36,9 @@ try {
 
   await urlInput.fill(services.demoUrl)
   await urlInput.press('Enter')
-  const frame = page.frameLocator('iframe.wv-frame')
+  const frame = page.frameLocator('iframe[title="Web preview"]')
   await page.waitForFunction(
-    (expected) => document.querySelector('iframe.wv-frame')?.contentDocument?.title?.startsWith(expected) ?? false,
+    (expected) => document.querySelector('iframe[title="Web preview"]')?.contentDocument?.title?.startsWith(expected) ?? false,
     '魔法 UI',
     { timeout: 20_000 },
   ).catch(() => {})
@@ -54,13 +54,16 @@ try {
   await shot(page, 'panel-comment-open')
   await commentInput.press('Enter')
 
-  // Second annotation: chips + markers echo.
+  // Second annotation: capsule detail rows + markers echo.
   await frame.locator('.card:nth-of-type(2) button').click()
   const comment2 = frame.locator('.dsh-wv-comment-input')
   await comment2.waitFor({ timeout: 10_000 })
   await comment2.fill('Increase the spacing.')
   await comment2.press('Enter')
-  await page.locator('.wv-chip').nth(1).waitFor({ timeout: 10_000 })
+  const capsule = page.locator('[data-webview-annotation-capsule]')
+  await capsule.waitFor({ timeout: 10_000 })
+  await capsule.hover()
+  await page.locator('[data-webview-annotation-row]').nth(1).waitFor({ timeout: 10_000 })
   await page.waitForTimeout(300)
   await shot(page, 'panel-two-annotations')
 
