@@ -8,6 +8,7 @@
     "gen-config": "tsx scripts/gen-config.ts",
     "setup:harness": "tsx scripts/dev.ts --setup-only",
     "build": "pnpm gen-config && pnpm --filter @dsh-external/dsh-web-review build",
+    "package:official": "pnpm build && tsx scripts/package-official.ts",
     "build:watch": "pnpm --filter @dsh-external/dsh-web-review watch",
     "dev": "tsx scripts/dev.ts",
     "demo": "tsx demo/server.ts",
