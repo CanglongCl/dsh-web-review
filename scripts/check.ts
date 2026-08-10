@@ -134,6 +134,7 @@ const expectedOfficialFiles = [
   'README.md',
   'cordis.patch.yml',
   'docs/assets/web-review-annotation-editor.jpg',
+  'docs/assets/web-review-demo.gif',
   'docs/assets/web-review-preview.jpg',
   'lib/client-official.js',
   'lib/client-official.js.map',
