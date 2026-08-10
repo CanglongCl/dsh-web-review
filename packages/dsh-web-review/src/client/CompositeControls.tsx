@@ -19,16 +19,17 @@ import {
 } from './composite-properties.ts'
 import css from './CompositeControls.module.css'
 
-function Cell({ badge, label, value, fallbackValue = '0px', onChange }: {
+function Cell({ badge, label, value, fallbackValue = '0px', onChange, onScrubChange }: {
   badge: string
   label: string
   value: string
   fallbackValue?: string
   onChange: (value: string) => void
+  onScrubChange?: ((active: boolean) => void) | undefined
 }) {
   return (
     <span className={css.fieldCell}>
-      <ScrubNumber label={label} value={value} glyph={badge} fallbackValue={fallbackValue} onChange={onChange} />
+      <ScrubNumber label={label} value={value} glyph={badge} fallbackValue={fallbackValue} onChange={onChange} onScrubChange={onScrubChange} />
     </span>
   )
 }
@@ -55,12 +56,13 @@ function LinkToggle({ linked, linkLabel, unlinkLabel, onChange }: {
   )
 }
 
-export function SizeControl({ width, height, labels, onWidthChange, onHeightChange }: {
+export function SizeControl({ width, height, labels, onWidthChange, onHeightChange, onScrubChange }: {
   width: string
   height: string
   labels: { width: string; height: string; link: string; unlink: string }
   onWidthChange: (value: string) => void
   onHeightChange: (value: string) => void
+  onScrubChange?: ((active: boolean) => void) | undefined
 }) {
   const [linked, setLinked] = useState(false)
   const ratio = useRef<number | null>(null)
@@ -87,14 +89,14 @@ export function SizeControl({ width, height, labels, onWidthChange, onHeightChan
   }
   return (
     <span className={css.pair}>
-      <Cell badge="W" label={labels.width} value={width} onChange={next => { coupled(next, true) }} />
-      <Cell badge="H" label={labels.height} value={height} onChange={next => { coupled(next, false) }} />
+      <Cell badge="W" label={labels.width} value={width} onChange={next => { coupled(next, true) }} onScrubChange={onScrubChange} />
+      <Cell badge="H" label={labels.height} value={height} onChange={next => { coupled(next, false) }} onScrubChange={onScrubChange} />
       <LinkToggle linked={linked} linkLabel={labels.link} unlinkLabel={labels.unlink} onChange={toggle} />
     </span>
   )
 }
 
-export function RadiusControl({ label, value, cornerLabels, linkLabel, unlinkLabel, rawHint, onChange }: {
+export function RadiusControl({ label, value, cornerLabels, linkLabel, unlinkLabel, rawHint, onChange, onScrubChange }: {
   label: string
   value: string
   cornerLabels: QuadValues
@@ -102,6 +104,7 @@ export function RadiusControl({ label, value, cornerLabels, linkLabel, unlinkLab
   unlinkLabel: string
   rawHint: string
   onChange: (value: string) => void
+  onScrubChange?: ((active: boolean) => void) | undefined
 }) {
   const parsed = expandQuad(value)
   const [linked, setLinked] = useState(() => parsed !== null && parsed.every(part => part === parsed[0]))
@@ -123,6 +126,7 @@ export function RadiusControl({ label, value, cornerLabels, linkLabel, unlinkLab
         badge={badges[visualIndex]!}
         label={cornerLabels[valueIndex]!}
         value={parsed[valueIndex]!}
+        onScrubChange={onScrubChange}
         onChange={next => { update(valueIndex, next) }}
       />)}
       <LinkToggle linked={linked} linkLabel={linkLabel} unlinkLabel={unlinkLabel} onChange={setLinked} />
@@ -130,12 +134,13 @@ export function RadiusControl({ label, value, cornerLabels, linkLabel, unlinkLab
   )
 }
 
-export function ShadowControl({ label, value, labels, rawHint, onChange }: {
+export function ShadowControl({ label, value, labels, rawHint, onChange, onScrubChange }: {
   label: string
   value: string
   labels: { x: string; y: string; blur: string; spread: string; color: string; inset: string }
   rawHint: string
   onChange: (value: string) => void
+  onScrubChange?: ((active: boolean) => void) | undefined
 }) {
   const parsed = parseSimpleShadow(value)
   if (parsed === null) return <span className={css.raw}><TextField label={label} value={value} onChange={onChange} /><span className={css.rawHint}>{rawHint}</span></span>
@@ -149,11 +154,11 @@ export function ShadowControl({ label, value, labels, rawHint, onChange }: {
   return (
     <span>
       <span className={css.effectGrid}>
-        {parsed.lengths.map((part, index) => <Cell key={badges[index]!} badge={badges[index]!} label={fieldLabels[index]!} value={part} onChange={next => { updateLength(index, next) }} />)}
+        {parsed.lengths.map((part, index) => <Cell key={badges[index]!} badge={badges[index]!} label={fieldLabels[index]!} value={part} onScrubChange={onScrubChange} onChange={next => { updateLength(index, next) }} />)}
       </span>
       <span className={css.effectRow}>
         <span className={css.effectLabel}>{labels.color}</span>
-        <ColorControl label={labels.color} value={parsed.color} onChange={color => { onChange(serializeSimpleShadow({ ...parsed, color })) }} />
+        <ColorControl label={labels.color} value={parsed.color} onScrubChange={onScrubChange} onChange={color => { onChange(serializeSimpleShadow({ ...parsed, color })) }} />
       </span>
       <span className={css.effectRow}>
         <span className={css.effectLabel}>{labels.inset}</span>
@@ -163,12 +168,13 @@ export function ShadowControl({ label, value, labels, rawHint, onChange }: {
   )
 }
 
-export function TransformControl({ label, value, labels, rawHint, onChange }: {
+export function TransformControl({ label, value, labels, rawHint, onChange, onScrubChange }: {
   label: string
   value: string
   labels: Record<TransformKind, string>
   rawHint: string
   onChange: (value: string) => void
+  onScrubChange?: ((active: boolean) => void) | undefined
 }) {
   const parsed = parseSimpleTransform(value)
   if (parsed === null) return <span className={css.raw}><TextField label={label} value={value} onChange={onChange} /><span className={css.rawHint}>{rawHint}</span></span>
@@ -185,6 +191,7 @@ export function TransformControl({ label, value, labels, rawHint, onChange }: {
         label={labels[kind]}
         value={parsed.values[kind]}
         fallbackValue={kind === 'scaleX' || kind === 'scaleY' ? '1' : kind === 'rotate' ? '0deg' : '0px'}
+        onScrubChange={onScrubChange}
         onChange={next => { update(kind, next) }}
       />)}
     </span>

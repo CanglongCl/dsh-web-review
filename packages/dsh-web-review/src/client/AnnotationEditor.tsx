@@ -76,6 +76,15 @@ function AdjustIcon(): JSX.Element {
   )
 }
 
+function EyeIcon(): JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M2.2 8s2.15-3.7 5.8-3.7S13.8 8 13.8 8 11.65 11.7 8 11.7 2.2 8 2.2 8Z" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="8" cy="8" r="1.7" stroke="currentColor" strokeWidth="1.45" />
+    </svg>
+  )
+}
+
 function AlignIcon({ kind }: { kind: 'left' | 'center' | 'right' | 'justify' }) {
   const widths = kind === 'justify' ? [12, 12, 12] : [12, 8, 11]
   const x = (width: number) => kind === 'center' ? (14 - width) / 2 : kind === 'right' ? 14 - width : 0
@@ -106,6 +115,8 @@ export function AnnotationEditor({
   ), [initialMap, patch])
   const [comment, setComment] = useState(initialComment)
   const [expanded, setExpanded] = useState(false)
+  const [hidden, setHidden] = useState(false)
+  const [activeScrub, setActiveScrub] = useState<string | null>(null)
   const [values, setValues] = useState<Map<EditableStyleProperty, string>>(
     () => new Map([...originals].map(([property, before]) => [property, initialMap.get(property)?.after ?? before])),
   )
@@ -130,6 +141,8 @@ export function AnnotationEditor({
   const normalStyleRef = useRef('normal')
   const [, forcePosition] = useState(0)
   const editorRef = useRef<HTMLDivElement | null>(null)
+  const visibleToggleRef = useRef<HTMLButtonElement | null>(null)
+  const hiddenToggleRef = useRef<HTMLButtonElement | null>(null)
 
   const valueOf = (property: EditableStyleProperty): string => values.get(property) ?? originals.get(property) ?? ''
   const changed = (property: EditableStyleProperty): boolean => valueOf(property) !== (originals.get(property) ?? '')
@@ -200,6 +213,9 @@ export function AnnotationEditor({
   }
 
   const reset = (property: EditableStyleProperty): void => { updateProperty(property, originals.get(property) ?? '') }
+  const scrubChange = (target: string) => (active: boolean): void => {
+    setActiveScrub(current => active ? target : current === target ? null : current)
+  }
 
   const numericFallback = (property: EditableStyleProperty): string => {
     if (property === 'line-height') {
@@ -217,7 +233,7 @@ export function AnnotationEditor({
     if (control === undefined) return null
     const label = propertyLabel(control, t)
     const value = valueOf(property)
-    if (control.kind === 'color') return <ColorControl label={label} value={value} onChange={next => { updateProperty(property, next) }} />
+    if (control.kind === 'color') return <ColorControl label={label} value={value} onScrubChange={scrubChange(property)} onChange={next => { updateProperty(property, next) }} />
     if (control.kind === 'menu') return <OptionMenu label={label} value={value} options={control.options ?? []} onChange={next => { updateProperty(property, next) }} />
     if (property === 'opacity') {
       const normalized = value.trim() === '' ? '1' : value
@@ -230,6 +246,7 @@ export function AnnotationEditor({
           min={0}
           max={100}
           invalid={invalid.has(property)}
+          onScrubChange={scrubChange(property)}
           onChange={(next) => {
             const percent = /^\s*(\d*\.?\d+)\s*%?\s*$/u.exec(next)
             updateProperty(property, percent?.[1] === undefined ? next : String(Number(percent[1]) / 100))
@@ -243,6 +260,7 @@ export function AnnotationEditor({
         value={value}
         fallbackValue={numericFallback(property)}
         invalid={invalid.has(property)}
+        onScrubChange={scrubChange(property)}
         onChange={next => { updateProperty(property, next) }}
         {...(control.step === undefined ? {} : { step: control.step })}
         {...(control.min === undefined ? {} : { min: control.min })}
@@ -258,7 +276,7 @@ export function AnnotationEditor({
     if (control === undefined) return null
     const label = propertyLabel(control, t)
     return (
-      <InspectorRow key={property} label={label} changed={changed(property)} resetLabel={`${t('editor.reset')} · ${label}`} onReset={() => { reset(property) }}>
+      <InspectorRow key={property} label={label} active={activeScrub === property} changed={changed(property)} resetLabel={`${t('editor.reset')} · ${label}`} onReset={() => { reset(property) }}>
         {renderControl(property)}
       </InspectorRow>
     )
@@ -285,11 +303,12 @@ export function AnnotationEditor({
   const spacing = (prefix: 'margin' | 'padding', linked: boolean, setLinked: (value: boolean) => void) => {
     const properties = four(['top', 'right', 'bottom', 'left'].map(side => `${prefix}-${side}` as EditableStyleProperty))
     return (
-      <InspectorRow label={prefix === 'margin' ? 'Margin' : 'Padding'} staticLabel changed={properties.some(changed)} resetLabel={`${t('editor.reset')} · ${prefix}`} onReset={() => { properties.forEach(reset) }}>
+      <InspectorRow label={prefix === 'margin' ? 'Margin' : 'Padding'} active={activeScrub === prefix} staticLabel changed={properties.some(changed)} resetLabel={`${t('editor.reset')} · ${prefix}`} onReset={() => { properties.forEach(reset) }}>
         <BoxModelControl
           label={prefix === 'margin' ? 'Margin' : 'Padding'}
           values={four(properties.map(valueOf))}
           linked={linked}
+          onScrubChange={scrubChange(prefix)}
           onLinkedChange={setLinked}
           onChange={(index, next) => {
             if (linked) properties.forEach(property => { updateProperty(property, next) })
@@ -309,41 +328,67 @@ export function AnnotationEditor({
   const top = largeTarget
     ? Math.min(Math.max(8, rect.top + 16), Math.max(8, frame.clientHeight - measuredHeight - 8))
     : Math.max(8, above >= 8 ? above : Math.min(rect.bottom + 8, Math.max(8, frame.clientHeight - measuredHeight - 8)))
+  const hiddenLeft = Math.min(Math.max(8, left + width - 36), Math.max(8, frame.clientWidth - 44))
+
+  const hideEditor = (): void => {
+    setActiveScrub(null)
+    setHidden(true)
+    queueMicrotask(() => { hiddenToggleRef.current?.focus() })
+  }
+  const showEditor = (): void => {
+    setHidden(false)
+    queueMicrotask(() => { visibleToggleRef.current?.focus() })
+  }
 
   return (
-    <div
-      ref={editorRef}
-      className={css.editor}
-      style={{ left, top, width }}
-      data-webview-annotation-editor=""
-      onKeyDown={(event) => {
-        if (event.key !== 'Escape' || event.defaultPrevented) return
-        event.preventDefault()
-        cancel()
-      }}
-    >
-      <div className={css.composeRow}>
-        <button type="button" className={expanded ? `${css.adjust} ${css.adjustActive}` : css.adjust} aria-label={t('editor.adjust')} title={t('editor.adjust')} aria-expanded={expanded} onClick={() => { setExpanded(value => !value) }}>
-          <AdjustIcon />
-        </button>
-        <input
-          className={`${css.commentInput} dsh-wv-comment-input`}
-          value={comment}
-          maxLength={4000}
-          placeholder={t('editor.comment')}
-          autoFocus
-          onChange={event => { setComment(event.target.value) }}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') { event.preventDefault(); cancel() }
-            if (event.key === 'Enter') { event.preventDefault(); confirm() }
-          }}
-        />
-        {!expanded && (
-          <button type="button" className={css.quickConfirm} aria-label={t('editor.confirm')} disabled={!canConfirm} onClick={confirm}>
-            <IconCheckOutline16 size={16} />
+    <>
+      <div
+        ref={editorRef}
+        className={`${css.editor} ${hidden ? css.editorHidden : ''}`}
+        style={{ left, top, width }}
+        data-webview-annotation-editor=""
+        {...(activeScrub === null ? {} : { 'data-scrubbing': activeScrub })}
+        {...(hidden ? { 'data-editor-hidden': '' } : {})}
+        aria-hidden={hidden}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape' || event.defaultPrevented) return
+          event.preventDefault()
+          cancel()
+        }}
+      >
+        <div className={`${css.composeRow} ${expanded ? css.composeRowExpanded : ''}`}>
+          <button type="button" className={expanded ? `${css.adjust} ${css.adjustActive}` : css.adjust} aria-label={t('editor.adjust')} title={t('editor.adjust')} aria-expanded={expanded} onClick={() => { setExpanded(value => !value) }}>
+            <AdjustIcon />
           </button>
-        )}
-      </div>
+          <input
+            className={`${css.commentInput} dsh-wv-comment-input`}
+            value={comment}
+            maxLength={4000}
+            placeholder={t('editor.comment')}
+            autoFocus
+            onChange={event => { setComment(event.target.value) }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') { event.preventDefault(); cancel() }
+              if (event.key === 'Enter') { event.preventDefault(); confirm() }
+            }}
+          />
+          <button
+            ref={visibleToggleRef}
+            type="button"
+            className={css.visibilityToggle}
+            aria-label={t('editor.hide')}
+            title={t('editor.hide')}
+            aria-pressed={false}
+            onClick={hideEditor}
+          >
+            <EyeIcon />
+          </button>
+          {!expanded && (
+            <button type="button" className={css.quickConfirm} aria-label={t('editor.confirm')} disabled={!canConfirm} onClick={confirm}>
+              <IconCheckOutline16 size={16} />
+            </button>
+          )}
+        </div>
 
       {expanded && (
         <>
@@ -399,6 +444,7 @@ export function AnnotationEditor({
               <InspectorRow
                 wide
                 label={`${t('editor.property.width')} × ${t('editor.property.height')}`}
+                active={activeScrub === 'size'}
                 changed={changed('width') || changed('height')}
                 resetLabel={`${t('editor.reset')} · ${t('editor.group.size')}`}
                 onReset={() => { reset('width'); reset('height') }}
@@ -414,6 +460,7 @@ export function AnnotationEditor({
                   }}
                   onWidthChange={next => { updateProperty('width', next) }}
                   onHeightChange={next => { updateProperty('height', next) }}
+                  onScrubChange={scrubChange('size')}
                 />
               </InspectorRow>
               {row('display')}{row('position')}
@@ -429,7 +476,7 @@ export function AnnotationEditor({
 
             <InspectorSection label={t('editor.group.border')}>
               {row('border-width')}{row('border-style')}{row('border-color')}
-              <InspectorRow wide label={t('editor.property.borderRadius')} changed={changed('border-radius')} resetLabel={`${t('editor.reset')} · ${t('editor.property.borderRadius')}`} onReset={() => { reset('border-radius') }}>
+              <InspectorRow wide label={t('editor.property.borderRadius')} active={activeScrub === 'border-radius'} changed={changed('border-radius')} resetLabel={`${t('editor.reset')} · ${t('editor.property.borderRadius')}`} onReset={() => { reset('border-radius') }}>
                 <RadiusControl
                   label={t('editor.property.borderRadius')}
                   value={valueOf('border-radius')}
@@ -440,6 +487,7 @@ export function AnnotationEditor({
                   linkLabel={t('editor.action.linkValues')}
                   unlinkLabel={t('editor.action.unlinkValues')}
                   rawHint={t('editor.rawHint')}
+                  onScrubChange={scrubChange('border-radius')}
                   onChange={next => { updateProperty('border-radius', next) }}
                 />
               </InspectorRow>
@@ -451,7 +499,7 @@ export function AnnotationEditor({
             </InspectorSection>
 
             <InspectorSection label={t('editor.group.effects')} defaultOpen={false}>
-              <InspectorRow wide label={t('editor.property.boxShadow')} changed={changed('box-shadow')} resetLabel={`${t('editor.reset')} · ${t('editor.property.boxShadow')}`} onReset={() => { reset('box-shadow') }}>
+              <InspectorRow wide label={t('editor.property.boxShadow')} active={activeScrub === 'box-shadow'} changed={changed('box-shadow')} resetLabel={`${t('editor.reset')} · ${t('editor.property.boxShadow')}`} onReset={() => { reset('box-shadow') }}>
                 <ShadowControl
                   label={t('editor.property.boxShadow')}
                   value={valueOf('box-shadow')}
@@ -461,10 +509,11 @@ export function AnnotationEditor({
                     blur: t('editor.property.shadowBlur'), spread: t('editor.property.shadowSpread'),
                     color: t('editor.property.shadowColor'), inset: t('editor.property.shadowInset'),
                   }}
+                  onScrubChange={scrubChange('box-shadow')}
                   onChange={next => { updateProperty('box-shadow', next) }}
                 />
               </InspectorRow>
-              <InspectorRow wide label={t('editor.property.transform')} changed={changed('transform')} resetLabel={`${t('editor.reset')} · ${t('editor.property.transform')}`} onReset={() => { reset('transform') }}>
+              <InspectorRow wide label={t('editor.property.transform')} active={activeScrub === 'transform'} changed={changed('transform')} resetLabel={`${t('editor.reset')} · ${t('editor.property.transform')}`} onReset={() => { reset('transform') }}>
                 <TransformControl
                   label={t('editor.property.transform')}
                   value={valueOf('transform')}
@@ -473,6 +522,7 @@ export function AnnotationEditor({
                     translateX: t('editor.property.translateX'), translateY: t('editor.property.translateY'),
                     scaleX: t('editor.property.scaleX'), scaleY: t('editor.property.scaleY'), rotate: t('editor.property.rotate'),
                   }}
+                  onScrubChange={scrubChange('transform')}
                   onChange={next => { updateProperty('transform', next) }}
                 />
               </InspectorRow>
@@ -486,6 +536,24 @@ export function AnnotationEditor({
           </div>
         </>
       )}
-    </div>
+      </div>
+      <button
+        ref={hiddenToggleRef}
+        type="button"
+        className={`${css.visibilityFab} ${hidden ? '' : css.visibilityFabHidden}`}
+        style={{ left: hiddenLeft, top }}
+        aria-label={t('editor.show')}
+        title={t('editor.show')}
+        aria-pressed={hidden}
+        onClick={showEditor}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape') return
+          event.preventDefault()
+          cancel()
+        }}
+      >
+        <EyeIcon />
+      </button>
+    </>
   )
 }
