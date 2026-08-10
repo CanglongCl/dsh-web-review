@@ -42,14 +42,13 @@ and the interim eager-`agent.inject` design.
 
 ## Upstream findings
 
-- `agent/prompt-submit` is a waterfall admission hook. A listener must delegate with
-  `next()` and preserve its result. `PromptDecision.additionalContexts` is the supported
-  way to append model-facing context before the turn starts without replacing the
-  prompt's content or identity.
+- `agent/pre-step` is the waterfall admission hook. A listener must delegate with
+  `next()` and preserve rejection. On entry it may append a separately sourced message
+  to the complete message batch without replacing claimed message content or identity.
 - The browser conversation API has no general pre-submit transform event. Therefore an
   external plugin cannot atomically coordinate an in-flight HTTP preparation with every
   stock-composer send. The plugin therefore prepares pending state immediately, exposes
-  readiness in the dock, and consumes it through prompt admission.
+  readiness in the dock, and consumes it through pre-step admission.
 - A `conversation.view` entry and a `conversation.input.dock` entry may share the same
   apply-constructed store handle. That remains the correct way to connect the preview
   and composer chrome.
@@ -61,7 +60,7 @@ sequenceDiagram
     participant Picker as Preview picker
     participant Dock as Annotation dock
     participant Route as Plugin HTTP route
-    participant Admission as Prompt admission
+    participant Admission as Pre-step admission
     participant Model as Next model turn
 
     Picker->>Dock: Update shared annotation store
@@ -71,8 +70,8 @@ sequenceDiagram
     Route-->>Dock: Acknowledge
     Dock->>Dock: Show inject-on-send state
     Note over Dock,Admission: User sends through the unchanged stock composer
-    Admission->>Admission: next(), preserve allow decision
-    Admission->>Model: Append plugin message via additionalContexts
+    Admission->>Admission: next(), preserve reject decision
+    Admission->>Model: Append plugin message after entered messages
     Admission-->>Dock: Durable human node consumes capsule
 ```
 
@@ -80,9 +79,9 @@ sequenceDiagram
 
 - The node face injects `httpServer` and `agents`, resolves the live agent from the
   branded `SessionId`, and stores one pending rendered context per session.
-- The `agent/prompt-submit` listener awaits `next()`. On `allow`, it preserves every
-  downstream field and appends its plugin message to `additionalContexts`; it never
-  supplies or edits `content`.
+- The `agent/pre-step` listener awaits `next()`. On `reject`, it preserves the decision;
+  on `enter`, it appends its plugin message after the returned messages and never edits
+  their content.
 - The source is `{ kind: 'plugin', plugin: 'dsh-web-review' }` so the transcript and replay
   path preserve provenance.
 - The browser sends structured JSON. It never assembles model-facing XML or Markdown.
@@ -211,7 +210,7 @@ current iframe is a security boundary.
 1. Replace `prompt-inject.ts` with a shared annotation schema, parser, formatter, and
    pending-admission lifecycle module.
 2. Update the node entry to resolve live agents, prepare/deduplicate snapshots, append
-   `additionalContexts` at admission, acknowledge logged context, and release state.
+   a separately sourced message at pre-step admission, acknowledge logged context, and release state.
 3. Replace the client timer with an acknowledgement-returning serialized sync client.
 4. Add page title and annotation sync status to the shared store.
 5. Remove client XML formatting and locale-owned model template strings.
@@ -222,8 +221,8 @@ current iframe is a security boundary.
 
 ## Acceptance criteria
 
-- The `agent/prompt-submit` listener delegates to `next()`, preserves its decision, and
-  uses only `additionalContexts`; it never rewrites prompt content.
+- The `agent/pre-step` listener delegates to `next()`, preserves rejection, and appends
+  only after entered messages; it never rewrites claimed message content.
 - Sending through the stock composer leaves the user's content byte-for-byte unchanged.
 - The transcript contains the unchanged human prompt followed by a separate
   plugin-sourced browser-comment context before the model turn starts.

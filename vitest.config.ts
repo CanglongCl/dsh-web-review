@@ -1,7 +1,9 @@
 import { defineConfig } from 'vitest/config'
 import { fileURLToPath } from 'node:url'
+import { resolveHarnessRoot } from './scripts/harness-path.ts'
 
-const HARNESS = fileURLToPath(new URL('../deepseek-harness', import.meta.url))
+const ROOT = fileURLToPath(new URL('.', import.meta.url))
+const HARNESS = resolveHarnessRoot(ROOT)
 
 /**
  * Test config: node env by default; component specs opt into jsdom via a

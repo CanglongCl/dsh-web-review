@@ -6,8 +6,8 @@
  *  3. config consistency — gen-config must be idempotent and the generated
  *     files must match the current absolute path (moving the repo without
  *     `pnpm gen-config` is a hard error);
- *  4. bundle contract — lib/client.js banner id equals the entry name and
- *     the directory-import forwarding entry exists;
+ *  4. client package contract — dsh.client is declared, lib/client.js banner
+ *     id equals the entry name, and the directory-import entry exists;
  *  5. build — tsdown must produce both halves.
  * Flags: --e2e additionally runs the Playwright browser suite (requires a
  * provider key chain; see tests/e2e-scaffold.ts).
@@ -68,6 +68,17 @@ assert(
 
 // 4. Bundle contract: banner id == entry name; directory-import entry exists.
 const entryName = (JSON.parse(entryBefore) as { name: string }).name
+assert(
+  'client package declares dsh.client',
+  () => {
+    const manifest = JSON.parse(readFileSync(join(PKG, 'package.json'), 'utf8')) as {
+      dsh?: { client?: { platform?: unknown } }
+      dshClient?: unknown
+    }
+    return manifest.dsh?.client?.platform === 'web' && manifest.dshClient === undefined
+  },
+  () => 'package.json must use the current nested dsh.client manifest; legacy dshClient is ignored by the host',
+)
 assert(
   'bundle banner id matches the entry name',
   () => {

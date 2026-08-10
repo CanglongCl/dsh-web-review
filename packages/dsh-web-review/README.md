@@ -59,13 +59,13 @@ modifier clicks retain the browser's normal external-link behavior.
 The browser sends a bounded structured snapshot to the plugin's node face. It
 does not send preformatted model text. The node face validates the session and
 every field, renders stable English `# Browser comments` context, creates a
-plugin-sourced user-role message, and keeps it pending for prompt admission.
+plugin-sourced user-role message, and keeps it pending for pre-step admission.
 
 This creates two distinct logged records:
 
 1. the user's unchanged stock-composer message; and
-2. a **Context injection** record sourced from `dsh-web-review`, appended through
-   `PromptDecision.additionalContexts` before the model turn starts.
+2. a **Context injection** record sourced from `dsh-web-review`, appended to the
+   entered `agent/pre-step` message batch before the model request starts.
 
 Each non-empty snapshot says that it supersedes older browser-comment
 snapshots. Clearing before send removes pending state and injects nothing. Identical
@@ -95,9 +95,9 @@ stays visible and clicking the capsule retries it.
 The stock composer currently exposes no public general pre-submit interceptor.
 Consequently the external plugin cannot make annotation commit and an
 arbitrary simultaneous Send click one client-side atomic operation. The plugin
-uses `agent/prompt-submit` only to preserve the downstream decision and append
-`additionalContexts`; it never rewrites prompt content. Treat the inject-on-send
-check as the ready boundary. After a durable human message appears, the consumed
+uses `agent/pre-step` only to preserve downstream rejection or append one
+separately sourced message after downstream entry; it never rewrites claimed
+message content. Treat the inject-on-send check as the ready boundary. After a durable human message appears, the consumed
 annotation capsule clears automatically. Sending while preparation is still in
 flight leaves the capsule visible for retry.
 

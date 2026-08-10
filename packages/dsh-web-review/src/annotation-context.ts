@@ -4,10 +4,9 @@
  * model-facing content.
  */
 import type { IncomingMessage } from 'node:http'
-import type { Agent, AgentRegistry, PromptDecision } from '@deepseek-ai/dsh-agent'
-import { createUserMessage } from '@deepseek-ai/dsh-llm/src/message.ts'
-import type { SessionEvent } from '@deepseek-ai/dsh-session/src/types.ts'
-import { SessionId } from '@deepseek-ai/dsh-session/src/types.ts'
+import type { Agent, AgentRegistry, PreStepDecision } from '@deepseek-ai/dsh-agent'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import {
   ANNOTATION_LIMITS,
   MAX_ANNOTATION_CHANGES,
@@ -280,17 +279,17 @@ export function storeAnnotationSnapshot(
 }
 
 /**
- * Add the current pending snapshot to one allowed prompt without rewriting
- * the user's message. The state remains pending until the session event for
- * this exact plugin context proves admission committed.
+ * Add the current pending snapshot to one accepted step without rewriting
+ * the claimed user messages. The state remains pending until the session
+ * event for this exact plugin context proves admission committed.
  */
 export async function attachPendingAnnotationContext(
   state: AnnotationCommitState,
   agent: Pick<Agent, 'id'>,
-  next: () => Promise<PromptDecision>,
-): Promise<PromptDecision> {
+  next: () => Promise<PreStepDecision>,
+): Promise<PreStepDecision> {
   const decision = await next()
-  if (decision.kind !== 'allow') return decision
+  if (decision.kind !== 'enter') return decision
   const context = state.get(agent.id)
   if (context === undefined) return decision
   const annotation = createUserMessage({
@@ -298,8 +297,8 @@ export async function attachPendingAnnotationContext(
     content: [{ type: 'text', text: context }],
   })
   return {
-    ...decision,
-    additionalContexts: [...(decision.additionalContexts ?? []), annotation],
+    kind: 'enter',
+    messages: [...decision.messages, annotation],
   }
 }
 

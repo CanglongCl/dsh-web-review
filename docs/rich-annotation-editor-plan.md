@@ -130,7 +130,7 @@ Requested changes:
 Original values remain untrusted page evidence. Requested values and the
 comment are user-authored input. The node formatter, never the browser, owns
 this wording. The resulting plugin message continues to enter through
-`PromptDecision.additionalContexts` immediately before the admitted human
+the entered `agent/pre-step` message batch immediately after the admitted human
 message.
 
 ## Verification

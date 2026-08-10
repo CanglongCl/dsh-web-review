@@ -10,16 +10,18 @@
  *   pnpm dev                 — full dev loop (web + watch)
  *   pnpm dev -- --setup-only — harness prep only (install + build)
  *   pnpm dev -- --no-watch   — web only, no bundle watch
- * Env: DSH_HARNESS (default ../deepseek-harness), DSH_WEB_PORT (default 3090),
- *      DSH_WEB_HOST (default 127.0.0.1).
+ * Env: DSH_HARNESS (explicit checkout override), DSH_WEB_PORT (default 3090),
+ *      DSH_WEB_HOST (default 127.0.0.1). Without an override, the linked
+ *      runtime package identifies the harness checkout.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { resolveHarnessRoot } from './harness-path.ts'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
-const harness = process.env.DSH_HARNESS ?? join(root, '..', 'deepseek-harness')
+const harness = resolveHarnessRoot(root)
 const port = process.env.DSH_WEB_PORT ?? '3090'
 const host = process.env.DSH_WEB_HOST ?? '127.0.0.1'
 const setupOnly = process.argv.includes('--setup-only')
@@ -54,17 +56,16 @@ if (setupOnly) {
 
 // 3. dsh web --dev with the plugin overlay; cwd = this repo so the session
 // workspace root (and the AI's file tools) defaults to the user's project.
-const bin = join(harness, 'apps/cli/src/bin.ts')
-const tsx = join(harness, 'node_modules/tsx/dist/esm/index.mjs')
+const bin = join(harness, 'bin', 'dsh')
 const webArgs = [
-  '--import', tsx, bin, 'web',
+  'web',
   '--dev',
   '--host', host,
   '--port', port,
-  '--config', join(root, 'cordis.yml'),
+  '--patch', join(root, 'cordis.yml'),
 ]
 console.log(`dev: starting dsh web on http://${host}:${port} (cwd ${root})`)
-const web = spawn(process.execPath, webArgs, { cwd: root, stdio: 'inherit', env: process.env })
+const web = spawn(bin, webArgs, { cwd: root, stdio: 'inherit', env: process.env })
 
 // 4. Client-bundle watch (HMR rebuilds; the --dev host broadcasts rebuilt frames).
 let watch: ChildProcess | undefined

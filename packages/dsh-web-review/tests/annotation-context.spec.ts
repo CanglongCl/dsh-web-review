@@ -1,6 +1,6 @@
 /** Pure contract, formatting and lifecycle tests for separate context injection. */
 import type { IncomingMessage } from 'node:http'
-import type { Agent, AgentRegistry, PromptDecision } from '@deepseek-ai/dsh-agent'
+import type { Agent, AgentRegistry, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { SessionId, type SessionId as SessionIdType } from '@deepseek-ai/dsh-session'
@@ -233,7 +233,7 @@ describe('pending annotation admission', () => {
     expect(state.size).toBe(0)
   })
 
-  it('adds pending context only to an allowed prompt and preserves downstream fields', async () => {
+  it('adds pending context only to an entered step and preserves downstream messages', async () => {
     const { agent, agents } = harness()
     const state = new Map<string, string>()
     storeAnnotationSnapshot(agents, state, snapshot())
@@ -242,19 +242,18 @@ describe('pending annotation admission', () => {
       content: [{ type: 'text', text: 'existing context' }],
     })
     const decision = await attachPendingAnnotationContext(state, agent, async () => ({
-      kind: 'allow', content: [{ type: 'text', text: 'downstream rewrite' }], additionalContexts: [existing],
+      kind: 'enter', messages: [existing],
     }))
-    expect(decision).toMatchObject({ kind: 'allow', content: [{ text: 'downstream rewrite' }] })
-    if (decision.kind !== 'allow') throw new Error('expected allow')
-    expect(decision.additionalContexts).toHaveLength(2)
-    expect(decision.additionalContexts?.[0]).toBe(existing)
-    expect(decision.additionalContexts?.[1]).toMatchObject({
+    if (decision.kind !== 'enter') throw new Error('expected enter')
+    expect(decision.messages).toHaveLength(2)
+    expect(decision.messages[0]).toBe(existing)
+    expect(decision.messages[1]).toMatchObject({
       source: { kind: 'plugin', plugin: 'dsh-web-review' },
       content: [{ type: 'text', text: expect.stringContaining('# Browser comments') }],
     })
     expect(state.has('session-1')).toBe(true)
 
-    const blocked: PromptDecision = { kind: 'block', reason: 'policy' }
+    const blocked: PreStepDecision = { kind: 'reject' }
     expect(await attachPendingAnnotationContext(state, agent, async () => blocked)).toBe(blocked)
   })
 
@@ -262,9 +261,9 @@ describe('pending annotation admission', () => {
     const { agent, agents } = harness()
     const state = new Map<string, string>()
     storeAnnotationSnapshot(agents, state, snapshot())
-    const decision = await attachPendingAnnotationContext(state, agent, async () => ({ kind: 'allow' }))
-    if (decision.kind !== 'allow') throw new Error('expected allow')
-    const admitted = decision.additionalContexts?.[0]
+    const decision = await attachPendingAnnotationContext(state, agent, async () => ({ kind: 'enter', messages: [] }))
+    if (decision.kind !== 'enter') throw new Error('expected enter')
+    const admitted = decision.messages[0]
     if (admitted === undefined) throw new Error('missing annotation context')
 
     const changed = snapshot()
@@ -273,9 +272,9 @@ describe('pending annotation admission', () => {
     acknowledgeAnnotationEvent(state, agent.id, contextEvent(admitted))
     expect(state.get(agent.id)).toContain('Newer pending change.')
 
-    const nextDecision = await attachPendingAnnotationContext(state, agent, async () => ({ kind: 'allow' }))
-    if (nextDecision.kind !== 'allow') throw new Error('expected allow')
-    const latest = nextDecision.additionalContexts?.[0]
+    const nextDecision = await attachPendingAnnotationContext(state, agent, async () => ({ kind: 'enter', messages: [] }))
+    if (nextDecision.kind !== 'enter') throw new Error('expected enter')
+    const latest = nextDecision.messages[0]
     if (latest === undefined) throw new Error('missing latest annotation context')
     acknowledgeAnnotationEvent(state, agent.id, contextEvent(latest))
     expect(state.has(agent.id)).toBe(false)

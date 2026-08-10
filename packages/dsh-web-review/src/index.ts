@@ -2,7 +2,7 @@
  * dsh-web-review node half: the host-side `/webview-proxy` route that makes
  * iframe content same-origin so the browser half's picker can reach the DOM,
  * plus the `/webview-annotations` route that prepares browser-comment state
- * for one live agent and the prompt-admission listener that appends it as a
+ * for one live agent and the pre-step listener that appends it as a
  * separate plugin context without rewriting the user's message.
  *
  * The node artifact remains self-contained: tsdown inlines the small DSH
@@ -18,7 +18,6 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from 'cordis'
-import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { MAX_ANNOTATION_BODY } from './annotation-contract.ts'
@@ -91,12 +90,12 @@ export function apply(ctx: Context): void {
     }),
     'dsh-web-review: /webview-annotations route',
   )
-  ctx.on('agent/prompt-submit', (agent, _message, _signal, next) =>
+  ctx.on('agent/pre-step', ({ agent }, next) =>
     attachPendingAnnotationContext(annotations, agent, next))
   ctx.on('session/event', (session, event) => {
     acknowledgeAnnotationEvent(annotations, session.id, event)
   })
-  ctx.on('agent/disposed', (agent: Agent) => { forgetAgent(annotations, agent) })
+  ctx.on('agent/disposed', ({ agent }) => { forgetAgent(annotations, agent) })
 }
 
 /**

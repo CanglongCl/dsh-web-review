@@ -2,10 +2,10 @@
  * Generate the launch overlay (`cordis.yml`) and the tsdown banner id
  * (`packages/dsh-web-review/entry-name.json`) from this checkout's absolute path.
  *
- * The entry name MUST be the absolute path to the plugin package: `dsh web`
- * boots base.cordis.yml from apps/cli/config, and both the Loader and
- * client-modules resolve entry names against that anchor — only absolute
- * paths are self-resolving for an external package. The browser module
+ * The entry name MUST be the absolute path to the plugin package: the Web
+ * profile applies this generated patch after its bundle layers, and both the
+ * Loader and client-modules must resolve the external package independently
+ * of the profile directory. The browser module
  * loader additionally requires the bundle's `__ModuleLoader__.load` id to
  * equal the boot-graph row id, so tsdown reads the same value from
  * entry-name.json. Moving the repo requires regenerating both files

@@ -13,11 +13,10 @@
  * framework resolves one instance per session: the tab and the dock share one
  * pick list (ui-conversation's chatStore multi-registration pattern). The
  * dock immediately prepares each full structured snapshot on the node face;
- * prompt admission later appends it through `additionalContexts`. The 'conversation' service edge is the load-order seam: both slots are declared
- * by ui-conversation's apply, so waiting on the service orders this apply
- * after the declaring one (upstream checklist rule for cross-package slot
- * registration). The inject face stays thin: one serialized, acknowledged
- * per-session annotation snapshot sync.
+ * pre-step admission later appends it to the accepted message batch. Slot
+ * declaration order is independent, so each contribution uses `slots.inject`
+ * and follows the declaring ui-conversation entry across reloads. The inject
+ * face stays thin: one serialized, acknowledged per-session annotation sync.
  */
 import type { ClientContext, ISessions, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -117,7 +116,7 @@ export function apply(ctx: ClientContext): void {
   // preview tab and the annotation dock share one pick list).
   const webviewStore = createWebviewStore()
 
-  ctx.effect(() => ctx.slots.register({
+  ctx.slots.inject('conversation.view', () => ctx.slots.register({
     name: 'conversation.view',
     id: 'webview',
     order: 20,
@@ -127,8 +126,8 @@ export function apply(ctx: ClientContext): void {
     inject: (sessionId: SessionId): WebviewViewInjected => ({
       sendAnnotationsWithoutDraft: () => scopedConversation(ctx, sessionId).send(t('panel.pick.defaultPrompt')),
     }),
-  }, WebviewView), 'dsh-web-review: preview tab')
-  ctx.effect(() => ctx.slots.register({
+  }, WebviewView))
+  ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
     name: 'conversation.input.dock',
     id: 'webview-annotations',
     order: 15,
@@ -147,5 +146,5 @@ export function apply(ctx: ClientContext): void {
         activatePreviewTab(document, t('view.tab'))
       },
     }),
-  }, DraftOverlayBar), 'dsh-web-review: annotations dock')
+  }, DraftOverlayBar))
 }

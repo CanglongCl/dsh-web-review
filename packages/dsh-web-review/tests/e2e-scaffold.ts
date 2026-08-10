@@ -22,6 +22,7 @@ import {
   WELCOME_NOTICE_SETTINGS_NAMESPACE,
   WELCOME_NOTICE_VERSION,
 } from '@deepseek-ai/dsh-client-ui-settings-general'
+import { resolveHarnessRoot } from '../../../scripts/harness-path.ts'
 
 /** Repo root (dsh-web-review). */
 export const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
@@ -67,7 +68,7 @@ export async function waitFor(check: () => Promise<boolean> | boolean, timeoutMs
 }
 
 /**
- * Start the dev instance (`dsh web --dev --config ./cordis.yml`, no bundle
+ * Start the dev instance (`dsh web --dev --patch ./cordis.yml`, no bundle
  * watch — the e2e asserts the built bundle) and the demo page server on
  * free ports. Returns the URLs plus a stopper.
  */
@@ -126,28 +127,25 @@ export async function startServices(): Promise<E2EServices> {
     '- id: telemetry-otel',
     '  disabled: true',
     // The blank-state probe message must fail instantly: patch the shipped
-    // llm-deepseek row (config replaces the whole row) with the same env
-    // refs plus a no-retry policy, so the turn settles and the session
-    // header stops churning.
+    // llm-deepseek row with a no-retry policy, so the turn settles and the
+    // session header stops churning. Endpoint and credential resolution stay
+    // on the product's environment/settings path.
     '- id: llm-deepseek',
     '  config:',
-    '    apiKey: !!js process.env.DEEPSEEK_API_KEY',
-    '    baseURL: !!js process.env.DEEPSEEK_BASE_URL',
     '    retryPolicy:',
     '      mode: normal',
     '      maxRetries: 0',
     '',
   ].join('\n'))
 
-  const harness = process.env.DSH_HARNESS ?? join(REPO_ROOT, '..', 'deepseek-harness')
-  const bin = join(harness, 'apps/cli/src/bin.ts')
-  const tsx = join(harness, 'node_modules/tsx/dist/esm/index.mjs')
-  const web = spawn(process.execPath, [
-    '--import', tsx, bin, 'web',
+  const harness = resolveHarnessRoot(REPO_ROOT)
+  const bin = join(harness, 'bin', 'dsh')
+  const web = spawn(bin, [
+    'web',
     '--dev',
     '--host', '127.0.0.1',
     '--port', String(webPort),
-    '--config', overlayPath,
+    '--patch', overlayPath,
   ], {
     cwd: REPO_ROOT,
     stdio: ['ignore', 'pipe', 'pipe'],

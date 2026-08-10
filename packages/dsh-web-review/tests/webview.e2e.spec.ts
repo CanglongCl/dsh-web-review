@@ -1,5 +1,5 @@
 /**
- * Real GUI + proxy + picker + send-time `additionalContexts` acceptance.
+ * Real GUI + proxy + picker + send-time pre-step context acceptance.
  * Fixed sleeps are deliberately absent: the composer capsule's ready state
  * is the browser-visible host acknowledgement boundary.
  */
@@ -253,7 +253,7 @@ describe('dsh-web-review e2e', () => {
     expect(contextText).toContain('Browser annotation:')
     expect(contextText).toContain('Visible viewport at edit time:')
     expect(contextText).toContain('- color: rgb(255, 255, 255) -> #613838')
-    expect(contextText).toContain('- text: \\"魔法 UI 演示页\\" -> \\"Reviewed magic UI\\"')
+    expect(contextText).toContain('- text: "魔法 UI 演示页" -> "Reviewed magic UI"')
     expect(contextText).not.toContain('- font-size:')
     await page.close()
   })
@@ -305,8 +305,8 @@ describe('dsh-web-review e2e', () => {
     expect(contextText).toContain('untrusted page evidence')
     expect(contextText).toContain('Comment (user-authored)')
     expect(contextText).toContain('Make the button color darker.')
-    expect(contextText).toContain('"kind": "plugin"')
-    expect(contextText).toContain('"plugin": "dsh-web-review"')
+    expect(await contextBody.locator('[data-context-fields] dt').allTextContents()).toContain('plugin')
+    expect(await contextBody.locator('[data-context-fields] dd').allTextContents()).toContain('dsh-web-review')
 
     const userRows = page.locator('[data-chat-flow-kind="user"]')
     const user = userRows.filter({ hasText: 'apply' }).last()
