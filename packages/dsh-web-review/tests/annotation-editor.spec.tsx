@@ -38,6 +38,7 @@ describe('AnnotationEditor', () => {
         t={t}
         onCancel={vi.fn()}
         onConfirm={confirm}
+        onSelectElement={vi.fn()}
       />,
     )
     const editor = document.querySelector('[data-webview-annotation-editor]') as HTMLDivElement
@@ -79,6 +80,7 @@ describe('AnnotationEditor', () => {
         t={t}
         onCancel={cancel}
         onConfirm={vi.fn()}
+        onSelectElement={vi.fn()}
       />,
     )
     fireEvent.click(screen.getByRole('button', { name: zh['editor.adjust'] }))
@@ -103,6 +105,7 @@ describe('AnnotationEditor', () => {
         t={t}
         onCancel={vi.fn()}
         onConfirm={vi.fn()}
+        onSelectElement={vi.fn()}
       />,
     )
     fireEvent.click(screen.getByRole('button', { name: zh['editor.adjust'] }))
@@ -135,5 +138,123 @@ describe('AnnotationEditor', () => {
     expect(element.style.fontSize).toBe('31px')
     fireEvent.keyDown(fontSize, { key: 'Escape' })
     expect(element.style.fontSize).toBe('16px')
+  })
+
+  it('opens a mutually exclusive hierarchy selector and supports canvas shortcuts', () => {
+    const frame = document.createElement('iframe')
+    document.body.appendChild(frame)
+    frame.contentDocument!.write('<!doctype html><html><body><main><div class="card"><h3>Title</h3><p>Copy</p></div><div>Sibling</div></main></body></html>')
+    frame.contentDocument!.close()
+    const card = frame.contentDocument!.querySelector('.card') as HTMLElement
+    const select = vi.fn()
+    render(
+      <AnnotationEditor
+        id="p1"
+        patch={createLivePatch(card)}
+        frame={frame}
+        comment="Keep this comment"
+        changes={[]}
+        textChange={null}
+        t={t}
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+        onSelectElement={select}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: zh['editor.select'] })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: zh['editor.select'] }))
+    expect(document.querySelector('[data-webview-element-selector]')).toBeTruthy()
+    expect(screen.getByRole('button', { name: zh['editor.select.child'] })).toBeTruthy()
+    expect(screen.getByRole('button', { name: zh['editor.select.child'] }).textContent).toContain(zh['editor.select.child.short'])
+    expect(screen.getByRole('button', { name: zh['editor.select.previousSibling'] }).textContent).toContain(zh['editor.select.previousSibling.short'])
+    expect(screen.getByRole('button', { name: zh['editor.select.sibling'] }).textContent).toContain(zh['editor.select.sibling.short'])
+    expect(document.querySelectorAll('[data-webview-element-selector] kbd')).toHaveLength(4)
+    expect(document.querySelector('[data-webview-element-selector]')?.textContent).not.toContain('当前元素')
+    const htmlDisclosure = screen.getByRole('button', { name: '收起 html' })
+    expect(htmlDisclosure.getAttribute('data-state')).toBe('expanded')
+    fireEvent.click(htmlDisclosure)
+    expect(screen.getByRole('button', { name: '展开 html' }).getAttribute('data-state')).toBe('collapsed')
+    expect(document.querySelector('[data-webview-element-selector] [aria-selected="true"]')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '展开 html' }))
+    expect(document.querySelector('[data-webview-element-selector] [aria-selected="true"]')).toBeTruthy()
+    expect(document.querySelector('[data-webview-element-selector]')?.textContent).not.toContain('点击元素可切换批注目标')
+    const pageKeydown = vi.fn()
+    frame.contentDocument!.addEventListener('keydown', pageKeydown)
+    fireEvent.keyDown(frame.contentDocument!.body, { key: 'Tab', code: 'Tab' })
+    expect(select).toHaveBeenLastCalledWith(frame.contentDocument!.querySelector('main > div:last-child'), 'Keep this comment', 'select', 'next-sibling')
+    expect(pageKeydown).not.toHaveBeenCalled()
+    const pageButton = frame.contentDocument!.createElement('button')
+    card.append(pageButton)
+    fireEvent.keyDown(pageButton, { key: 'Enter', code: 'Enter' })
+    expect(select).toHaveBeenLastCalledWith(card.querySelector('h3'), 'Keep this comment', 'select', 'child')
+    expect(pageKeydown).not.toHaveBeenCalled()
+    select.mockClear()
+    const currentTreeItem = document.querySelector('[data-webview-element-tree] [aria-selected="true"]') as HTMLLIElement
+    currentTreeItem.focus()
+    fireEvent.keyDown(currentTreeItem, { key: 'Tab', code: 'Tab' })
+    expect(select).toHaveBeenLastCalledWith(frame.contentDocument!.querySelector('main > div:last-child'), 'Keep this comment', 'select')
+    select.mockClear()
+    fireEvent.keyDown(currentTreeItem, { key: 'Enter', code: 'Enter' })
+    expect(select).toHaveBeenLastCalledWith(card.querySelector('h3'), 'Keep this comment', 'select')
+    select.mockClear()
+    fireEvent.keyDown(currentTreeItem, { key: 'ArrowRight', code: 'ArrowRight' })
+    const focusedChild = document.activeElement as HTMLLIElement
+    expect(focusedChild.textContent).toContain('h3')
+    fireEvent.keyDown(focusedChild, { key: ' ', code: 'Space' })
+    expect(select).toHaveBeenLastCalledWith(card.querySelector('h3'), 'Keep this comment', 'select')
+    select.mockClear()
+    expect(document.querySelector('[data-webview-property-inspector]')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: zh['editor.adjust'] }))
+    expect(document.querySelector('[data-webview-element-selector]')).toBeNull()
+    expect(document.querySelector('[data-webview-property-inspector]')).toBeTruthy()
+
+    fireEvent.keyDown(frame.contentDocument!.body, { key: 'Enter', code: 'Enter' })
+    expect(select).toHaveBeenLastCalledWith(card.querySelector('h3'), 'Keep this comment', 'adjust', 'child')
+    select.mockClear()
+    fireEvent.keyDown(screen.getByPlaceholderText(zh['editor.comment']), { key: 'Tab', code: 'Tab' })
+    expect(select).not.toHaveBeenCalled()
+  })
+
+  it('keeps unavailable navigation keys from falling through to the iframe page', () => {
+    const { frame, element } = fixture()
+    const pageKeydown = vi.fn()
+    const select = vi.fn()
+    frame.contentDocument!.addEventListener('keydown', pageKeydown)
+    render(
+      <AnnotationEditor
+        id="leaf"
+        patch={createLivePatch(element)}
+        frame={frame}
+        comment=""
+        changes={[]}
+        textChange={null}
+        t={t}
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+        onSelectElement={select}
+      />,
+    )
+
+    expect(document.activeElement).toBe(document.querySelector('[data-webview-annotation-editor]'))
+
+    fireEvent.keyDown(element, { key: 'Enter', code: 'Enter' })
+    expect(select).not.toHaveBeenCalled()
+    expect(pageKeydown).not.toHaveBeenCalled()
+  })
+
+  it('shows navigation feedback only while the element tree is closed', () => {
+    const { frame, element } = fixture()
+    const props = {
+      id: 'feedback', patch: createLivePatch(element), frame, comment: '', changes: [], textChange: null,
+      t, onCancel: vi.fn(), onConfirm: vi.fn(), onSelectElement: vi.fn(),
+      navigationFeedback: { action: 'parent' as const, sequence: 1 },
+    }
+    const view = render(<AnnotationEditor {...props} />)
+    expect(document.querySelector('[data-webview-navigation-feedback]')?.textContent).toContain('h1')
+    view.unmount()
+    render(<AnnotationEditor {...props} initialMode="select" />)
+    expect(document.querySelector('[data-webview-navigation-feedback]')).toBeNull()
   })
 })

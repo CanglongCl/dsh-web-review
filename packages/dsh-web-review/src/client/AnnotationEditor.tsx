@@ -38,6 +38,14 @@ import {
 import { PROPERTY_BY_NAME, PROPERTY_GROUPS, type PropertyControl } from './property-editor-config.ts'
 import type { WebviewKey } from './locales.ts'
 import { RadiusControl, ShadowControl, SizeControl, TransformControl } from './CompositeControls.tsx'
+import { ElementSelector } from './ElementSelector.tsx'
+import {
+  elementNavigationAction,
+  elementTreeDetail,
+  navigateElement,
+  type ElementNavigationAction,
+} from './element-navigation.ts'
+import { placeFloatingEditor } from './floating-position.ts'
 import css from './AnnotationEditor.module.css'
 
 export interface AnnotationEditorValue {
@@ -54,9 +62,29 @@ export interface AnnotationEditorProps {
   comment: string
   changes: readonly AnnotationStyleChange[]
   textChange: AnnotationTextChange | null | undefined
+  initialMode?: AnnotationEditorMode
+  navigationFeedback?: ElementNavigationFeedback | null
   t: Translate<WebviewKey>
   onCancel: () => void
   onConfirm: (value: AnnotationEditorValue) => void
+  onSelectElement: (element: Element, comment: string, mode: AnnotationEditorMode, action?: ElementNavigationAction) => void
+}
+
+/** Mutually exclusive surface shown below the annotation compose row. */
+export type AnnotationEditorMode = 'collapsed' | 'select' | 'adjust'
+
+/** One canvas navigation acknowledgement that survives editor re-anchoring. */
+export interface ElementNavigationFeedback {
+  action: ElementNavigationAction
+  sequence: number
+}
+
+function navigationTargetLabel(element: Element, t: Translate<WebviewKey>): string {
+  const tag = element.tagName.toLowerCase()
+  const detail = elementTreeDetail(element)
+  if (detail.kind === 'children') return `${tag} · ${t('editor.select.children', { count: String(detail.count) })}`
+  if (detail.kind === 'empty') return tag
+  return `${tag} · “${detail.text}”`
 }
 
 function validCssValue(element: Element, property: EditableStyleProperty, value: string): boolean {
@@ -72,6 +100,14 @@ function AdjustIcon(): JSX.Element {
       <path d="M2 4h4m3 0h5M2 12h5m3 0h4M6 2v4m4 4v4" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" />
       <circle cx="7.5" cy="4" r="1.5" fill="white" stroke="currentColor" strokeWidth="1.2" />
       <circle cx="8.5" cy="12" r="1.5" fill="white" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  )
+}
+
+function SelectIcon(): JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M1.5 2.5h13v11h-13zM5 2.5v11M1.5 6h3.5M1.5 10h3.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -95,7 +131,8 @@ const four = <T,>(values: readonly T[]): [T, T, T, T] => [values[0]!, values[1]!
 /** Host-owned, DSH-styled property inspector with reversible iframe preview. */
 export function AnnotationEditor({
   patch, frame, comment: initialComment, changes: initialChanges,
-  textChange: initialTextChange, t, onCancel, onConfirm,
+  textChange: initialTextChange, initialMode = 'collapsed', navigationFeedback = null,
+  t, onCancel, onConfirm, onSelectElement,
 }: AnnotationEditorProps) {
   const initialMap = useMemo(() => new Map(initialChanges.map(change => [change.property, change])), [initialChanges])
   const originals = useMemo(() => new Map(
@@ -105,7 +142,7 @@ export function AnnotationEditor({
     ]),
   ), [initialMap, patch])
   const [comment, setComment] = useState(initialComment)
-  const [expanded, setExpanded] = useState(false)
+  const [mode, setMode] = useState<AnnotationEditorMode>(initialMode)
   const [values, setValues] = useState<Map<EditableStyleProperty, string>>(
     () => new Map([...originals].map(([property, before]) => [property, initialMap.get(property)?.after ?? before])),
   )
@@ -130,6 +167,7 @@ export function AnnotationEditor({
   const normalStyleRef = useRef('normal')
   const [, forcePosition] = useState(0)
   const editorRef = useRef<HTMLDivElement | null>(null)
+  const [visibleFeedback, setVisibleFeedback] = useState(navigationFeedback)
 
   const valueOf = (property: EditableStyleProperty): string => values.get(property) ?? originals.get(property) ?? ''
   const changed = (property: EditableStyleProperty): boolean => valueOf(property) !== (originals.get(property) ?? '')
@@ -150,7 +188,19 @@ export function AnnotationEditor({
     }
   }, [frame])
 
-  useEffect(() => { forcePosition(value => value + 1) }, [expanded])
+  useEffect(() => { forcePosition(value => value + 1) }, [mode])
+
+  useEffect(() => {
+    if (mode !== 'collapsed') return
+    editorRef.current?.focus({ preventScroll: true })
+  }, [mode, patch])
+
+  useEffect(() => {
+    setVisibleFeedback(navigationFeedback)
+    if (navigationFeedback === null) return
+    const timeout = window.setTimeout(() => { setVisibleFeedback(null) }, 900)
+    return () => { window.clearTimeout(timeout) }
+  }, [navigationFeedback])
 
   const cancel = (): void => {
     restoreAll(patch)
@@ -175,6 +225,29 @@ export function AnnotationEditor({
       viewport,
     })
   }
+
+  const moveSelection = (event: KeyboardEvent, capturePageActions = false): void => {
+    const action = elementNavigationAction(event, { capturePageActions })
+    if (action === null) return
+    const target = navigateElement(patch.element, action)
+    if (target === null && !capturePageActions) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.stopImmediatePropagation()
+    if (target === null) return
+    onSelectElement(target, comment, mode, action)
+  }
+
+  useEffect(() => {
+    const win = frame.contentWindow
+    if (win === null) return
+    // Fallback for an explicitly refocused iframe. The normal selection flow
+    // moves focus to the host editor so page-owned window listeners never see
+    // hierarchy shortcuts in the first place.
+    const onFrameKeyDown = (event: KeyboardEvent): void => { moveSelection(event, true) }
+    win.addEventListener('keydown', onFrameKeyDown, true)
+    return () => { win.removeEventListener('keydown', onFrameKeyDown, true) }
+  }, [frame, patch, comment, mode, onSelectElement])
 
   const updateProperty = (property: EditableStyleProperty, next: string): void => {
     setValues(current => new Map(current).set(property, next))
@@ -301,29 +374,44 @@ export function AnnotationEditor({
   }
 
   const rect = patch.element.getBoundingClientRect()
-  const width = expanded ? Math.min(400, Math.max(280, frame.clientWidth - 16)) : Math.min(330, Math.max(240, frame.clientWidth - 16))
-  const measuredHeight = editorRef.current?.offsetHeight ?? (expanded ? 560 : 54)
-  const left = Math.min(Math.max(8, rect.left), Math.max(8, frame.clientWidth - width - 8))
-  const above = rect.top - measuredHeight - 8
-  const largeTarget = rect.height >= frame.clientHeight * 0.6
-  const top = largeTarget
-    ? Math.min(Math.max(8, rect.top + 16), Math.max(8, frame.clientHeight - measuredHeight - 8))
-    : Math.max(8, above >= 8 ? above : Math.min(rect.bottom + 8, Math.max(8, frame.clientHeight - measuredHeight - 8)))
+  const preferredWidth = mode === 'select' ? 414 : mode === 'adjust' ? 400 : 374
+  const width = Math.min(preferredWidth, Math.max(280, frame.clientWidth - 16))
+  // A mode switch renders before the existing ref reports the new panel's
+  // height. Use the expanded estimate until its larger layout is measurable,
+  // otherwise the card can anchor like the collapsed pill and clip below the
+  // iframe viewport for one stable render.
+  const preferredHeight = mode === 'select' ? 430 : mode === 'adjust' ? 560 : 54
+  const measuredHeight = Math.max(editorRef.current?.scrollHeight ?? 0, preferredHeight)
+  const placement = placeFloatingEditor({
+    target: rect,
+    surfaceWidth: frame.clientWidth,
+    surfaceHeight: frame.clientHeight,
+    editorWidth: width,
+    editorHeight: measuredHeight,
+    minHeight: mode === 'select' ? 260 : mode === 'adjust' ? 300 : 54,
+  })
 
   return (
     <div
       ref={editorRef}
       className={css.editor}
-      style={{ left, top, width }}
+      style={{ left: placement.left, top: placement.top, width, maxHeight: placement.maxHeight }}
       data-webview-annotation-editor=""
+      data-placement={placement.side}
+      tabIndex={-1}
       onKeyDown={(event) => {
+        if (event.target === event.currentTarget) moveSelection(event.nativeEvent)
         if (event.key !== 'Escape' || event.defaultPrevented) return
         event.preventDefault()
-        cancel()
+        if (mode === 'select') setMode('collapsed')
+        else cancel()
       }}
     >
       <div className={css.composeRow}>
-        <button type="button" className={expanded ? `${css.adjust} ${css.adjustActive}` : css.adjust} aria-label={t('editor.adjust')} title={t('editor.adjust')} aria-expanded={expanded} onClick={() => { setExpanded(value => !value) }}>
+        <button type="button" className={mode === 'select' ? `${css.adjust} ${css.adjustActive}` : css.adjust} aria-label={t('editor.select')} title={t('editor.select')} aria-expanded={mode === 'select'} onClick={() => { setMode(value => value === 'select' ? 'collapsed' : 'select') }}>
+          <SelectIcon />
+        </button>
+        <button type="button" className={mode === 'adjust' ? `${css.adjust} ${css.adjustActive}` : css.adjust} aria-label={t('editor.adjust')} title={t('editor.adjust')} aria-expanded={mode === 'adjust'} onClick={() => { setMode(value => value === 'adjust' ? 'collapsed' : 'adjust') }}>
           <AdjustIcon />
         </button>
         <input
@@ -331,21 +419,45 @@ export function AnnotationEditor({
           value={comment}
           maxLength={4000}
           placeholder={t('editor.comment')}
-          autoFocus
           onChange={event => { setComment(event.target.value) }}
           onKeyDown={(event) => {
-            if (event.key === 'Escape') { event.preventDefault(); cancel() }
+            if (event.key === 'Escape') { event.preventDefault(); if (mode === 'select') setMode('collapsed'); else cancel() }
             if (event.key === 'Enter') { event.preventDefault(); confirm() }
           }}
         />
-        {!expanded && (
+        {mode === 'collapsed' && (
           <button type="button" className={css.quickConfirm} aria-label={t('editor.confirm')} disabled={!canConfirm} onClick={confirm}>
             <IconCheckOutline16 size={16} />
           </button>
         )}
       </div>
 
-      {expanded && (
+      {mode !== 'select' && visibleFeedback !== null && (
+        <div
+          key={visibleFeedback.sequence}
+          className={css.navigationFeedbackSlot}
+          data-webview-navigation-feedback=""
+          data-action={visibleFeedback.action}
+          role="status"
+          aria-live="polite"
+        >
+          <div className={css.navigationFeedback}>
+            <span className={css.navigationGlyph} aria-hidden>&lt;&gt;</span>
+            <span>{t('editor.select.switched', { target: navigationTargetLabel(patch.element, t) })}</span>
+          </div>
+        </div>
+      )}
+
+      {mode === 'select' && frame.contentDocument?.documentElement !== undefined && frame.contentDocument?.documentElement !== null && (
+        <ElementSelector
+          root={frame.contentDocument.documentElement}
+          current={patch.element}
+          t={t}
+          onSelect={element => { onSelectElement(element, comment, mode) }}
+        />
+      )}
+
+      {mode === 'adjust' && (
         <>
           <div className={css.inspector} data-webview-property-inspector="">
             {originalText !== undefined && (

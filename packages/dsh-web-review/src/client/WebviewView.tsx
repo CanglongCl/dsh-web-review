@@ -40,7 +40,12 @@ import { proxyUrl } from '../rewrite.ts'
 import { ensurePicker, isSameOrigin, pickerOf, snapshotOf, type MarkerEntry, type PickerSurface } from './picker.ts'
 import type { ElementSnapshot } from './contract.ts'
 import type { PickItem } from './contract.ts'
-import { AnnotationEditor, type AnnotationEditorValue } from './AnnotationEditor.tsx'
+import {
+  AnnotationEditor,
+  type AnnotationEditorMode,
+  type AnnotationEditorValue,
+  type ElementNavigationFeedback,
+} from './AnnotationEditor.tsx'
 import {
   applyCommitted,
   createLivePatch,
@@ -48,6 +53,7 @@ import {
   type LiveElementPatch,
 } from './live-patch.ts'
 import { normalizePreviewUrl } from './navigation-url.ts'
+import { sameElement, type ElementNavigationAction } from './element-navigation.ts'
 import type { WebviewStore } from './stores.ts'
 import css from './WebviewView.module.css'
 
@@ -69,6 +75,11 @@ interface EditorSession {
   snapshot: ElementSnapshot
   existing: PickItem | null
   patch: LiveElementPatch
+  /** Original committed target retained until a re-anchor is confirmed. */
+  original: { element: Element; patch: LiveElementPatch } | null
+  comment: string
+  mode: AnnotationEditorMode
+  navigationFeedback: ElementNavigationFeedback | null
 }
 
 /** Stable pick id without depending on crypto.randomUUID availability. */
@@ -117,6 +128,7 @@ export function WebviewView({
   const [editor, setEditor] = useState<EditorSession | null>(null)
   const editorRef = useRef(editor)
   editorRef.current = editor
+  const navigationSequence = useRef(0)
   /** Exact inline/text rollback ledgers; DOM references never enter the store. */
   const patchRefs = useRef(new Map<string, LiveElementPatch>())
   /** Whether the current frame content is same-origin (picker-capable). */
@@ -169,8 +181,9 @@ export function WebviewView({
 
   const restoreEditorBaseline = (session: EditorSession): void => {
     restoreAll(session.patch)
-    if (session.existing === null) patchRefs.current.delete(session.id)
-    else applyCommitted(session.patch, session.existing.changes ?? [], session.existing.textChange)
+    if (session.original !== null && sameElement(session.original.element, session.element) && session.existing !== null) {
+      applyCommitted(session.original.patch, session.existing.changes ?? [], session.existing.textChange)
+    }
   }
 
   const closeEditor = (restore: boolean): void => {
@@ -183,14 +196,53 @@ export function WebviewView({
   const openEditor = (id: string, element: Element, existing: PickItem | null): void => {
     const current = editorRef.current
     if (current !== null && current.id !== id) restoreEditorBaseline(current)
-    let patch = patchRefs.current.get(id)
-    if (patch === undefined || patch.element !== element) {
+    let patch: LiveElementPatch
+    if (existing === null) {
       patch = createLivePatch(element)
-      if (existing !== null) applyCommitted(patch, existing.changes ?? [], existing.textChange)
+    } else {
+      patch = patchRefs.current.get(id) ?? createLivePatch(element)
+      if (patch.element !== element) patch = createLivePatch(element)
+      applyCommitted(patch, existing.changes ?? [], existing.textChange)
       patchRefs.current.set(id, patch)
     }
     pickerOf(frameRef.current)?.select(element)
-    setEditor({ id, element, snapshot: existing?.snapshot ?? snapshotOf(element), existing, patch })
+    setEditor({
+      id, element, snapshot: existing?.snapshot ?? snapshotOf(element), existing, patch,
+      original: existing === null ? null : { element, patch },
+      comment: existing?.comment ?? '', mode: 'collapsed', navigationFeedback: null,
+    })
+  }
+
+  /** Change the current edit transaction's target without carrying element diffs. */
+  const selectEditorElement = (
+    element: Element,
+    comment: string,
+    mode: AnnotationEditorMode,
+    action?: ElementNavigationAction,
+  ): void => {
+    const current = editorRef.current
+    if (current === null || sameElement(current.element, element)) return
+    restoreEditorBaseline(current)
+    const original = current.original
+    const returningToOriginal = original !== null && sameElement(original.element, element)
+    const patch = returningToOriginal && original !== null
+      ? original.patch
+      : createLivePatch(element)
+    pickerOf(frameRef.current)?.select(element)
+    if (action !== undefined) navigationSequence.current += 1
+    setEditor({
+      ...current,
+      element,
+      snapshot: returningToOriginal && current.existing !== null
+        ? current.existing.snapshot
+        : snapshotOf(element),
+      patch,
+      comment,
+      mode,
+      navigationFeedback: mode !== 'select' && action !== undefined
+        ? { action, sequence: navigationSequence.current }
+        : null,
+    })
   }
 
   /** Re-open the host editor (marker-circle click or dock focus signal). */
@@ -367,6 +419,10 @@ export function WebviewView({
       textChange: value.textChange,
       viewport: value.viewport,
     }
+    if (current.existing !== null && current.original !== null && !sameElement(current.original.element, current.element)) {
+      restoreAll(current.original.patch)
+    }
+    patchRefs.current.set(current.id, current.patch)
     pickRefs.current.set(current.id, current.element)
     if (current.existing === null) actions.addPick(pick)
     else actions.updatePick(current.id, pick)
@@ -504,16 +560,19 @@ export function WebviewView({
             : <div className={css.frameOverlay}>{t('panel.noUrl')}</div>}
           {editor !== null && frameRef.current !== null && (
             <AnnotationEditor
-              key={editor.id}
+              key={`${editor.id}:${editor.snapshot.cssPath}`}
               id={editor.id}
               patch={editor.patch}
               frame={frameRef.current}
-              comment={editor.existing?.comment ?? ''}
-              changes={editor.existing?.changes ?? []}
-              textChange={editor.existing?.textChange}
+              comment={editor.comment}
+              changes={editor.original !== null && sameElement(editor.original.element, editor.element) ? editor.existing?.changes ?? [] : []}
+              textChange={editor.original !== null && sameElement(editor.original.element, editor.element) ? editor.existing?.textChange : null}
+              initialMode={editor.mode}
+              navigationFeedback={editor.navigationFeedback}
               t={t}
               onCancel={() => { closeEditor(false) }}
               onConfirm={confirmEditor}
+              onSelectElement={selectEditorElement}
             />
           )}
         </div>

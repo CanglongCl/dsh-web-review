@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="980" viewBox="0 0 1440 980" role="img" aria-labelledby="title desc">
+  <title id="title">DSH 网页批注元素层级选择器 UI 原型</title>
+  <desc id="desc">左侧展示元素刚选中时的折叠浮层，右侧展示选择器展开后包含层级操作和元素树的浮层。</desc>
+  <defs>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#17191c" flood-opacity=".16"/>
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#17191c" flood-opacity=".08"/>
+    </filter>
+    <linearGradient id="hero" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#4c6ef5"/><stop offset="1" stop-color="#7950f2"/>
+    </linearGradient>
+    <style>
+      text { font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
+      .label { fill:#17191c; font-size:14px; font-weight:600; }
+      .body { fill:#4b4f57; font-size:13px; }
+      .muted { fill:#8b9098; font-size:12px; }
+      .tiny { fill:#727780; font-size:11px; }
+      .tag { fill:#17191c; font-size:13px; font-weight:600; }
+      .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .icon { fill:none; stroke:currentColor; stroke-width:1.45; stroke-linecap:round; stroke-linejoin:round; }
+    </style>
+  </defs>
+
+  <!-- Canvas and prototype headings -->
+  <rect width="1440" height="980" fill="#f3f4f6"/>
+  <text x="70" y="58" fill="#17191c" font-size="24" font-weight="700">元素层级选择器</text>
+  <text x="70" y="84" class="body">网页批注浮层 · DSH light theme · Desktop / 1440</text>
+  <g transform="translate(70 116)">
+    <rect width="126" height="30" rx="15" fill="#e8eefc"/><text x="63" y="20" text-anchor="middle" fill="#315fca" font-size="12" font-weight="600">01 · 选中元素</text>
+    <rect x="650" width="144" height="30" rx="15" fill="#e8eefc"/><text x="722" y="20" text-anchor="middle" fill="#315fca" font-size="12" font-weight="600">02 · 展开选择器</text>
+  </g>
+
+  <!-- Browser preview backgrounds -->
+  <g transform="translate(70 162)">
+    <rect width="610" height="720" rx="18" fill="#fff" stroke="#dfe1e5"/>
+    <rect width="610" height="48" rx="18" fill="#fafafa"/><path d="M0 48h610" stroke="#e3e5e8"/>
+    <circle cx="22" cy="24" r="5" fill="#dadde2"/><circle cx="39" cy="24" r="5" fill="#dadde2"/><circle cx="56" cy="24" r="5" fill="#dadde2"/>
+    <rect x="82" y="13" width="440" height="22" rx="11" fill="#eef0f2"/><text x="302" y="28" text-anchor="middle" class="tiny">http://localhost:5173</text>
+    <rect y="48" width="610" height="185" fill="url(#hero)"/>
+    <text x="305" y="124" text-anchor="middle" fill="#fff" font-size="26" font-weight="700">魔法 UI 演示页</text>
+    <text x="305" y="160" text-anchor="middle" fill="#eef1ff" font-size="14">选中元素并评论，让 AI 修改样式</text>
+    <rect x="30" y="270" width="170" height="190" rx="12" fill="#fff" stroke="#e7e9ec"/><rect x="220" y="270" width="170" height="190" rx="12" fill="#fff" stroke="#e7e9ec"/><rect x="410" y="270" width="170" height="190" rx="12" fill="#fff" stroke="#e7e9ec"/>
+    <text x="48" y="302" class="label">主按钮</text><text x="48" y="329" class="muted">用于提交表单的主要操作。</text>
+    <rect x="48" y="354" width="74" height="32" rx="7" fill="#4c6ef5"/><text x="85" y="375" text-anchor="middle" fill="#fff" font-size="13">提交</text>
+    <rect x="44" y="350" width="82" height="40" rx="9" fill="none" stroke="#fff" stroke-width="2"/><rect x="42" y="348" width="86" height="44" rx="10" fill="none" stroke="#4176e6" stroke-width="2" stroke-dasharray="4 3"/>
+    <text x="238" y="302" class="label">次要按钮</text><text x="238" y="329" class="muted">用于可逆的辅助操作。</text><rect x="238" y="354" width="74" height="32" rx="7" fill="#eef0f3"/><text x="275" y="375" text-anchor="middle" class="body">取消</text>
+    <text x="428" y="302" class="label">间距示例</text><text x="428" y="329" class="muted">卡片间距为 16px。</text><rect x="428" y="354" width="88" height="32" rx="7" fill="#eef0f3"/><text x="472" y="375" text-anchor="middle" class="body">了解更多</text>
+
+    <!-- Collapsed annotation editor -->
+    <g transform="translate(37 398)" filter="url(#shadow)">
+      <rect width="374" height="54" rx="18" fill="#fff" stroke="#dfe1e5"/>
+      <rect x="10" y="10" width="34" height="34" rx="17" fill="#e8eefc"/>
+      <g transform="translate(19 19)" color="#315fca"><path class="icon" d="M1.5 2.5h13v11h-13zM5 2.5v11M1.5 6h3.5M1.5 10h3.5"/></g>
+      <rect x="50" y="10" width="34" height="34" rx="17" fill="#f4f5f6"/>
+      <g transform="translate(59 19)" color="#4b4f57"><path class="icon" d="M0 3h4m3 0h7M0 11h5m3 0h6M4 1v4M8 9v4"/><circle cx="5.5" cy="3" r="1.3" fill="#fff"/><circle cx="6.5" cy="11" r="1.3" fill="#fff"/></g>
+      <text x="98" y="33" fill="#a9adb4" font-size="14">描述这些更改…</text>
+      <circle cx="347" cy="27" r="17" fill="#4176e6" opacity=".4"/><path d="m341 27 4 4 8-9" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <g transform="translate(37 474)"><path d="M17 0v22" stroke="#b7bbc2" stroke-dasharray="3 3"/><text x="29" y="11" class="body" font-weight="600">“选择”与“调整”并列</text><text x="29" y="31" class="muted">面板互斥，折叠态仍可使用层级快捷键</text></g>
+  </g>
+
+  <!-- Right preview -->
+  <g transform="translate(720 162)">
+    <rect width="650" height="720" rx="18" fill="#fff" stroke="#dfe1e5"/>
+    <rect width="650" height="48" rx="18" fill="#fafafa"/><path d="M0 48h650" stroke="#e3e5e8"/>
+    <circle cx="22" cy="24" r="5" fill="#dadde2"/><circle cx="39" cy="24" r="5" fill="#dadde2"/><circle cx="56" cy="24" r="5" fill="#dadde2"/>
+    <rect x="82" y="13" width="480" height="22" rx="11" fill="#eef0f2"/><text x="322" y="28" text-anchor="middle" class="tiny">http://localhost:5173</text>
+    <rect y="48" width="650" height="185" fill="url(#hero)"/>
+    <text x="325" y="124" text-anchor="middle" fill="#fff" font-size="26" font-weight="700">魔法 UI 演示页</text><text x="325" y="160" text-anchor="middle" fill="#eef1ff" font-size="14">选中元素并评论，让 AI 修改样式</text>
+    <rect x="30" y="270" width="180" height="190" rx="12" fill="#fff" stroke="#e7e9ec"/><rect x="235" y="270" width="180" height="190" rx="12" fill="#fff" stroke="#e7e9ec"/><rect x="440" y="270" width="180" height="190" rx="12" fill="#fff" stroke="#e7e9ec"/>
+    <text x="48" y="302" class="label">主按钮</text><text x="48" y="329" class="muted">用于提交表单的主要操作。</text><rect x="48" y="354" width="74" height="32" rx="7" fill="#4c6ef5"/><text x="85" y="375" text-anchor="middle" fill="#fff" font-size="13">提交</text>
+    <rect x="27" y="267" width="186" height="196" rx="14" fill="none" stroke="#4176e6" stroke-width="2"/>
+    <text x="253" y="302" class="label">次要按钮</text><text x="253" y="329" class="muted">用于可逆的辅助操作。</text><rect x="253" y="354" width="74" height="32" rx="7" fill="#eef0f3"/><text x="290" y="375" text-anchor="middle" class="body">取消</text>
+    <text x="458" y="302" class="label">间距示例</text><text x="458" y="329" class="muted">卡片间距为 16px。</text><rect x="458" y="354" width="88" height="32" rx="7" fill="#eef0f3"/><text x="502" y="375" text-anchor="middle" class="body">了解更多</text>
+
+    <!-- Expanded selector -->
+    <g transform="translate(18 100)" filter="url(#shadow)">
+      <rect width="414" height="514" rx="18" fill="#fff" stroke="#dfe1e5"/>
+      <rect x="10" y="10" width="34" height="34" rx="17" fill="#e8eefc"/>
+      <g transform="translate(19 19)" color="#315fca"><path class="icon" d="M1.5 2.5h13v11h-13zM5 2.5v11M1.5 6h3.5M1.5 10h3.5"/></g>
+      <rect x="50" y="10" width="34" height="34" rx="17" fill="#f4f5f6"/>
+      <g transform="translate(59 19)" color="#4b4f57"><path class="icon" d="M0 3h4m3 0h7M0 11h5m3 0h6M4 1v4M8 9v4"/></g>
+      <text x="98" y="33" fill="#a9adb4" font-size="14">描述这些更改…</text>
+      <circle cx="387" cy="27" r="17" fill="#4176e6" opacity=".4"/><path d="m381 27 4 4 8-9" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M0 54h414" stroke="#e5e7ea"/>
+
+      <!-- Navigation actions -->
+      <g transform="translate(12 66)">
+        <rect width="93" height="32" rx="8" fill="#f6f7f8" stroke="#e7e9ec"/><text x="10" y="21" class="tiny" font-weight="600">子级</text><rect x="66" y="8" width="17" height="16" rx="4" fill="#fff" stroke="#d9dce1"/><text x="74.5" y="19" text-anchor="middle" class="tiny">↵</text>
+        <rect x="99" width="93" height="32" rx="8" fill="#f6f7f8" stroke="#e7e9ec"/><text x="109" y="21" class="tiny" font-weight="600">父级</text><rect x="165" y="8" width="17" height="16" rx="4" fill="#fff" stroke="#d9dce1"/><text x="173.5" y="19" text-anchor="middle" class="tiny">\</text>
+        <rect x="198" width="93" height="32" rx="8" fill="#f6f7f8" stroke="#e7e9ec"/><text x="208" y="21" class="tiny" font-weight="600">上一个</text><rect x="261" y="8" width="20" height="16" rx="4" fill="#fff" stroke="#d9dce1"/><text x="271" y="19" text-anchor="middle" class="tiny">⇧⇥</text>
+        <rect x="297" width="91" height="32" rx="8" fill="#f6f7f8" stroke="#e7e9ec"/><text x="307" y="21" class="tiny" font-weight="600">下一个</text><rect x="361" y="8" width="17" height="16" rx="4" fill="#fff" stroke="#d9dce1"/><text x="369.5" y="19" text-anchor="middle" class="tiny">⇥</text>
+      </g>
+
+      <text x="18" y="142" class="tiny" font-weight="600" letter-spacing=".8">元素树</text>
+      <path d="M12 152h390" stroke="#eceef0"/>
+
+      <!-- Tree connectors -->
+      <path d="M30 169v269M51 203v201M72 237v133M93 271v65" fill="none" stroke="#e0e3e7"/>
+      <!-- html -->
+      <g transform="translate(12 158)"><path d="m8 11 4 4 4-4" fill="none" stroke="#727780" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><rect x="24" y="4" width="20" height="20" rx="5" fill="#f0f1f3"/><text x="34" y="18" text-anchor="middle" class="tiny code">&lt;&gt;</text><text x="52" y="18" class="tag code">html</text><text x="88" y="18" class="muted">2 个子元素</text></g>
+      <!-- body -->
+      <g transform="translate(33 192)"><path d="m8 11 4 4 4-4" fill="none" stroke="#727780" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><rect x="24" y="4" width="20" height="20" rx="5" fill="#f0f1f3"/><text x="34" y="18" text-anchor="middle" class="tiny code">&lt;&gt;</text><text x="52" y="18" class="tag code">body</text><text x="88" y="18" class="muted">3 个子元素</text></g>
+      <!-- section -->
+      <g transform="translate(54 226)"><path d="m8 11 4 4 4-4" fill="none" stroke="#727780" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><rect x="24" y="4" width="20" height="20" rx="5" fill="#f0f1f3"/><text x="34" y="18" text-anchor="middle" class="tiny code">&lt;&gt;</text><text x="52" y="18" class="tag code">section</text><text x="108" y="18" class="muted">“魔法 UI 演示页…”</text></g>
+      <!-- main -->
+      <g transform="translate(54 260)"><path d="m8 11 4 4 4-4" fill="none" stroke="#727780" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><rect x="24" y="4" width="20" height="20" rx="5" fill="#f0f1f3"/><text x="34" y="18" text-anchor="middle" class="tiny code">&lt;&gt;</text><text x="52" y="18" class="tag code">main</text><text x="90" y="18" class="muted">3 个子元素</text></g>
+      <!-- selected div -->
+      <g transform="translate(68 294)"><rect width="328" height="36" rx="9" fill="#e8eefc" stroke="#b9ccf7"/><rect width="3" height="20" x="0" y="8" rx="1.5" fill="#4176e6"/><path d="m10 15 4 4 4-4" fill="none" stroke="#315fca" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><rect x="28" y="8" width="20" height="20" rx="5" fill="#d9e5ff"/><text x="38" y="22" text-anchor="middle" class="tiny code" fill="#315fca">&lt;&gt;</text><text x="56" y="22" class="tag code" fill="#244fae">div</text><text x="82" y="22" class="muted" fill="#5071ba">3 个子元素</text></g>
+      <!-- child h3 -->
+      <g transform="translate(96 336)"><path d="m9 9 4 4-4 4" class="icon" stroke="#9a9ea5"/><rect x="24" y="4" width="20" height="20" rx="5" fill="#f0f1f3"/><text x="34" y="18" text-anchor="middle" class="tiny code">T</text><text x="52" y="18" class="tag code">h3</text><text x="77" y="18" class="muted">“主按钮”</text></g>
+      <!-- child p -->
+      <g transform="translate(96 370)"><path d="m9 9 4 4-4 4" class="icon" stroke="#9a9ea5"/><rect x="24" y="4" width="20" height="20" rx="5" fill="#f0f1f3"/><text x="34" y="18" text-anchor="middle" class="tiny code">T</text><text x="52" y="18" class="tag code">p</text><text x="66" y="18" class="muted">“用于提交表单的主要操作。”</text></g>
+      <!-- child button -->
+      <g transform="translate(96 404)"><path d="m9 9 4 4-4 4" class="icon" stroke="#9a9ea5"/><rect x="24" y="4" width="20" height="20" rx="5" fill="#f0f1f3"/><text x="34" y="18" text-anchor="middle" class="tiny code">T</text><text x="52" y="18" class="tag code">button</text><text x="101" y="18" class="muted">“提交”</text></g>
+      <!-- collapsed sibling divs -->
+      <g transform="translate(75 438)"><path d="m9 9 4 4-4 4" class="icon" stroke="#727780"/><rect x="24" y="4" width="20" height="20" rx="5" fill="#f0f1f3"/><text x="34" y="18" text-anchor="middle" class="tiny code">&lt;&gt;</text><text x="52" y="18" class="tag code">div</text><text x="78" y="18" class="muted">3 个子元素</text></g>
+      <g transform="translate(75 472)"><path d="m9 9 4 4-4 4" class="icon" stroke="#727780"/><rect x="24" y="4" width="20" height="20" rx="5" fill="#f0f1f3"/><text x="34" y="18" text-anchor="middle" class="tiny code">&lt;&gt;</text><text x="52" y="18" class="tag code">div</text><text x="78" y="18" class="muted">3 个子元素</text></g>
+      <rect x="400" y="160" width="4" height="340" rx="2" fill="#f0f1f3"/><rect x="400" y="278" width="4" height="108" rx="2" fill="#c8cbd0"/>
+    </g>
+  </g>
+
+  <!-- Footer notes -->
+  <g transform="translate(70 916)">
+    <rect width="1300" height="40" rx="12" fill="#fff" stroke="#dfe1e5"/>
+    <circle cx="22" cy="20" r="8" fill="#e8eefc"/><text x="22" y="24" text-anchor="middle" fill="#315fca" font-size="11" font-weight="700">i</text>
+    <text x="40" y="25" class="body">切换目标会先恢复旧元素的临时预览；评论草稿保留，旧元素的样式与文本 diff 不迁移到新元素。</text>
+    <text x="1278" y="25" text-anchor="end" class="tiny">Prototype v1 · 2026-08-11</text>
+  </g>
+</svg>

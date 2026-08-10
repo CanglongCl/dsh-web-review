@@ -22,7 +22,7 @@
 .composeRow {
   display: grid;
   flex: none;
-  grid-template-columns: 34px minmax(0, 1fr) 34px;
+  grid-template-columns: 34px 34px minmax(0, 1fr) 34px;
   align-items: center;
   gap: 6px;
   min-height: 52px;
@@ -75,6 +75,48 @@
 }
 
 .commentInput::placeholder { color: var(--dsw-alias-label-dimmed, #a9adb4); }
+
+.navigationFeedbackSlot {
+  flex: none;
+  height: 28px;
+  overflow: hidden;
+  animation: navigation-slot 900ms ease both;
+}
+
+.navigationFeedback {
+  --navigation-x: 0;
+  --navigation-y: -4px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 12px;
+  overflow: hidden;
+  border-top: 1px solid rgb(65 118 230 / 10%);
+  background: #f2f6ff;
+  color: var(--dsw-alias-label-secondary, #4b4f57);
+  font: 500 11px/16px system-ui, sans-serif;
+  white-space: nowrap;
+  animation: navigation-feedback 900ms ease both;
+}
+
+[data-action="parent"] .navigationFeedback { --navigation-y: 4px; }
+[data-action="previous-sibling"] .navigationFeedback { --navigation-x: 6px; --navigation-y: 0; }
+[data-action="next-sibling"] .navigationFeedback { --navigation-x: -6px; --navigation-y: 0; }
+.navigationFeedback > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.navigationGlyph { flex: none; color: #4176e6; font: 600 10px/16px ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+@keyframes navigation-feedback {
+  0% { opacity: 0; transform: translate(var(--navigation-x), var(--navigation-y)); }
+  16%, 78% { opacity: 1; transform: translate(0, 0); }
+  100% { opacity: 0; transform: translate(0, 0); }
+}
+
+@keyframes navigation-slot {
+  0% { height: 0; }
+  14%, 78% { height: 28px; }
+  100% { height: 0; }
+}
 
 .inspector {
   flex: 1 1 auto;
@@ -130,4 +172,16 @@
 
 @media (prefers-reduced-motion: reduce) {
   .editor * { scroll-behavior: auto; }
+  .navigationFeedbackSlot { animation-name: navigation-slot-reduced; }
+  .navigationFeedback { animation-name: navigation-feedback-reduced; }
+}
+
+@keyframes navigation-feedback-reduced {
+  0%, 100% { opacity: 0; }
+  10%, 85% { opacity: 1; }
+}
+
+@keyframes navigation-slot-reduced {
+  0%, 100% { height: 0; }
+  10%, 85% { height: 28px; }
 }

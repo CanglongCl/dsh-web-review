@@ -218,6 +218,46 @@ describe('WebviewView', () => {
     expect(store.getSnapshot().focusPickId).toBeNull()
   })
 
+  it('re-anchors an edit through hierarchy shortcuts without carrying old element diffs', () => {
+    const surface = mockPickerSurface()
+    vi.spyOn(pickerModule, 'ensurePicker').mockReturnValue(surface)
+    vi.spyOn(pickerModule, 'pickerOf').mockReturnValue(surface)
+    const store = renderView()
+    act(() => {
+      store.actions.setUrl('http://localhost:5173/')
+      store.actions.togglePickMode()
+    })
+    const frame = document.querySelector('iframe') as HTMLIFrameElement
+    frame.contentDocument!.write('<!doctype html><html><body><main><div class="card"><h3>Title</h3><button style="font-size: 16px">Submit</button></div></main></body></html>')
+    frame.contentDocument!.close()
+    fireEvent.load(frame)
+    const button = frame.contentDocument!.querySelector('button') as HTMLElement
+    const card = frame.contentDocument!.querySelector('.card') as HTMLElement
+    act(() => { surface.onPick?.(button) })
+
+    const comment = screen.getByPlaceholderText(zh['editor.comment']) as HTMLInputElement
+    fireEvent.change(comment, { target: { value: 'Move this annotation' } })
+    fireEvent.click(screen.getByRole('button', { name: zh['editor.adjust'] }))
+    fireEvent.change(screen.getByLabelText(zh['editor.property.fontSize']), { target: { value: '24px' } })
+    expect(button.style.fontSize).toBe('24px')
+
+    fireEvent.keyDown(frame.contentDocument!.body, { key: '\\', code: 'Backslash' })
+    expect(button.style.fontSize).toBe('16px')
+    expect(surface.select).toHaveBeenLastCalledWith(card)
+    expect((screen.getByPlaceholderText(zh['editor.comment']) as HTMLInputElement).value).toBe('Move this annotation')
+    expect(document.querySelector('[data-webview-property-inspector]')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: zh['editor.select'] }))
+    expect(document.querySelector('[data-webview-element-selector] [aria-selected="true"]')?.textContent).toContain('div')
+    fireEvent.click(screen.getByRole('button', { name: zh['editor.select'] }))
+    fireEvent.click(screen.getByRole('button', { name: zh['editor.confirm'] }))
+    expect(store.getSnapshot().picks[0]).toMatchObject({
+      comment: 'Move this annotation',
+      snapshot: { tagName: 'div', className: 'card' },
+      changes: [],
+    })
+  })
+
   it('shows preview and context-sync failures in the error strip', () => {
     const store = renderView()
     act(() => { store.actions.setError('preview failed') })

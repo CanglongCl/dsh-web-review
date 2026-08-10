@@ -31,9 +31,15 @@ edit, then:
 2. Enter a URL and press Enter. The page loads through `/webview-proxy` so the
    picker can access its document.
 3. Toggle **Add page comments** and click a page element. The solid-white host
-   editor accepts a comment; **Adjust** expands text, fill, typography,
+   editor accepts a comment; **Select** opens the DOM hierarchy and **Adjust** expands text, fill, typography,
    dimensions, layout, spacing, border, and effects controls. Changes preview
    live on the page, and each changed row can restore its original value.
+   The hierarchy toolbar moves to the first child, parent, previous sibling, or
+   next sibling. Each compact label includes a small shortcut keycap. The
+   focused preview canvas uses Enter, Backslash, Shift+Tab, and Tab for the same
+   actions and briefly identifies the new target below the comment field.
+   Inside the tree those shortcuts keep moving the selection, while arrow keys
+   navigate and expand/collapse visible rows.
 4. Confirm the editor. A numbered marker appears in the page and one compact
    annotation capsule appears above the stock composer. The preview is temporary
    and never edits workspace source.
