@@ -1,5 +1,5 @@
-/** Assistant message rows expose this stable semantic marker in ui-conversation. */
-const ASSISTANT_ROW = '[data-chat-flow-kind="assistant"]'
+/** Assistant message rows expose this semantic marker in Harness 0810. */
+const ASSISTANT_ROW = '[data-chat-flow-kind="assistant-step"]'
 
 /**
  * Resolve an assistant-authored HTTP(S) link from an ordinary left click.

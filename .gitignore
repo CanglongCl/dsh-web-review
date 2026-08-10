@@ -1,5 +1,6 @@
 node_modules/
 lib/
+# Official DSH bundle package output (rebuilt by `pnpm package:official`).
 dist/
 *.tsbuildinfo
 

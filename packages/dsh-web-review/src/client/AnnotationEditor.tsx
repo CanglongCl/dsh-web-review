@@ -22,6 +22,7 @@ import {
 } from './live-patch.ts'
 import {
   BoxModelControl,
+  type BoxModelLinks,
   ColorControl,
   InspectorRow,
   InspectorSection,
@@ -34,6 +35,7 @@ import {
   TextField,
   ToggleButton,
   ToggleGroup,
+  updateBoxModelLinks,
 } from './InspectorControls.tsx'
 import { PROPERTY_BY_NAME, PROPERTY_GROUPS, type PropertyControl } from './property-editor-config.ts'
 import type { WebviewKey } from './locales.ts'
@@ -112,6 +114,15 @@ function SelectIcon(): JSX.Element {
   )
 }
 
+function EyeIcon(): JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M2.2 8s2.15-3.7 5.8-3.7S13.8 8 13.8 8 11.65 11.7 8 11.7 2.2 8 2.2 8Z" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="8" cy="8" r="1.7" stroke="currentColor" strokeWidth="1.45" />
+    </svg>
+  )
+}
+
 function AlignIcon({ kind }: { kind: 'left' | 'center' | 'right' | 'justify' }) {
   const widths = kind === 'justify' ? [12, 12, 12] : [12, 8, 11]
   const x = (width: number) => kind === 'center' ? (14 - width) / 2 : kind === 'right' ? 14 - width : 0
@@ -143,14 +154,16 @@ export function AnnotationEditor({
   ), [initialMap, patch])
   const [comment, setComment] = useState(initialComment)
   const [mode, setMode] = useState<AnnotationEditorMode>(initialMode)
+  const [hidden, setHidden] = useState(false)
+  const [activeScrub, setActiveScrub] = useState<string | null>(null)
   const [values, setValues] = useState<Map<EditableStyleProperty, string>>(
     () => new Map([...originals].map(([property, before]) => [property, initialMap.get(property)?.after ?? before])),
   )
   const [invalid, setInvalid] = useState<Set<EditableStyleProperty>>(new Set())
   const originalText = patch.originalText?.value
   const [text, setText] = useState(initialTextChange?.after ?? originalText ?? '')
-  const [marginLinked, setMarginLinked] = useState(false)
-  const [paddingLinked, setPaddingLinked] = useState(false)
+  const [marginLinks, setMarginLinks] = useState<BoxModelLinks>({ vertical: false, horizontal: false, all: false })
+  const [paddingLinks, setPaddingLinks] = useState<BoxModelLinks>({ vertical: false, horizontal: false, all: false })
   const [flexControlsSeen, setFlexControlsSeen] = useState(() => {
     const display = initialMap.get('display')?.after ?? originals.get('display')
     return display === 'flex' || display === 'inline-flex'
@@ -168,6 +181,8 @@ export function AnnotationEditor({
   const [, forcePosition] = useState(0)
   const editorRef = useRef<HTMLDivElement | null>(null)
   const [visibleFeedback, setVisibleFeedback] = useState(navigationFeedback)
+  const visibleToggleRef = useRef<HTMLButtonElement | null>(null)
+  const hiddenToggleRef = useRef<HTMLButtonElement | null>(null)
 
   const valueOf = (property: EditableStyleProperty): string => values.get(property) ?? originals.get(property) ?? ''
   const changed = (property: EditableStyleProperty): boolean => valueOf(property) !== (originals.get(property) ?? '')
@@ -273,6 +288,9 @@ export function AnnotationEditor({
   }
 
   const reset = (property: EditableStyleProperty): void => { updateProperty(property, originals.get(property) ?? '') }
+  const scrubChange = (target: string) => (active: boolean): void => {
+    setActiveScrub(current => active ? target : current === target ? null : current)
+  }
 
   const numericFallback = (property: EditableStyleProperty): string => {
     if (property === 'line-height') {
@@ -290,7 +308,7 @@ export function AnnotationEditor({
     if (control === undefined) return null
     const label = propertyLabel(control, t)
     const value = valueOf(property)
-    if (control.kind === 'color') return <ColorControl label={label} value={value} onChange={next => { updateProperty(property, next) }} />
+    if (control.kind === 'color') return <ColorControl label={label} value={value} onScrubChange={scrubChange(property)} onChange={next => { updateProperty(property, next) }} />
     if (control.kind === 'menu') return <OptionMenu label={label} value={value} options={control.options ?? []} onChange={next => { updateProperty(property, next) }} />
     if (property === 'opacity') {
       const normalized = value.trim() === '' ? '1' : value
@@ -303,6 +321,7 @@ export function AnnotationEditor({
           min={0}
           max={100}
           invalid={invalid.has(property)}
+          onScrubChange={scrubChange(property)}
           onChange={(next) => {
             const percent = /^\s*(\d*\.?\d+)\s*%?\s*$/u.exec(next)
             updateProperty(property, percent?.[1] === undefined ? next : String(Number(percent[1]) / 100))
@@ -316,6 +335,7 @@ export function AnnotationEditor({
         value={value}
         fallbackValue={numericFallback(property)}
         invalid={invalid.has(property)}
+        onScrubChange={scrubChange(property)}
         onChange={next => { updateProperty(property, next) }}
         {...(control.step === undefined ? {} : { step: control.step })}
         {...(control.min === undefined ? {} : { min: control.min })}
@@ -331,7 +351,7 @@ export function AnnotationEditor({
     if (control === undefined) return null
     const label = propertyLabel(control, t)
     return (
-      <InspectorRow key={property} label={label} changed={changed(property)} resetLabel={`${t('editor.reset')} · ${label}`} onReset={() => { reset(property) }}>
+      <InspectorRow key={property} label={label} active={activeScrub === property} changed={changed(property)} resetLabel={`${t('editor.reset')} · ${label}`} onReset={() => { reset(property) }}>
         {renderControl(property)}
       </InspectorRow>
     )
@@ -355,18 +375,29 @@ export function AnnotationEditor({
   const showLayoutControls = layout || layoutControlsSeen
   const showPositionControls = positioned || positionControlsSeen
 
-  const spacing = (prefix: 'margin' | 'padding', linked: boolean, setLinked: (value: boolean) => void) => {
+  const spacing = (prefix: 'margin' | 'padding', links: BoxModelLinks, setLinks: (value: BoxModelLinks) => void) => {
     const properties = four(['top', 'right', 'bottom', 'left'].map(side => `${prefix}-${side}` as EditableStyleProperty))
+    const controls = four(properties.map(property => PROPERTY_BY_NAME.get(property)!))
+    const groupLabel = t(prefix === 'margin' ? 'editor.group.margin' : 'editor.group.padding')
     return (
-      <InspectorRow label={prefix === 'margin' ? 'Margin' : 'Padding'} staticLabel changed={properties.some(changed)} resetLabel={`${t('editor.reset')} · ${prefix}`} onReset={() => { properties.forEach(reset) }}>
+      <InspectorRow wide label={groupLabel} active={activeScrub === prefix} staticLabel changed={properties.some(changed)} resetLabel={`${t('editor.reset')} · ${groupLabel}`} onReset={() => { properties.forEach(reset) }}>
         <BoxModelControl
-          label={prefix === 'margin' ? 'Margin' : 'Padding'}
+          label={groupLabel}
+          sideLabels={four(controls.map(control => propertyLabel(control, t)))}
           values={four(properties.map(valueOf))}
-          linked={linked}
-          onLinkedChange={setLinked}
+          onScrubChange={scrubChange(prefix)}
+          links={links}
+          {...(prefix === 'padding' ? { min: 0 } : {})}
+          linkLabel={t('editor.action.linkValues')}
+          unlinkLabel={t('editor.action.unlinkValues')}
+          linkAllLabel={t('editor.action.linkAllValues')}
+          unlinkAllLabel={t('editor.action.unlinkAllValues')}
+          onLinkChange={(axis, linked) => {
+            setLinks(updateBoxModelLinks(links, axis, linked))
+          }}
           onChange={(index, next) => {
-            if (linked) properties.forEach(property => { updateProperty(property, next) })
-            else { const property = properties[index]; if (property !== undefined) updateProperty(property, next) }
+            const property = properties[index]
+            if (property !== undefined) updateProperty(property, next)
           }}
         />
       </InspectorRow>
@@ -390,47 +421,76 @@ export function AnnotationEditor({
     editorHeight: measuredHeight,
     minHeight: mode === 'select' ? 260 : mode === 'adjust' ? 300 : 54,
   })
+  const hiddenLeft = Math.min(
+    Math.max(8, placement.left + width - 36),
+    Math.max(8, frame.clientWidth - 44),
+  )
+
+  const hideEditor = (): void => {
+    setActiveScrub(null)
+    setHidden(true)
+    queueMicrotask(() => { hiddenToggleRef.current?.focus() })
+  }
+  const showEditor = (): void => {
+    setHidden(false)
+    queueMicrotask(() => { visibleToggleRef.current?.focus() })
+  }
 
   return (
-    <div
-      ref={editorRef}
-      className={css.editor}
-      style={{ left: placement.left, top: placement.top, width, maxHeight: placement.maxHeight }}
-      data-webview-annotation-editor=""
-      data-placement={placement.side}
-      tabIndex={-1}
-      onKeyDown={(event) => {
-        if (event.target === event.currentTarget) moveSelection(event.nativeEvent)
-        if (event.key !== 'Escape' || event.defaultPrevented) return
-        event.preventDefault()
-        if (mode === 'select') setMode('collapsed')
-        else cancel()
-      }}
-    >
-      <div className={css.composeRow}>
-        <button type="button" className={mode === 'select' ? `${css.adjust} ${css.adjustActive}` : css.adjust} aria-label={t('editor.select')} title={t('editor.select')} aria-expanded={mode === 'select'} onClick={() => { setMode(value => value === 'select' ? 'collapsed' : 'select') }}>
-          <SelectIcon />
-        </button>
-        <button type="button" className={mode === 'adjust' ? `${css.adjust} ${css.adjustActive}` : css.adjust} aria-label={t('editor.adjust')} title={t('editor.adjust')} aria-expanded={mode === 'adjust'} onClick={() => { setMode(value => value === 'adjust' ? 'collapsed' : 'adjust') }}>
-          <AdjustIcon />
-        </button>
-        <input
-          className={`${css.commentInput} dsh-wv-comment-input`}
-          value={comment}
-          maxLength={4000}
-          placeholder={t('editor.comment')}
-          onChange={event => { setComment(event.target.value) }}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') { event.preventDefault(); if (mode === 'select') setMode('collapsed'); else cancel() }
-            if (event.key === 'Enter') { event.preventDefault(); confirm() }
-          }}
-        />
-        {mode === 'collapsed' && (
-          <button type="button" className={css.quickConfirm} aria-label={t('editor.confirm')} disabled={!canConfirm} onClick={confirm}>
-            <IconCheckOutline16 size={16} />
+    <>
+      <div
+        ref={editorRef}
+        className={`${css.editor} ${hidden ? css.editorHidden : ''}`}
+        style={{ left: placement.left, top: placement.top, width, maxHeight: placement.maxHeight }}
+        data-webview-annotation-editor=""
+        data-placement={placement.side}
+        {...(activeScrub === null ? {} : { 'data-scrubbing': activeScrub })}
+        {...(hidden ? { 'data-editor-hidden': '' } : {})}
+        aria-hidden={hidden}
+        tabIndex={-1}
+        onKeyDown={(event) => {
+          if (event.target === event.currentTarget) moveSelection(event.nativeEvent)
+          if (event.key !== 'Escape' || event.defaultPrevented) return
+          event.preventDefault()
+          if (mode === 'select') setMode('collapsed')
+          else cancel()
+        }}
+      >
+        <div className={`${css.composeRow} ${mode !== 'collapsed' ? css.composeRowExpanded : ''}`}>
+          <button type="button" className={mode === 'select' ? `${css.adjust} ${css.adjustActive}` : css.adjust} aria-label={t('editor.select')} title={t('editor.select')} aria-expanded={mode === 'select'} onClick={() => { setMode(value => value === 'select' ? 'collapsed' : 'select') }}>
+            <SelectIcon />
           </button>
-        )}
-      </div>
+          <button type="button" className={mode === 'adjust' ? `${css.adjust} ${css.adjustActive}` : css.adjust} aria-label={t('editor.adjust')} title={t('editor.adjust')} aria-expanded={mode === 'adjust'} onClick={() => { setMode(value => value === 'adjust' ? 'collapsed' : 'adjust') }}>
+            <AdjustIcon />
+          </button>
+          <input
+            className={`${css.commentInput} dsh-wv-comment-input`}
+            value={comment}
+            maxLength={4000}
+            placeholder={t('editor.comment')}
+            onChange={event => { setComment(event.target.value) }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') { event.preventDefault(); if (mode === 'select') setMode('collapsed'); else cancel() }
+              if (event.key === 'Enter') { event.preventDefault(); confirm() }
+            }}
+          />
+          <button
+            ref={visibleToggleRef}
+            type="button"
+            className={css.visibilityToggle}
+            aria-label={t('editor.hide')}
+            title={t('editor.hide')}
+            aria-pressed={false}
+            onClick={hideEditor}
+          >
+            <EyeIcon />
+          </button>
+          {mode === 'collapsed' && (
+            <button type="button" className={css.quickConfirm} aria-label={t('editor.confirm')} disabled={!canConfirm} onClick={confirm}>
+              <IconCheckOutline16 size={16} />
+            </button>
+          )}
+        </div>
 
       {mode !== 'select' && visibleFeedback !== null && (
         <div
@@ -511,6 +571,7 @@ export function AnnotationEditor({
               <InspectorRow
                 wide
                 label={`${t('editor.property.width')} × ${t('editor.property.height')}`}
+                active={activeScrub === 'size'}
                 changed={changed('width') || changed('height')}
                 resetLabel={`${t('editor.reset')} · ${t('editor.group.size')}`}
                 onReset={() => { reset('width'); reset('height') }}
@@ -526,6 +587,7 @@ export function AnnotationEditor({
                   }}
                   onWidthChange={next => { updateProperty('width', next) }}
                   onHeightChange={next => { updateProperty('height', next) }}
+                  onScrubChange={scrubChange('size')}
                 />
               </InspectorRow>
               {row('display')}{row('position')}
@@ -535,13 +597,13 @@ export function AnnotationEditor({
             </InspectorSection>
 
             <InspectorSection label={t('editor.group.spacing')}>
-              {spacing('margin', marginLinked, setMarginLinked)}
-              {spacing('padding', paddingLinked, setPaddingLinked)}
+              {spacing('margin', marginLinks, setMarginLinks)}
+              {spacing('padding', paddingLinks, setPaddingLinks)}
             </InspectorSection>
 
             <InspectorSection label={t('editor.group.border')}>
               {row('border-width')}{row('border-style')}{row('border-color')}
-              <InspectorRow wide label={t('editor.property.borderRadius')} changed={changed('border-radius')} resetLabel={`${t('editor.reset')} · ${t('editor.property.borderRadius')}`} onReset={() => { reset('border-radius') }}>
+              <InspectorRow wide label={t('editor.property.borderRadius')} active={activeScrub === 'border-radius'} changed={changed('border-radius')} resetLabel={`${t('editor.reset')} · ${t('editor.property.borderRadius')}`} onReset={() => { reset('border-radius') }}>
                 <RadiusControl
                   label={t('editor.property.borderRadius')}
                   value={valueOf('border-radius')}
@@ -552,6 +614,7 @@ export function AnnotationEditor({
                   linkLabel={t('editor.action.linkValues')}
                   unlinkLabel={t('editor.action.unlinkValues')}
                   rawHint={t('editor.rawHint')}
+                  onScrubChange={scrubChange('border-radius')}
                   onChange={next => { updateProperty('border-radius', next) }}
                 />
               </InspectorRow>
@@ -563,7 +626,7 @@ export function AnnotationEditor({
             </InspectorSection>
 
             <InspectorSection label={t('editor.group.effects')} defaultOpen={false}>
-              <InspectorRow wide label={t('editor.property.boxShadow')} changed={changed('box-shadow')} resetLabel={`${t('editor.reset')} · ${t('editor.property.boxShadow')}`} onReset={() => { reset('box-shadow') }}>
+              <InspectorRow wide label={t('editor.property.boxShadow')} active={activeScrub === 'box-shadow'} changed={changed('box-shadow')} resetLabel={`${t('editor.reset')} · ${t('editor.property.boxShadow')}`} onReset={() => { reset('box-shadow') }}>
                 <ShadowControl
                   label={t('editor.property.boxShadow')}
                   value={valueOf('box-shadow')}
@@ -573,10 +636,11 @@ export function AnnotationEditor({
                     blur: t('editor.property.shadowBlur'), spread: t('editor.property.shadowSpread'),
                     color: t('editor.property.shadowColor'), inset: t('editor.property.shadowInset'),
                   }}
+                  onScrubChange={scrubChange('box-shadow')}
                   onChange={next => { updateProperty('box-shadow', next) }}
                 />
               </InspectorRow>
-              <InspectorRow wide label={t('editor.property.transform')} changed={changed('transform')} resetLabel={`${t('editor.reset')} · ${t('editor.property.transform')}`} onReset={() => { reset('transform') }}>
+              <InspectorRow wide label={t('editor.property.transform')} active={activeScrub === 'transform'} changed={changed('transform')} resetLabel={`${t('editor.reset')} · ${t('editor.property.transform')}`} onReset={() => { reset('transform') }}>
                 <TransformControl
                   label={t('editor.property.transform')}
                   value={valueOf('transform')}
@@ -585,6 +649,7 @@ export function AnnotationEditor({
                     translateX: t('editor.property.translateX'), translateY: t('editor.property.translateY'),
                     scaleX: t('editor.property.scaleX'), scaleY: t('editor.property.scaleY'), rotate: t('editor.property.rotate'),
                   }}
+                  onScrubChange={scrubChange('transform')}
                   onChange={next => { updateProperty('transform', next) }}
                 />
               </InspectorRow>
@@ -598,6 +663,24 @@ export function AnnotationEditor({
           </div>
         </>
       )}
-    </div>
+      </div>
+      <button
+        ref={hiddenToggleRef}
+        type="button"
+        className={`${css.visibilityFab} ${hidden ? '' : css.visibilityFabHidden}`}
+        style={{ left: hiddenLeft, top: placement.top }}
+        aria-label={t('editor.show')}
+        title={t('editor.show')}
+        aria-pressed={hidden}
+        onClick={showEditor}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape') return
+          event.preventDefault()
+          cancel()
+        }}
+      >
+        <EyeIcon />
+      </button>
+    </>
   )
 }

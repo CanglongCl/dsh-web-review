@@ -33,7 +33,7 @@ export function InspectorSection({ label, children, defaultOpen = true, onOpenCh
   )
 }
 
-export function InspectorRow({ label, children, changed = false, onReset, resetLabel, staticLabel = false, wide = false }: {
+export function InspectorRow({ label, children, changed = false, onReset, resetLabel, staticLabel = false, wide = false, active = false }: {
   label: string
   children: ReactNode
   changed?: boolean
@@ -41,9 +41,14 @@ export function InspectorRow({ label, children, changed = false, onReset, resetL
   resetLabel?: string
   staticLabel?: boolean
   wide?: boolean
+  active?: boolean
 }) {
   return (
-    <div className={clsx(css.row, wide && css.rowWide)} data-inspector-row="">
+    <div
+      className={clsx(css.row, wide && css.rowWide)}
+      data-inspector-row=""
+      {...(active ? { 'data-scrub-active': '' } : {})}
+    >
       <span className={clsx(css.rowLabel, staticLabel && css.rowLabelStatic)}>{label}</span>
       <span className={css.rowControl}>
         {children}
@@ -210,10 +215,11 @@ function formatted(number: number, unit: string): string {
   return `${String(Object.is(rounded, -0) ? 0 : rounded)}${unit}`
 }
 
-export function ScrubNumber({ label, value, onChange, step = 1, min, max, glyph = '↔', fallbackValue, invalid = false }: {
+export function ScrubNumber({ label, value, onChange, onScrubChange, step = 1, min, max, glyph = '↔', fallbackValue, invalid = false }: {
   label: string
   value: string
   onChange: (value: string) => void
+  onScrubChange?: ((active: boolean) => void) | undefined
   step?: number
   min?: number
   max?: number
@@ -222,21 +228,36 @@ export function ScrubNumber({ label, value, onChange, step = 1, min, max, glyph 
   invalid?: boolean
 }) {
   const drag = useRef<{ x: number; value: number; unit: string; started: boolean } | null>(null)
+  const scrubChangeRef = useRef(onScrubChange)
+  scrubChangeRef.current = onScrubChange
   const focusValue = useRef(value)
   const clamp = (number: number) => Math.min(max ?? Number.POSITIVE_INFINITY, Math.max(min ?? Number.NEGATIVE_INFINITY, number))
   const numericValue = () => parseNumeric(value) ?? (fallbackValue === undefined ? null : parseNumeric(fallbackValue))
+  const canScrub = numericValue() !== null
   const increment = (delta: number) => {
     const parsed = numericValue()
     if (parsed === null) return
     onChange(formatted(clamp(parsed.number + delta), parsed.unit))
   }
+  const finishDrag = (restore: boolean): void => {
+    const current = drag.current
+    if (current === null) return
+    if (restore && current.started) onChange(formatted(current.value, current.unit))
+    if (current.started) scrubChangeRef.current?.(false)
+    drag.current = null
+  }
+  useEffect(() => () => {
+    if (drag.current?.started === true) scrubChangeRef.current?.(false)
+  }, [])
   return (
-    <span className={css.numberWrap}>
+    <span className={css.numberWrap} data-webview-scrub-control="">
       <button
         type="button"
         className={css.numberHandle}
+        data-webview-scrub-handle=""
         aria-label={`${label} · 拖动调整`}
-        title={`${label} · 拖动调整`}
+        title={canScrub ? `${label} · 拖动调整` : `${label} · 当前值仅支持文本编辑`}
+        disabled={!canScrub}
         onPointerDown={(event) => {
           const parsed = numericValue()
           if (parsed === null) return
@@ -248,15 +269,15 @@ export function ScrubNumber({ label, value, onChange, step = 1, min, max, glyph 
           if (current === null) return
           const delta = event.clientX - current.x
           if (!current.started && Math.abs(delta) < 3) return
-          current.started = true
+          if (!current.started) {
+            current.started = true
+            scrubChangeRef.current?.(true)
+          }
           onChange(formatted(clamp(current.value + delta * step), current.unit))
         }}
-        onPointerUp={() => { drag.current = null }}
-        onPointerCancel={() => {
-          const current = drag.current
-          if (current !== null && current.started) onChange(formatted(current.value, current.unit))
-          drag.current = null
-        }}
+        onPointerUp={() => { finishDrag(false) }}
+        onPointerCancel={() => { finishDrag(true) }}
+        onLostPointerCapture={() => { finishDrag(false) }}
       >{glyph}</button>
       <input
         className={clsx(css.field, invalid && css.invalid)}
@@ -311,7 +332,7 @@ function cssColor(color: Rgba): string {
   return color.a >= 0.999 ? hexOf(color) : `rgba(${color.r}, ${color.g}, ${color.b}, ${Math.round(color.a * 1000) / 1000})`
 }
 
-export function ColorControl({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+export function ColorControl({ label, value, onChange, onScrubChange }: { label: string; value: string; onChange: (value: string) => void; onScrubChange?: ((active: boolean) => void) | undefined }) {
   const parsed = parseColor(value)
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -384,7 +405,7 @@ export function ColorControl({ label, value, onChange }: { label: string; value:
               if (next !== null) onChange(cssColor({ ...next, a: color.a }))
               else onChange(event.target.value)
             }} /></label>
-            <label><span className={css.popoverLabel}>Alpha</span><ScrubNumber label={`${label} · 透明度`} value={`${String(Math.round(color.a * 100))}%`} min={0} max={100} onChange={(next) => {
+            <label><span className={css.popoverLabel}>Alpha</span><ScrubNumber label={`${label} · 透明度`} value={`${String(Math.round(color.a * 100))}%`} min={0} max={100} onScrubChange={onScrubChange} onChange={(next) => {
               const numeric = parseNumeric(next)
               if (numeric !== null) onChange(cssColor({ ...color, a: numeric.number / 100 }))
             }} /></label>
@@ -395,22 +416,92 @@ export function ColorControl({ label, value, onChange }: { label: string; value:
   )
 }
 
-export function BoxModelControl({ label, values, linked, onLinkedChange, onChange }: {
+export interface BoxModelLinks {
+  vertical: boolean
+  horizontal: boolean
+  all: boolean
+}
+
+export function updateBoxModelLinks(links: BoxModelLinks, axis: keyof BoxModelLinks, linked: boolean): BoxModelLinks {
+  if (axis === 'all') {
+    return linked
+      ? { vertical: true, horizontal: true, all: true }
+      : { vertical: true, horizontal: true, all: false }
+  }
+  return { ...links, [axis]: linked, all: false }
+}
+
+export function BoxModelControl({ label, sideLabels, values, links, min, linkLabel, unlinkLabel, linkAllLabel, unlinkAllLabel, onLinkChange, onChange, onScrubChange }: {
   label: string
+  sideLabels: readonly [string, string, string, string]
   values: readonly [string, string, string, string]
-  linked: boolean
-  onLinkedChange: (linked: boolean) => void
+  links: BoxModelLinks
+  min?: number
+  linkLabel: string
+  unlinkLabel: string
+  linkAllLabel: string
+  unlinkAllLabel: string
+  onLinkChange: (axis: keyof BoxModelLinks, linked: boolean) => void
   onChange: (index: number, value: string) => void
+  onScrubChange?: ((active: boolean) => void) | undefined
 }) {
-  const names = ['上', '右', '下', '左'] as const
-  return (
-    <span className={css.boxModelWrap}>
-      <span className={css.boxModel}>
-        {values.map((value, index) => <ScrubNumber key={names[index]} label={`${label} · ${names[index]}`} value={value} fallbackValue="0px" onChange={next => { onChange(index, next) }} />)}
+  const glyphs = ['↑', '→', '↓', '←'] as const
+  const update = (index: number, next: string) => {
+    onChange(index, next)
+    if (links.all) {
+      values.forEach((_, otherIndex) => { if (otherIndex !== index) onChange(otherIndex, next) })
+      return
+    }
+    if (links.vertical && index === 0) onChange(2, next)
+    if (links.vertical && index === 2) onChange(0, next)
+    if (links.horizontal && index === 1) onChange(3, next)
+    if (links.horizontal && index === 3) onChange(1, next)
+  }
+  const field = (index: number) => <ScrubNumber
+    label={sideLabels[index] ?? label}
+    value={values[index] ?? ''}
+    glyph={glyphs[index] ?? '↔'}
+    {...(min === undefined ? {} : { min })}
+    onScrubChange={onScrubChange}
+    onChange={next => { update(index, next) }}
+  />
+  const axis = (first: number, second: number, key: keyof BoxModelLinks) => {
+    const linked = links[key]
+    const sides = `${sideLabels[first] ?? label} / ${sideLabels[second] ?? label}`
+    const action = linked ? unlinkLabel : linkLabel
+    const buttonLabel = `${action} · ${sides}`
+    return (
+      <span className={css.boxAxis}>
+        {field(first)}
+        {!links.all && (
+          <ToggleButton label={buttonLabel} pressed={linked} onToggle={() => { onLinkChange(key, !linked) }}>
+            <IconLinkOutline14 />
+          </ToggleButton>
+        )}
+        {links.all && <span aria-hidden />}
+        {field(second)}
       </span>
-      <ToggleButton label={`${label} · ${linked ? '取消联动' : '联动四边'}`} pressed={linked} onToggle={() => { onLinkedChange(!linked) }}>
-        {linked ? <IconLinkOutline14 /> : '⌁'}
-      </ToggleButton>
+    )
+  }
+  const canMerge = links.vertical && links.horizontal && !links.all
+  return (
+    <span className={clsx(css.boxModelWrap, canMerge && css.boxModelMergeReady, links.all && css.boxModelAllLinked)} role="group" aria-label={label}>
+      {axis(0, 2, 'vertical')}
+      {axis(3, 1, 'horizontal')}
+      {canMerge && (
+        <span className={css.boxAllLink}>
+          <ToggleButton label={linkAllLabel} pressed={false} onToggle={() => { onLinkChange('all', true) }}>
+            <IconLinkOutline14 />
+          </ToggleButton>
+        </span>
+      )}
+      {links.all && (
+        <span className={css.boxAllLink}>
+          <ToggleButton label={unlinkAllLabel} pressed onToggle={() => { onLinkChange('all', false) }}>
+            <IconLinkOutline14 />
+          </ToggleButton>
+        </span>
+      )}
     </span>
   )
 }
