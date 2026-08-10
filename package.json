@@ -1,14 +1,14 @@
 {
-  "name": "limao-magic-ui",
+  "name": "dsh-web-review",
   "private": true,
   "version": "0.0.1",
   "type": "module",
-  "description": "ui-webview plugin repo: webui right-side page preview + element annotation + AI-driven source edits",
+  "description": "dsh-web-review plugin repo: webui right-side page preview + element annotation + AI-driven source edits",
   "scripts": {
     "gen-config": "tsx scripts/gen-config.ts",
     "setup:harness": "tsx scripts/dev.ts --setup-only",
-    "build": "pnpm gen-config && pnpm --filter ui-webview build",
-    "build:watch": "pnpm --filter ui-webview watch",
+    "build": "pnpm gen-config && pnpm --filter @dsh-external/dsh-web-review build",
+    "build:watch": "pnpm --filter @dsh-external/dsh-web-review watch",
     "dev": "tsx scripts/dev.ts",
     "demo": "tsx demo/server.ts",
     "test": "pnpm build && vitest run",

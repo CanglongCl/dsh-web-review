@@ -12,11 +12,13 @@ const HARNESS = fileURLToPath(new URL('../deepseek-harness', import.meta.url))
  */
 export default defineConfig({
   resolve: {
+    dedupe: ['react', 'react-dom'],
     alias: {
       '@deepseek-ai/dsh-client-runtime/client': `${HARNESS}/packages/client/runtime/src/client/index.ts`,
       '@deepseek-ai/dsh-client-locale/client': `${HARNESS}/packages/client/locale/src/client/index.ts`,
       '@deepseek-ai/dsh-client-ui-slots': `${HARNESS}/packages/client/ui-slots/src/index.ts`,
       '@deepseek-ai/dsh-client-ui-conversation/client': `${HARNESS}/packages/client/ui-conversation/src/client/index.ts`,
+      '@deepseek-ai/dsh-client-ui-primitives': `${HARNESS}/packages/client/ui-primitives/src/index.ts`,
     },
   },
   test: {

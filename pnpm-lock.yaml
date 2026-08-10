@@ -48,7 +48,7 @@ importers:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@22.20.1)(jsdom@25.0.1)(lightningcss@1.33.0)(tsx@4.23.5)
 
-  packages/ui-webview:
+  packages/dsh-web-review:
     dependencies:
       css-selector-generator:
         specifier: ^3.9.2
@@ -93,6 +93,9 @@ importers:
       '@deepseek-ai/dsh-session':
         specifier: link:/Users/canglong/Program/deepseek-harness/packages/core/session
         version: link:../../../deepseek-harness/packages/core/session
+      '@deepseek-ai/dsh-system-prompt':
+        specifier: link:/Users/canglong/Program/deepseek-harness/packages/core/system-prompt
+        version: link:../../../deepseek-harness/packages/core/system-prompt
       '@types/react':
         specifier: ~18.3.1
         version: 18.3.31

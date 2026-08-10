@@ -18,7 +18,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
-const PKG = join(ROOT, 'packages', 'ui-webview')
+const PKG = join(ROOT, 'packages', 'dsh-web-review')
 const runE2e = process.argv.includes('--e2e')
 
 const FAILURES: string[] = []
@@ -83,11 +83,11 @@ assert(
 assert(
   'directory-import forwarding entry (index.ts) exists',
   () => existsSync(join(PKG, 'index.ts')),
-  () => 'packages/ui-webview/index.ts missing — the Loader cannot import the package directory without it',
+  () => 'packages/dsh-web-review/index.ts missing — the Loader cannot import the package directory without it',
 )
 
 // 5. Build.
-run('build (tsdown)', 'pnpm', ['--filter', 'ui-webview', 'build'])
+run('build (tsdown)', 'pnpm', ['--filter', '@dsh-external/dsh-web-review', 'build'])
 
 if (runE2e) {
   run('e2e (Playwright browser suite)', 'pnpm', ['test:e2e'])

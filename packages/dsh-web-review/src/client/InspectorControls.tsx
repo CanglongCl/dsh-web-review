@@ -1,0 +1,416 @@
+import { createPortal } from 'react-dom'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import {
+  IconChevronDownOutline14,
+  IconLinkOutline14,
+  IconRefreshOutline14,
+  Menu,
+  type MenuEntry,
+} from '@deepseek-ai/dsh-client-ui-primitives'
+import clsx from 'clsx'
+import css from './InspectorControls.module.css'
+
+export function InspectorSection({ label, children, defaultOpen = true, onOpenChange }: {
+  label: string
+  children: ReactNode
+  defaultOpen?: boolean
+  onOpenChange?: (open: boolean) => void
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <section className={css.section}>
+      <button type="button" className={css.sectionHeader} aria-expanded={open} onClick={() => {
+        setOpen((value) => {
+          onOpenChange?.(!value)
+          return !value
+        })
+      }}>
+        <span>{label}</span>
+        <IconChevronDownOutline14 className={clsx(css.sectionChevron, open && css.sectionChevronOpen)} />
+      </button>
+      {open && <div className={css.sectionBody}>{children}</div>}
+    </section>
+  )
+}
+
+export function InspectorRow({ label, children, changed = false, onReset, resetLabel, staticLabel = false, wide = false }: {
+  label: string
+  children: ReactNode
+  changed?: boolean
+  onReset?: () => void
+  resetLabel?: string
+  staticLabel?: boolean
+  wide?: boolean
+}) {
+  return (
+    <div className={clsx(css.row, wide && css.rowWide)} data-inspector-row="">
+      <span className={clsx(css.rowLabel, staticLabel && css.rowLabelStatic)}>{label}</span>
+      <span className={css.rowControl}>
+        {children}
+        {changed && onReset !== undefined && (
+          <button type="button" className={css.reset} aria-label={resetLabel} title={resetLabel} onClick={onReset}>
+            <IconRefreshOutline14 />
+          </button>
+        )}
+        {(!changed || onReset === undefined) && <span className={css.resetPlaceholder} aria-hidden />}
+      </span>
+    </div>
+  )
+}
+
+export function OptionMenu({ label, value, options, onChange }: {
+  label: string
+  value: string
+  options: readonly string[]
+  onChange: (value: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const items: MenuEntry[] = (options.includes(value) ? options : [value, ...options]).map(option => ({ id: option, label: option }))
+  const close = () => { setOpen(false); queueMicrotask(() => { triggerRef.current?.focus() }) }
+  return (
+    <Menu
+      open={open}
+      compact
+      portal
+      align="end"
+      items={items}
+      selectedId={value}
+      onSelect={(next) => { onChange(next); close() }}
+      onClose={close}
+      anchor={(
+        <button ref={triggerRef} type="button" className={css.menuTrigger} aria-label={label} aria-haspopup="menu" aria-expanded={open} onClick={() => { setOpen(next => !next) }}>
+          <span className={css.menuValue}>{value}</span>
+          <IconChevronDownOutline14 className={css.menuChevron} />
+        </button>
+      )}
+    />
+  )
+}
+
+export interface SegmentOption { value: string; label: string; content: ReactNode }
+
+export function SegmentedControl({ label, value, options, onChange }: {
+  label: string
+  value: string
+  options: readonly SegmentOption[]
+  onChange: (value: string) => void
+}) {
+  const refs = useRef<Array<HTMLButtonElement | null>>([])
+  return (
+    <span className={css.segments} role="group" aria-label={label}>
+      {options.map((option, index) => (
+        <button
+          key={option.value}
+          ref={(node) => { refs.current[index] = node }}
+          type="button"
+          className={clsx(css.toggle, value === option.value && css.toggleActive)}
+          aria-label={option.label}
+          aria-pressed={value === option.value}
+          title={option.label}
+          onClick={() => { onChange(option.value) }}
+          onKeyDown={(event) => {
+            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+            event.preventDefault()
+            const delta = event.key === 'ArrowRight' ? 1 : -1
+            const next = (index + delta + options.length) % options.length
+            const optionAt = options[next]
+            if (optionAt !== undefined) onChange(optionAt.value)
+            refs.current[next]?.focus()
+          }}
+        >{option.content}</button>
+      ))}
+    </span>
+  )
+}
+
+export function ToggleButton({ label, pressed, onToggle, children }: {
+  label: string
+  pressed: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  return (
+    <button type="button" className={clsx(css.toggle, pressed && css.toggleActive)} aria-label={label} title={label} aria-pressed={pressed} onClick={onToggle}>
+      {children}
+    </button>
+  )
+}
+
+export function ToggleGroup({ children }: { children: ReactNode }) {
+  return <span className={css.toggleGroup}>{children}</span>
+}
+
+export function TextField({ label, value, onChange, invalid = false }: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  invalid?: boolean
+}) {
+  const focusValue = useRef(value)
+  return (
+    <input
+      className={clsx(css.field, invalid && css.invalid)}
+      aria-label={label}
+      value={value}
+      onFocus={() => { focusValue.current = value }}
+      onChange={event => { onChange(event.target.value) }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return
+        event.preventDefault()
+        event.stopPropagation()
+        onChange(focusValue.current)
+        event.currentTarget.blur()
+      }}
+    />
+  )
+}
+
+export function TextAreaField({ label, value, onChange }: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+}) {
+  const focusValue = useRef(value)
+  return (
+    <textarea
+      className={css.textArea}
+      data-webview-text-content=""
+      aria-label={label}
+      value={value}
+      rows={2}
+      onFocus={() => { focusValue.current = value }}
+      onChange={event => { onChange(event.target.value) }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return
+        event.preventDefault()
+        event.stopPropagation()
+        onChange(focusValue.current)
+        event.currentTarget.blur()
+      }}
+    />
+  )
+}
+
+export function StyleGlyph({ kind }: { kind: 'bold' | 'italic' | 'underline' }) {
+  return <span className={kind === 'italic' ? css.italicGlyph : kind === 'underline' ? css.underlineGlyph : undefined}>{kind === 'bold' ? 'B' : kind === 'italic' ? 'I' : 'U'}</span>
+}
+
+const NUMBER = /^\s*(-?(?:\d+\.?\d*|\.\d+))\s*([a-z%]*)\s*$/iu
+
+export function parseNumeric(value: string): { number: number; unit: string } | null {
+  const match = NUMBER.exec(value)
+  if (match?.[1] === undefined) return null
+  const number = Number(match[1])
+  return Number.isFinite(number) ? { number, unit: match[2] ?? '' } : null
+}
+
+function formatted(number: number, unit: string): string {
+  const rounded = Math.round(number * 1000) / 1000
+  return `${String(Object.is(rounded, -0) ? 0 : rounded)}${unit}`
+}
+
+export function ScrubNumber({ label, value, onChange, step = 1, min, max, glyph = '↔', fallbackValue, invalid = false }: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  step?: number
+  min?: number
+  max?: number
+  glyph?: string
+  fallbackValue?: string
+  invalid?: boolean
+}) {
+  const drag = useRef<{ x: number; value: number; unit: string; started: boolean } | null>(null)
+  const focusValue = useRef(value)
+  const clamp = (number: number) => Math.min(max ?? Number.POSITIVE_INFINITY, Math.max(min ?? Number.NEGATIVE_INFINITY, number))
+  const numericValue = () => parseNumeric(value) ?? (fallbackValue === undefined ? null : parseNumeric(fallbackValue))
+  const increment = (delta: number) => {
+    const parsed = numericValue()
+    if (parsed === null) return
+    onChange(formatted(clamp(parsed.number + delta), parsed.unit))
+  }
+  return (
+    <span className={css.numberWrap}>
+      <button
+        type="button"
+        className={css.numberHandle}
+        aria-label={`${label} · 拖动调整`}
+        title={`${label} · 拖动调整`}
+        onPointerDown={(event) => {
+          const parsed = numericValue()
+          if (parsed === null) return
+          drag.current = { x: event.clientX, value: parsed.number, unit: parsed.unit, started: false }
+          event.currentTarget.setPointerCapture?.(event.pointerId)
+        }}
+        onPointerMove={(event) => {
+          const current = drag.current
+          if (current === null) return
+          const delta = event.clientX - current.x
+          if (!current.started && Math.abs(delta) < 3) return
+          current.started = true
+          onChange(formatted(clamp(current.value + delta * step), current.unit))
+        }}
+        onPointerUp={() => { drag.current = null }}
+        onPointerCancel={() => {
+          const current = drag.current
+          if (current !== null && current.started) onChange(formatted(current.value, current.unit))
+          drag.current = null
+        }}
+      >{glyph}</button>
+      <input
+        className={clsx(css.field, invalid && css.invalid)}
+        aria-label={label}
+        role="spinbutton"
+        value={value}
+        inputMode="decimal"
+        {...(parseNumeric(value) === null ? {} : { 'aria-valuenow': parseNumeric(value)!.number })}
+        {...(min === undefined ? {} : { 'aria-valuemin': min })}
+        {...(max === undefined ? {} : { 'aria-valuemax': max })}
+        aria-valuetext={value}
+        onFocus={() => { focusValue.current = value }}
+        onChange={event => { onChange(event.target.value) }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            event.stopPropagation()
+            onChange(focusValue.current)
+            event.currentTarget.blur()
+            return
+          }
+          if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+          event.preventDefault()
+          const factor = event.shiftKey ? 10 : event.altKey ? 0.1 : 1
+          increment((event.key === 'ArrowUp' ? step : -step) * factor)
+        }}
+      />
+    </span>
+  )
+}
+
+interface Rgba { r: number; g: number; b: number; a: number }
+
+export function parseColor(value: string): Rgba | null {
+  const hex = /^#([\da-f]{6})([\da-f]{2})?$/iu.exec(value.trim())
+  if (hex?.[1] !== undefined) {
+    return { r: parseInt(hex[1].slice(0, 2), 16), g: parseInt(hex[1].slice(2, 4), 16), b: parseInt(hex[1].slice(4, 6), 16), a: hex[2] === undefined ? 1 : parseInt(hex[2], 16) / 255 }
+  }
+  const rgb = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*[,/]\s*(\d*\.?\d+)(%)?)?\s*\)$/iu.exec(value.trim())
+  if (rgb === null) return null
+  const [r, g, b] = [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])]
+  const a = rgb[4] === undefined ? 1 : Number(rgb[4]) / (rgb[5] === '%' ? 100 : 1)
+  if ([r, g, b, a].some(part => !Number.isFinite(part)) || r > 255 || g > 255 || b > 255 || a > 1) return null
+  return { r, g, b, a }
+}
+
+function hexOf(color: Rgba): string {
+  return `#${[color.r, color.g, color.b].map(part => Math.max(0, Math.min(255, part)).toString(16).padStart(2, '0')).join('')}`
+}
+
+function cssColor(color: Rgba): string {
+  return color.a >= 0.999 ? hexOf(color) : `rgba(${color.r}, ${color.g}, ${color.b}, ${Math.round(color.a * 1000) / 1000})`
+}
+
+export function ColorControl({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  const parsed = parseColor(value)
+  const [open, setOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
+  const [position, setPosition] = useState({ left: 0, top: 0 })
+  const color = parsed ?? { r: 0, g: 0, b: 0, a: 1 }
+  useLayoutEffect(() => {
+    if (!open || triggerRef.current === null) return
+    const rect = triggerRef.current.getBoundingClientRect()
+    const popoverWidth = popoverRef.current?.offsetWidth ?? Math.min(236, window.innerWidth - 16)
+    const popoverHeight = popoverRef.current?.offsetHeight ?? 170
+    setPosition({
+      left: Math.max(8, Math.min(window.innerWidth - popoverWidth - 8, rect.right - popoverWidth)),
+      top: Math.max(8, Math.min(window.innerHeight - popoverHeight - 8, rect.bottom + 4)),
+    })
+    queueMicrotask(() => { popoverRef.current?.querySelector<HTMLElement>('input, button')?.focus() })
+  }, [open])
+  useEffect(() => {
+    if (!open) return
+    const down = (event: PointerEvent) => {
+      if (!(event.target instanceof Node)) return
+      if (popoverRef.current?.contains(event.target) === true || triggerRef.current?.contains(event.target) === true) return
+      setOpen(false)
+    }
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { setOpen(false); triggerRef.current?.focus() } }
+    document.addEventListener('pointerdown', down)
+    document.addEventListener('keydown', key)
+    return () => { document.removeEventListener('pointerdown', down); document.removeEventListener('keydown', key) }
+  }, [open])
+  return (
+    <>
+      <button ref={triggerRef} type="button" className={css.colorTrigger} aria-label={label} aria-haspopup="dialog" aria-expanded={open} onClick={() => { setOpen(next => !next) }}>
+        <span className={css.swatch}><span className={css.swatchFill} style={{ background: value }} /></span>
+        <span className={css.colorValue}>{parsed === null ? value : hexOf(color)}</span>
+      </button>
+      {open && createPortal(
+        <div
+          ref={popoverRef}
+          className={css.popover}
+          style={position}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${label} · 颜色选择器`}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              event.stopPropagation()
+              setOpen(false)
+              queueMicrotask(() => { triggerRef.current?.focus() })
+              return
+            }
+            if (event.key !== 'Tab' || popoverRef.current === null) return
+            const focusable = [...popoverRef.current.querySelectorAll<HTMLElement>('input:not(:disabled), button:not(:disabled)')]
+            if (focusable.length === 0) return
+            const current = focusable.indexOf(document.activeElement as HTMLElement)
+            const next = event.shiftKey
+              ? (current <= 0 ? focusable.length - 1 : current - 1)
+              : (current >= focusable.length - 1 ? 0 : current + 1)
+            event.preventDefault()
+            focusable[next]?.focus()
+          }}
+        >
+          <input className={css.spectrum} type="color" aria-label={`${label} · 色谱`} value={hexOf(color)} onChange={(event) => {
+            const next = parseColor(event.target.value)
+            if (next !== null) onChange(cssColor({ ...next, a: color.a }))
+          }} />
+          <div className={css.popoverRow}>
+            <label><span className={css.popoverLabel}>Hex</span><input className={css.field} aria-label={`${label} · Hex`} value={parsed === null ? value : hexOf(color)} onChange={event => {
+              const next = parseColor(event.target.value)
+              if (next !== null) onChange(cssColor({ ...next, a: color.a }))
+              else onChange(event.target.value)
+            }} /></label>
+            <label><span className={css.popoverLabel}>Alpha</span><ScrubNumber label={`${label} · 透明度`} value={`${String(Math.round(color.a * 100))}%`} min={0} max={100} onChange={(next) => {
+              const numeric = parseNumeric(next)
+              if (numeric !== null) onChange(cssColor({ ...color, a: numeric.number / 100 }))
+            }} /></label>
+          </div>
+        </div>, document.body,
+      )}
+    </>
+  )
+}
+
+export function BoxModelControl({ label, values, linked, onLinkedChange, onChange }: {
+  label: string
+  values: readonly [string, string, string, string]
+  linked: boolean
+  onLinkedChange: (linked: boolean) => void
+  onChange: (index: number, value: string) => void
+}) {
+  const names = ['上', '右', '下', '左'] as const
+  return (
+    <span className={css.boxModelWrap}>
+      <span className={css.boxModel}>
+        {values.map((value, index) => <ScrubNumber key={names[index]} label={`${label} · ${names[index]}`} value={value} fallbackValue="0px" onChange={next => { onChange(index, next) }} />)}
+      </span>
+      <ToggleButton label={`${label} · ${linked ? '取消联动' : '联动四边'}`} pressed={linked} onToggle={() => { onLinkedChange(!linked) }}>
+        {linked ? <IconLinkOutline14 /> : '⌁'}
+      </ToggleButton>
+    </span>
+  )
+}

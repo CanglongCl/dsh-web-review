@@ -1,0 +1,48 @@
+.pair,
+.quad,
+.effectGrid {
+  display: grid;
+  width: 100%;
+  gap: 4px;
+}
+
+.pair { grid-template-columns: repeat(2, minmax(0, 1fr)) 28px; }
+.quad { grid-template-columns: repeat(2, minmax(0, 1fr)) 28px; }
+.effectGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.fieldCell {
+  min-width: 0;
+}
+
+.fieldCell > span { width: 100%; }
+.fieldCell input { width: 100%; flex-basis: 100%; }
+
+.linkCell {
+  display: grid;
+  grid-row: 1 / span 2;
+  grid-column: 3;
+  place-items: center;
+}
+
+.effectRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.effectLabel {
+  color: var(--dsw-alias-label-secondary, #555a62);
+  font: 11px/16px system-ui, sans-serif;
+}
+
+.raw {
+  display: grid;
+  gap: 4px;
+}
+
+.rawHint {
+  color: var(--dsw-alias-label-tertiary, #747a82);
+  font: 10px/14px system-ui, sans-serif;
+}

@@ -2,7 +2,7 @@
   "files": [],
   "references": [
     {
-      "path": "./packages/ui-webview"
+      "path": "./packages/dsh-web-review"
     },
     {
       "path": "./tsconfig.scripts.json"

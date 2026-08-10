@@ -2,14 +2,14 @@
 
 ## Status
 
-Implemented and verified. This document replaces the earlier design that rewrote the
-stock composer message through `agent/prompt-submit`.
+Implemented and verified. This document replaces both the earlier prompt-rewrite design
+and the interim eager-`agent.inject` design.
 
 ## Goals
 
 1. Keep the stock composer and the user's prompt unchanged.
-2. Commit browser annotations as a separate, model-visible plugin context before the
-   user's next prompt.
+2. Prepare browser annotations ahead of time, then attach them as a separate,
+   model-visible plugin context only when the user's next prompt is admitted.
 3. Make the annotation payload stable, bounded, explicit about trust, and useful for
    locating source code.
 4. Replace the chip list with compact DSH-native composer chrome and an accessible
@@ -17,19 +17,39 @@ stock composer message through `agent/prompt-submit`.
 5. Keep the plugin external to the deepseek-harness checkout and use public Cordis/DSH
    extension points only.
 
+## Assistant review links
+
+- The node face registers the reviewed `plugin:dsh-web-review-preview` system-prompt
+  section, which advertises the verified-link → Preview → annotation loop.
+- The always-mounted dock delegates ordinary clicks on assistant-authored absolute
+  HTTP(S) links into the shared preview store and activates the Preview tab.
+- User/tool links, modifier clicks, and plugin chrome keep native behavior.
+- The plugin closes Details through `ctx.layout` and never reads or mutates the
+  conversation package's private view store.
+
+## Annotation toolbar submission
+
+- Browse chrome and annotation chrome are separate states; annotation mode owns
+  exit, clear, current-page status, and a counted Send action.
+- A non-empty composer draft is submitted through the framework-provided
+  `inputActions.submit()` action. The plugin does not duplicate, rewrite, or
+  manually clear it.
+- The stock input machine rejects an empty trimmed draft. The no-draft arm sends
+  one localized fixed request through the scoped public conversation service;
+  an empty transport message is intentionally not used.
+- A durable human node acknowledges successful draft submission. Until then,
+  annotation mode and its prepared snapshot remain retryable.
+
 ## Upstream findings
 
 - `agent/prompt-submit` is a waterfall admission hook. A listener must delegate with
-  `next()` unless it intentionally terminates the chain. Replacing the prompt there
-  couples annotations to admission ordering and makes the plugin responsible for
-  preserving every content block and every downstream listener.
-- The supported model-visible context API is `agent.inject(message)`. It records a
-  source-attributed user-role context message without waking the model and reconstructs
-  correctly from the session log.
+  `next()` and preserve its result. `PromptDecision.additionalContexts` is the supported
+  way to append model-facing context before the turn starts without replacing the
+  prompt's content or identity.
 - The browser conversation API has no general pre-submit transform event. Therefore an
-  external plugin cannot atomically intercept every stock-composer send without using
-  the waterfall. The plugin will instead commit annotation state immediately when it
-  changes and expose the acknowledgement state in the dock.
+  external plugin cannot atomically coordinate an in-flight HTTP preparation with every
+  stock-composer send. The plugin therefore prepares pending state immediately, exposes
+  readiness in the dock, and consumes it through prompt admission.
 - A `conversation.view` entry and a `conversation.input.dock` entry may share the same
   apply-constructed store handle. That remains the correct way to connect the preview
   and composer chrome.
@@ -41,42 +61,47 @@ sequenceDiagram
     participant Picker as Preview picker
     participant Dock as Annotation dock
     participant Route as Plugin HTTP route
-    participant Agent as Live DSH agent
+    participant Admission as Prompt admission
     participant Model as Next model turn
 
     Picker->>Dock: Update shared annotation store
     Dock->>Route: POST structured snapshot
     Route->>Route: Validate, bound and serialize
-    Route->>Agent: agent.inject(plugin-sourced user context)
-    Agent-->>Route: Context staged/logged
+    Route->>Route: Store pending full snapshot
     Route-->>Dock: Acknowledge
-    Dock->>Dock: Show synced state
-    Note over Dock,Model: User sends through the unchanged stock composer
-    Model->>Model: Reads injected context, then the user's prompt
+    Dock->>Dock: Show inject-on-send state
+    Note over Dock,Admission: User sends through the unchanged stock composer
+    Admission->>Admission: next(), preserve allow decision
+    Admission->>Model: Append plugin message via additionalContexts
+    Admission-->>Dock: Durable human node consumes capsule
 ```
 
 ### Injection contract
 
-- Remove the `agent/prompt-submit` listener and all prompt-content rewriting.
 - The node face injects `httpServer` and `agents`, resolves the live agent from the
-  branded `SessionId`, and calls `agent.inject(createUserMessage(...))`.
-- The source is `{ kind: 'plugin', plugin: 'ui-webview' }` so the transcript and replay
+  branded `SessionId`, and stores one pending rendered context per session.
+- The `agent/prompt-submit` listener awaits `next()`. On `allow`, it preserves every
+  downstream field and appends its plugin message to `additionalContexts`; it never
+  supplies or edits `content`.
+- The source is `{ kind: 'plugin', plugin: 'dsh-web-review' }` so the transcript and replay
   path preserve provenance.
 - The browser sends structured JSON. It never assembles model-facing XML or Markdown.
 - The node face validates every field, enforces request/count/field/context limits, and
   owns the single stable serializer.
 - Each non-empty commit is a full snapshot and explicitly supersedes older browser
   comment snapshots. Identical snapshots are deduplicated per session.
-- Clearing an active set injects a small clearing snapshot. An initial empty state does
-  not inject anything.
-- Per-session dedupe state is deleted on `agent/disposed`.
+- The exact plugin `user/message` session event consumes the matching pending text.
+  Blocked or aborted admission therefore cannot lose it, and an older event cannot
+  clear a newer pending revision.
+- Clearing before send removes pending state and injects nothing. Per-session state is
+  also deleted on `agent/disposed`.
 - Sync requests are serialized on the client. There is no timer or silent best-effort
   fetch. A non-2xx response is visible as an annotation sync error.
 
-The separate message is committed when annotation state changes, normally before the
-user reaches Send. While a request is pending, the capsule must say that it is syncing;
-the UI must never claim that annotations are available to the model before the host has
-acknowledged `agent.inject`.
+The separate message is committed only when the prompt is admitted. While preparation
+is pending, the capsule says that it is preparing; after acknowledgement it says that
+the annotations will be injected on send. A new durable human node clears the capsule
+only when the pending snapshot was ready at that admission boundary.
 
 ## Model-facing format
 
@@ -111,12 +136,13 @@ Formatting rules:
 - Include the shortest selector and the complete DOM ancestor path as location aids.
 - Include source file/line and component chain when a framework source anchor exists.
   Otherwise include stable semantic classes when available.
-- Treat URL, title, labels, selectors, paths, classes, and framework metadata as
-  untrusted page evidence. Only the comment body is user-authored instruction.
+- Treat URL, title, labels, selectors, paths, classes, framework metadata, and
+  original property/text values as untrusted page evidence. Comments, requested
+  values, and text replacements are user-authored instruction.
 - Prefix every comment line as a block quote so comment text cannot create sibling
   headings or metadata fields.
-- Exclude `outerHTML`, computed styles, rectangles, and screenshots. They are expensive,
-  unstable, or unavailable in this plugin and do not reliably locate workspace source.
+- Exclude `outerHTML`, full computed styles, rectangles, editor state, and
+  screenshots. Only explicit changed properties and the edit-time viewport are serialized.
 - Never put localized UI copy into the model-facing template.
 
 ## Browser-to-host schema and limits
@@ -126,7 +152,8 @@ The JSON body contains:
 - `sessionId`
 - `page: { url, title }`
 - `comments[]`, each with `id`, `comment`, `tagName`, `role`, `label`, `cssPath`,
-  `fullPath`, `stableClasses`, and optional `anchor`
+  `fullPath`, `stableClasses`, optional `anchor`, bounded `changes[]`, optional
+  `textChange`, and edit-time `viewport`
 
 The server rejects malformed or oversized bodies rather than partially trusting them.
 Limits are exported constants and pinned by unit tests. The final rendered context has
@@ -144,7 +171,7 @@ its own cap in addition to the HTTP body cap.
   button.
 - Clicking the main capsule opens the detail card. Hover and keyboard focus also open it;
   pointer leave, focus leave, or Escape closes it.
-- `syncing`, `synced`, and `error` are distinguishable without relying only on color.
+- `preparing`, `inject on send`, and `error` are distinguishable without relying only on color.
 
 ### Detail card
 
@@ -152,7 +179,7 @@ its own cap in addition to the HTTP body cap.
 - Show one row per annotation: number, role/tag badge, accessible target label, comment,
   and source/component metadata when present.
 - Clicking a row writes `focusPickId` to the shared store so the preview reopens the
-  matching floating comment editor.
+  matching host-owned rich annotation editor.
 - Preserve per-item removal inside the card and provide an accessible clear-all action
   in the capsule.
 - Keep interactive targets keyboard reachable and labelled. The popover remains open
@@ -162,6 +189,9 @@ its own cap in addition to the HTTP body cap.
 
 - Keep the existing `conversation.view` registration, URL controls, picker lifecycle,
   and marker echo behavior.
+- Render the rich editor in the host above the iframe, never inside the page. See
+  [rich-annotation-editor-plan.md](./rich-annotation-editor-plan.md) for its
+  property allowlist, live preview, and exact rollback contract.
 - Store the current page title alongside URL and picks so the dock can create a complete
   snapshot even when the preview tab is not active.
 - Continue to keep live DOM references in component refs, never in the shared store.
@@ -179,9 +209,9 @@ current iframe is a security boundary.
 ## Files and implementation slices
 
 1. Replace `prompt-inject.ts` with a shared annotation schema, parser, formatter, and
-   injection lifecycle module.
-2. Update the node entry to resolve live agents, inject messages, deduplicate snapshots,
-   handle clearing, and release session state.
+   pending-admission lifecycle module.
+2. Update the node entry to resolve live agents, prepare/deduplicate snapshots, append
+   `additionalContexts` at admission, acknowledge logged context, and release state.
 3. Replace the client timer with an acknowledgement-returning serialized sync client.
 4. Add page title and annotation sync status to the shared store.
 5. Remove client XML formatting and locale-owned model template strings.
@@ -192,14 +222,17 @@ current iframe is a security boundary.
 
 ## Acceptance criteria
 
-- No listener is registered for `agent/prompt-submit`.
+- The `agent/prompt-submit` listener delegates to `next()`, preserves its decision, and
+  uses only `additionalContexts`; it never rewrites prompt content.
 - Sending through the stock composer leaves the user's content byte-for-byte unchanged.
-- The transcript contains a separate plugin-sourced browser-comment context before the
-  subsequent user prompt.
+- The transcript contains the unchanged human prompt followed by a separate
+  plugin-sourced browser-comment context before the model turn starts.
 - Non-text prompt blocks are untouched because the plugin never rewrites the prompt.
-- Duplicate snapshots do not produce duplicate context messages.
-- Clearing comments produces a clearing context only after a prior active snapshot.
-- The capsule never reports synced before the host acknowledgement.
+- Duplicate snapshots do not produce duplicate pending state or context messages.
+- Clearing comments before send removes pending state without producing context.
+- An admitted human prompt automatically clears a ready annotation capsule; sending
+  while preparation is still in flight leaves it visible.
+- The capsule never reports inject-on-send readiness before host acknowledgement.
 - Hover, focus, click, Escape, clear-all, per-item removal, and preview focus handoff are
   covered by component tests.
 - Exact payload caps, trust labels, and multiline comment containment are unit-tested.
