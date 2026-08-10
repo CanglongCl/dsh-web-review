@@ -22,6 +22,7 @@ import {
 } from './live-patch.ts'
 import {
   BoxModelControl,
+  type BoxModelLinks,
   ColorControl,
   InspectorRow,
   InspectorSection,
@@ -34,6 +35,7 @@ import {
   TextField,
   ToggleButton,
   ToggleGroup,
+  updateBoxModelLinks,
 } from './InspectorControls.tsx'
 import { PROPERTY_BY_NAME, PROPERTY_GROUPS, type PropertyControl } from './property-editor-config.ts'
 import type { WebviewKey } from './locales.ts'
@@ -123,8 +125,8 @@ export function AnnotationEditor({
   const [invalid, setInvalid] = useState<Set<EditableStyleProperty>>(new Set())
   const originalText = patch.originalText?.value
   const [text, setText] = useState(initialTextChange?.after ?? originalText ?? '')
-  const [marginLinked, setMarginLinked] = useState(false)
-  const [paddingLinked, setPaddingLinked] = useState(false)
+  const [marginLinks, setMarginLinks] = useState<BoxModelLinks>({ vertical: false, horizontal: false, all: false })
+  const [paddingLinks, setPaddingLinks] = useState<BoxModelLinks>({ vertical: false, horizontal: false, all: false })
   const [flexControlsSeen, setFlexControlsSeen] = useState(() => {
     const display = initialMap.get('display')?.after ?? originals.get('display')
     return display === 'flex' || display === 'inline-flex'
@@ -300,19 +302,29 @@ export function AnnotationEditor({
   const showLayoutControls = layout || layoutControlsSeen
   const showPositionControls = positioned || positionControlsSeen
 
-  const spacing = (prefix: 'margin' | 'padding', linked: boolean, setLinked: (value: boolean) => void) => {
+  const spacing = (prefix: 'margin' | 'padding', links: BoxModelLinks, setLinks: (value: BoxModelLinks) => void) => {
     const properties = four(['top', 'right', 'bottom', 'left'].map(side => `${prefix}-${side}` as EditableStyleProperty))
+    const controls = four(properties.map(property => PROPERTY_BY_NAME.get(property)!))
+    const groupLabel = t(prefix === 'margin' ? 'editor.group.margin' : 'editor.group.padding')
     return (
-      <InspectorRow label={prefix === 'margin' ? 'Margin' : 'Padding'} active={activeScrub === prefix} staticLabel changed={properties.some(changed)} resetLabel={`${t('editor.reset')} · ${prefix}`} onReset={() => { properties.forEach(reset) }}>
+      <InspectorRow wide label={groupLabel} active={activeScrub === prefix} staticLabel changed={properties.some(changed)} resetLabel={`${t('editor.reset')} · ${groupLabel}`} onReset={() => { properties.forEach(reset) }}>
         <BoxModelControl
-          label={prefix === 'margin' ? 'Margin' : 'Padding'}
+          label={groupLabel}
+          sideLabels={four(controls.map(control => propertyLabel(control, t)))}
           values={four(properties.map(valueOf))}
-          linked={linked}
           onScrubChange={scrubChange(prefix)}
-          onLinkedChange={setLinked}
+          links={links}
+          {...(prefix === 'padding' ? { min: 0 } : {})}
+          linkLabel={t('editor.action.linkValues')}
+          unlinkLabel={t('editor.action.unlinkValues')}
+          linkAllLabel={t('editor.action.linkAllValues')}
+          unlinkAllLabel={t('editor.action.unlinkAllValues')}
+          onLinkChange={(axis, linked) => {
+            setLinks(updateBoxModelLinks(links, axis, linked))
+          }}
           onChange={(index, next) => {
-            if (linked) properties.forEach(property => { updateProperty(property, next) })
-            else { const property = properties[index]; if (property !== undefined) updateProperty(property, next) }
+            const property = properties[index]
+            if (property !== undefined) updateProperty(property, next)
           }}
         />
       </InspectorRow>
@@ -470,8 +482,8 @@ export function AnnotationEditor({
             </InspectorSection>
 
             <InspectorSection label={t('editor.group.spacing')}>
-              {spacing('margin', marginLinked, setMarginLinked)}
-              {spacing('padding', paddingLinked, setPaddingLinked)}
+              {spacing('margin', marginLinks, setMarginLinks)}
+              {spacing('padding', paddingLinks, setPaddingLinks)}
             </InspectorSection>
 
             <InspectorSection label={t('editor.group.border')}>

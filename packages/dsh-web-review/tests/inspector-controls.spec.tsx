@@ -2,12 +2,14 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  BoxModelControl,
   ColorControl,
   parseColor,
   parseNumeric,
   ScrubNumber,
   SegmentedControl,
   TextField,
+  updateBoxModelLinks,
 } from '../src/client/InspectorControls.tsx'
 
 afterEach(cleanup)
@@ -76,6 +78,130 @@ describe('Inspector controls', () => {
     pointer('pointermove', 25)
     view.unmount()
     expect(scrub.mock.calls).toEqual([[true], [false]])
+  })
+
+  it('scrubs each margin or padding side from its directional handle', () => {
+    const change = vi.fn()
+    render(
+      <BoxModelControl
+        label="Margin"
+        sideLabels={['Margin top', 'Margin right', 'Margin bottom', 'Margin left']}
+        values={['4px', '8px', '12px', '16px']}
+        links={{ vertical: false, horizontal: false, all: false }}
+        linkLabel="Link values"
+        unlinkLabel="Unlink values"
+        linkAllLabel="Link all sides"
+        unlinkAllLabel="Unlink all sides"
+        onLinkChange={vi.fn()}
+        onChange={change}
+      />,
+    )
+
+    const handle = screen.getByRole('button', { name: 'Margin top · 拖动调整' })
+    const pointer = (type: string, clientX: number) => {
+      const event = new MouseEvent(type, { bubbles: true, clientX })
+      Object.defineProperty(event, 'pointerId', { value: 1 })
+      fireEvent(handle, event)
+    }
+    expect(handle.textContent).toBe('↑')
+    pointer('pointerdown', 20)
+    pointer('pointermove', 28)
+    pointer('pointerup', 28)
+
+    expect(change).toHaveBeenLastCalledWith(0, '12px')
+    expect(screen.getByRole('button', { name: 'Margin right · 拖动调整' }).textContent).toBe('→')
+    expect(screen.getByRole('button', { name: 'Margin bottom · 拖动调整' }).textContent).toBe('↓')
+    expect(screen.getByRole('button', { name: 'Margin left · 拖动调整' }).textContent).toBe('←')
+    expect(screen.getAllByRole('spinbutton').map(field => field.getAttribute('aria-label'))).toEqual([
+      'Margin top', 'Margin bottom', 'Margin left', 'Margin right',
+    ])
+  })
+
+  it('locks opposite box-model sides independently by axis', () => {
+    const change = vi.fn()
+    const linkChange = vi.fn()
+    render(
+      <BoxModelControl
+        label="Padding"
+        sideLabels={['Padding top', 'Padding right', 'Padding bottom', 'Padding left']}
+        values={['4px', '8px', '12px', '16px']}
+        links={{ vertical: true, horizontal: false, all: false }}
+        min={0}
+        linkLabel="Link values"
+        unlinkLabel="Unlink values"
+        linkAllLabel="Link all sides"
+        unlinkAllLabel="Unlink all sides"
+        onLinkChange={linkChange}
+        onChange={change}
+      />,
+    )
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Padding top' }), { target: { value: '20px' } })
+    expect(change.mock.calls).toEqual([[0, '20px'], [2, '20px']])
+
+    change.mockClear()
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Padding right' }), { target: { value: '24px' } })
+    expect(change).toHaveBeenCalledOnce()
+    expect(change).toHaveBeenCalledWith(1, '24px')
+
+    const verticalLink = screen.getByRole('button', { name: /Unlink values · Padding top \/ Padding bottom/u })
+    expect(verticalLink.getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('spinbutton', { name: 'Padding top' }).getAttribute('aria-valuemin')).toBe('0')
+    fireEvent.click(verticalLink)
+    fireEvent.click(screen.getByRole('button', { name: 'Link values · Padding left / Padding right' }))
+    expect(linkChange.mock.calls).toEqual([['vertical', false], ['horizontal', true]])
+  })
+
+  it('offers a merge action for two axis locks and synchronizes all four sides', () => {
+    const linkChange = vi.fn()
+    const change = vi.fn()
+    const view = render(
+      <BoxModelControl
+        label="Margin"
+        sideLabels={['Margin top', 'Margin right', 'Margin bottom', 'Margin left']}
+        values={['4px', '8px', '12px', '16px']}
+        links={{ vertical: true, horizontal: true, all: false }}
+        linkLabel="Link values"
+        unlinkLabel="Unlink values"
+        linkAllLabel="Link all sides"
+        unlinkAllLabel="Unlink all sides"
+        onLinkChange={linkChange}
+        onChange={change}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Link all sides' }))
+    expect(linkChange).toHaveBeenCalledWith('all', true)
+
+    view.rerender(
+      <BoxModelControl
+        label="Margin"
+        sideLabels={['Margin top', 'Margin right', 'Margin bottom', 'Margin left']}
+        values={['4px', '8px', '12px', '16px']}
+        links={{ vertical: true, horizontal: true, all: true }}
+        linkLabel="Link values"
+        unlinkLabel="Unlink values"
+        linkAllLabel="Link all sides"
+        unlinkAllLabel="Unlink all sides"
+        onLinkChange={linkChange}
+        onChange={change}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: /Margin top \/ Margin bottom/u })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Unlink all sides' }).getAttribute('aria-pressed')).toBe('true')
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Margin left' }), { target: { value: '24px' } })
+    expect(change.mock.calls).toEqual([[3, '24px'], [0, '24px'], [1, '24px'], [2, '24px']])
+    fireEvent.click(screen.getByRole('button', { name: 'Unlink all sides' }))
+    expect(linkChange).toHaveBeenLastCalledWith('all', false)
+  })
+
+  it('falls back from the four-side lock to both axis locks', () => {
+    expect(updateBoxModelLinks(
+      { vertical: true, horizontal: true, all: true },
+      'all',
+      false,
+    )).toEqual({ vertical: true, horizontal: true, all: false })
   })
 
   it('restores text fields on Escape and supports arrow navigation in segmented controls', () => {

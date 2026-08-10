@@ -153,6 +153,7 @@
   user-select: none;
   touch-action: none;
 }
+.numberHandle:disabled { opacity: .45; cursor: default; }
 .numberWrap .field {
   box-sizing: border-box;
   width: 100%;
@@ -234,18 +235,39 @@
 .popover .field { box-sizing: border-box; width: 100%; min-width: 0; flex-basis: 100%; }
 
 .boxModelWrap {
+  position: relative;
   display: grid;
-  width: 158px;
-  grid-template-columns: 126px 28px;
-  align-items: center;
+  width: 100%;
+  min-width: 0;
   gap: 4px;
 }
-.boxModel { display: grid; grid-template-columns: repeat(2, 60px); gap: 4px; }
-.boxModel .numberWrap { width: 60px; flex-basis: 60px; }
-.boxModel .field { width: 60px; flex-basis: 60px; }
-.boxModel .numberHandle { display: none; }
-.boxModel .numberWrap .field { padding-left: 7px; }
-.boxLink { align-self: center; }
+.boxModelMergeReady { gap: 20px; }
+.boxModelAllLinked { gap: 8px; }
+.rowControl > .boxModelWrap { justify-self: stretch; }
+.boxAxis {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+}
+.boxAxis .numberWrap,
+.boxAxis .field { width: 100%; min-width: 0; flex-basis: auto; }
+.boxAxis .numberHandle { width: 26px; }
+.boxAxis .numberWrap .field { padding-right: 7px; padding-left: 27px; }
+.boxAxis > .toggle { width: 32px; min-width: 32px; height: 28px; padding: 0; }
+.boxAllLink {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  padding: 2px 0;
+  place-items: center;
+  background: var(--dsw-specific-menu, #fff);
+  transform: translate(-50%, -50%);
+}
+.boxAllLink .toggle { width: 32px; min-width: 32px; height: 28px; padding: 0; }
 
 .rawHint { color: var(--dsw-alias-label-tertiary, #747a82); font: 10px/14px system-ui, sans-serif; }
 
@@ -256,5 +278,5 @@
   .rowControl > .numberWrap,
   .rowControl > .menuTrigger,
   .rowControl > .colorTrigger { width: min(100%, 180px); flex-basis: min(100%, 180px); }
-  .boxModelWrap { width: min(100%, 180px); grid-template-columns: minmax(126px, 1fr) 28px; }
+  .boxModelWrap { width: 100%; }
 }
