@@ -42,6 +42,42 @@ describe('Inspector controls', () => {
     expect(change).toHaveBeenCalledWith('20.2px')
   })
 
+  it('reports the complete pointer scrub lifecycle after the drag threshold', () => {
+    const change = vi.fn()
+    const scrub = vi.fn()
+    const view = render(<ScrubNumber label="Size" value="12px" step={1} onChange={change} onScrubChange={scrub} />)
+    const handle = screen.getByRole('button', { name: 'Size · 拖动调整' })
+    const pointer = (type: string, clientX: number) => { fireEvent(handle, new MouseEvent(type, { bubbles: true, clientX })) }
+
+    pointer('pointerdown', 100)
+    pointer('pointermove', 102)
+    expect(scrub).not.toHaveBeenCalled()
+    pointer('pointermove', 104)
+    expect(scrub.mock.calls).toEqual([[true]])
+    expect(change).toHaveBeenLastCalledWith('16px')
+    pointer('pointerup', 104)
+    expect(scrub.mock.calls).toEqual([[true], [false]])
+
+    scrub.mockClear()
+    pointer('pointerdown', 40)
+    pointer('pointermove', 50)
+    pointer('pointercancel', 50)
+    expect(change).toHaveBeenLastCalledWith('12px')
+    expect(scrub.mock.calls).toEqual([[true], [false]])
+
+    scrub.mockClear()
+    pointer('pointerdown', 20)
+    pointer('pointermove', 25)
+    pointer('lostpointercapture', 25)
+    expect(scrub.mock.calls).toEqual([[true], [false]])
+
+    scrub.mockClear()
+    pointer('pointerdown', 20)
+    pointer('pointermove', 25)
+    view.unmount()
+    expect(scrub.mock.calls).toEqual([[true], [false]])
+  })
+
   it('restores text fields on Escape and supports arrow navigation in segmented controls', () => {
     const textChange = vi.fn()
     const view = render(<TextField label="Raw" value="normal" onChange={textChange} />)

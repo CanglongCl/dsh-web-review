@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import { AnnotationEditor } from '../src/client/AnnotationEditor.tsx'
@@ -135,5 +135,81 @@ describe('AnnotationEditor', () => {
     expect(element.style.fontSize).toBe('31px')
     fireEvent.keyDown(fontSize, { key: 'Escape' })
     expect(element.style.fontSize).toBe('16px')
+  })
+
+  it('hides every other editor surface while preserving the active scrub row', () => {
+    const { frame, element } = fixture()
+    render(
+      <AnnotationEditor
+        id="p1"
+        patch={createLivePatch(element)}
+        frame={frame}
+        comment=""
+        changes={[]}
+        textChange={null}
+        t={t}
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: zh['editor.adjust'] }))
+    const editor = document.querySelector('[data-webview-annotation-editor]') as HTMLDivElement
+    const handle = screen.getByRole('button', { name: `${zh['editor.property.fontSize']} · 拖动调整` })
+    const activeRow = handle.closest('[data-inspector-row]') as HTMLDivElement
+    const compose = screen.getByPlaceholderText(zh['editor.comment']).parentElement as HTMLElement
+    const pointer = (type: string, clientX: number) => { fireEvent(handle, new MouseEvent(type, { bubbles: true, clientX })) }
+
+    pointer('pointerdown', 100)
+    pointer('pointermove', 102)
+    expect(editor.hasAttribute('data-scrubbing')).toBe(false)
+    pointer('pointermove', 108)
+    expect(editor.getAttribute('data-scrubbing')).toBe('font-size')
+    expect(activeRow.hasAttribute('data-scrub-active')).toBe(true)
+    expect(compose.hasAttribute('data-scrub-active')).toBe(false)
+    expect(element.style.fontSize).toBe('24px')
+
+    pointer('pointerup', 108)
+    expect(editor.hasAttribute('data-scrubbing')).toBe(false)
+    expect(activeRow.hasAttribute('data-scrub-active')).toBe(false)
+  })
+
+  it('temporarily collapses to the eye button without losing the edit transaction', async () => {
+    const { frame, element } = fixture()
+    const cancel = vi.fn()
+    render(
+      <AnnotationEditor
+        id="p1"
+        patch={createLivePatch(element)}
+        frame={frame}
+        comment=""
+        changes={[]}
+        textChange={null}
+        t={t}
+        onCancel={cancel}
+        onConfirm={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: zh['editor.adjust'] }))
+    fireEvent.change(screen.getByPlaceholderText(zh['editor.comment']), { target: { value: 'Keep this draft' } })
+    fireEvent.change(screen.getByLabelText(zh['editor.property.fontSize']), { target: { value: '28px' } })
+    fireEvent.click(screen.getByRole('button', { name: zh['editor.hide'] }))
+
+    const editor = document.querySelector('[data-webview-annotation-editor]') as HTMLDivElement
+    const show = screen.getByRole('button', { name: zh['editor.show'], hidden: true })
+    expect(editor.hasAttribute('data-editor-hidden')).toBe(true)
+    expect(editor.getAttribute('aria-hidden')).toBe('true')
+    expect(element.style.fontSize).toBe('28px')
+    await waitFor(() => { expect(document.activeElement).toBe(show) })
+
+    fireEvent.click(show)
+    expect(editor.hasAttribute('data-editor-hidden')).toBe(false)
+    expect((screen.getByPlaceholderText(zh['editor.comment']) as HTMLInputElement).value).toBe('Keep this draft')
+    expect((screen.getByLabelText(zh['editor.property.fontSize']) as HTMLInputElement).value).toBe('28px')
+    expect(element.style.fontSize).toBe('28px')
+
+    fireEvent.click(screen.getByRole('button', { name: zh['editor.hide'] }))
+    fireEvent.keyDown(show, { key: 'Escape' })
+    expect(element.style.fontSize).toBe('16px')
+    expect(cancel).toHaveBeenCalledOnce()
   })
 })

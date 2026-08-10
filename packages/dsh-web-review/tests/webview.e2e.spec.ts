@@ -197,6 +197,61 @@ describe('dsh-web-review e2e', () => {
       const fieldRect = element.getBoundingClientRect()
       return fieldRect.left > editorRect.left + editorRect.width / 2
     })).toBe(true)
+    const fontSizeHandle = editor.getByRole('button', { name: 'Font size · 拖动调整' })
+    const handleBox = await fontSizeHandle.boundingBox()
+    if (handleBox === null) throw new Error('Font-size scrub handle has no layout box')
+    await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(handleBox.x + handleBox.width / 2 + 8, handleBox.y + handleBox.height / 2)
+    await expect.poll(async () => editor.getAttribute('data-scrubbing')).toBe('font-size')
+    const scrubStyles = await editor.evaluate((element) => {
+      const active = element.querySelector('[data-scrub-active]')
+      const inspector = element.querySelector('[data-webview-property-inspector]')
+      const compose = element.querySelector('.dsh-wv-comment-input')?.parentElement
+      const footer = element.querySelector('[data-webview-editor-footer]')
+      const inactiveRow = element.querySelector('[data-inspector-row]:not([data-scrub-active])')
+      const section = active?.closest('section')
+      if (!(active instanceof HTMLElement) || inspector === null || compose === null || footer === null || inactiveRow === null || section === null) return null
+      return {
+        activeVisibility: getComputedStyle(active).visibility,
+        activePointerEvents: getComputedStyle(active).pointerEvents,
+        composeVisibility: getComputedStyle(compose).visibility,
+        inspectorVisibility: getComputedStyle(inspector).visibility,
+        footerVisibility: getComputedStyle(footer).visibility,
+        inactiveRowVisibility: getComputedStyle(inactiveRow).visibility,
+        sectionVisibility: getComputedStyle(section).visibility,
+        editorBackground: getComputedStyle(element).backgroundColor,
+        editorBorder: getComputedStyle(element).borderTopColor,
+        editorShadow: getComputedStyle(element).boxShadow,
+        editorTransition: getComputedStyle(element).transitionDuration,
+      }
+    })
+    expect(scrubStyles).toEqual({
+      activeVisibility: 'visible',
+      activePointerEvents: 'auto',
+      composeVisibility: 'hidden',
+      inspectorVisibility: 'hidden',
+      footerVisibility: 'hidden',
+      inactiveRowVisibility: 'hidden',
+      sectionVisibility: 'hidden',
+      editorBackground: 'rgba(0, 0, 0, 0)',
+      editorBorder: 'rgba(0, 0, 0, 0)',
+      editorShadow: 'none',
+      editorTransition: '0s',
+    })
+    await page.mouse.up()
+    await expect.poll(async () => editor.getAttribute('data-scrubbing')).toBeNull()
+    expect(await editor.evaluate((element) => ({
+      composeVisibility: getComputedStyle(element.querySelector('.dsh-wv-comment-input')!.parentElement!).visibility,
+      inspectorVisibility: getComputedStyle(element.querySelector('[data-webview-property-inspector]')!).visibility,
+      editorBackground: getComputedStyle(element).backgroundColor,
+      editorTransition: getComputedStyle(element).transitionDuration,
+    }))).toEqual({
+      composeVisibility: 'visible',
+      inspectorVisibility: 'visible',
+      editorBackground: 'rgb(255, 255, 255)',
+      editorTransition: '0s',
+    })
     const footer = editor.locator('[data-webview-editor-footer]')
     const inspector = editor.locator('[data-webview-property-inspector]')
     await inspector.evaluate(element => { element.scrollTop = element.scrollHeight })
@@ -232,6 +287,28 @@ describe('dsh-web-review e2e', () => {
       text: 'Reviewed magic UI',
     })
 
+    await editor.getByRole('button', { name: 'Temporarily hide editor' }).click()
+    const showEditor = page.locator('button[aria-label="Show editor"]')
+    await showEditor.waitFor({ state: 'visible' })
+    expect(await editor.evaluate(element => getComputedStyle(element).transitionDuration)).toBe('0s')
+    expect(await showEditor.evaluate(element => getComputedStyle(element).transitionDuration)).toBe('0s')
+    expect(await showEditor.evaluate(element => {
+      const rect = element.getBoundingClientRect()
+      return { width: Math.round(rect.width), height: Math.round(rect.height), pressed: element.getAttribute('aria-pressed') }
+    })).toEqual({ width: 36, height: 36, pressed: 'true' })
+    expect(await editor.evaluate(element => ({
+      opacity: getComputedStyle(element).opacity,
+      visibility: getComputedStyle(element).visibility,
+    }))).toEqual({ opacity: '0', visibility: 'hidden' })
+    expect(await heading.evaluate(element => getComputedStyle(element).fontSize)).toBe('24px')
+    await showEditor.click()
+    expect(await editor.evaluate(element => ({
+      hidden: element.hasAttribute('data-editor-hidden'),
+      opacity: getComputedStyle(element).opacity,
+      visibility: getComputedStyle(element).visibility,
+    }))).toEqual({ hidden: false, opacity: '1', visibility: 'visible' })
+    expect(await editor.getByPlaceholder('Describe these changes…').inputValue()).toBe('Use the reviewed heading treatment.')
+    expect(await fontSizeField.inputValue()).toBe('24px')
     await editor.getByRole('button', { name: 'Restore original value · Font size' }).click()
     await expect.poll(async () => heading.evaluate(element => getComputedStyle(element).fontSize))
       .toBe(original.fontSize)

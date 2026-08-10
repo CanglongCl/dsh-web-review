@@ -218,6 +218,29 @@ describe('WebviewView', () => {
     expect(store.getSnapshot().focusPickId).toBeNull()
   })
 
+  it('keeps the shared annotation state unchanged while the editor is temporarily hidden', () => {
+    const surface = mockPickerSurface()
+    vi.spyOn(pickerModule, 'pickerOf').mockReturnValue(surface)
+    const store = renderView()
+    act(() => {
+      store.actions.setUrl('http://localhost:5173/')
+      store.actions.addPick(pick('p1', 'Keep this annotation'))
+      store.actions.togglePickMode()
+    })
+    const frame = document.querySelector('iframe') as HTMLIFrameElement
+    const doc = frame.contentDocument!
+    doc.write('<!doctype html><html><body><h1 class="hero-title">Example Domain</h1></body></html>')
+    doc.close()
+    act(() => { store.actions.setFocusPickId('p1') })
+
+    fireEvent.click(screen.getByRole('button', { name: zh['editor.hide'] }))
+    expect(store.getSnapshot().pickMode).toBe(true)
+    expect(store.getSnapshot().picks).toHaveLength(1)
+    expect(store.getSnapshot().picks[0]?.comment).toBe('Keep this annotation')
+    fireEvent.click(screen.getByRole('button', { name: zh['editor.show'], hidden: true }))
+    expect((screen.getByPlaceholderText(zh['editor.comment']) as HTMLInputElement).value).toBe('Keep this annotation')
+  })
+
   it('shows preview and context-sync failures in the error strip', () => {
     const store = renderView()
     act(() => { store.actions.setError('preview failed') })
