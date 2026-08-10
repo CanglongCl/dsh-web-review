@@ -225,6 +225,7 @@ export function ScrubNumber({ label, value, onChange, step = 1, min, max, glyph 
   const focusValue = useRef(value)
   const clamp = (number: number) => Math.min(max ?? Number.POSITIVE_INFINITY, Math.max(min ?? Number.NEGATIVE_INFINITY, number))
   const numericValue = () => parseNumeric(value) ?? (fallbackValue === undefined ? null : parseNumeric(fallbackValue))
+  const canScrub = numericValue() !== null
   const increment = (delta: number) => {
     const parsed = numericValue()
     if (parsed === null) return
@@ -236,7 +237,8 @@ export function ScrubNumber({ label, value, onChange, step = 1, min, max, glyph 
         type="button"
         className={css.numberHandle}
         aria-label={`${label} · 拖动调整`}
-        title={`${label} · 拖动调整`}
+        title={canScrub ? `${label} · 拖动调整` : `${label} · 当前值仅支持文本编辑`}
+        disabled={!canScrub}
         onPointerDown={(event) => {
           const parsed = numericValue()
           if (parsed === null) return
@@ -395,22 +397,90 @@ export function ColorControl({ label, value, onChange }: { label: string; value:
   )
 }
 
-export function BoxModelControl({ label, values, linked, onLinkedChange, onChange }: {
+export interface BoxModelLinks {
+  vertical: boolean
+  horizontal: boolean
+  all: boolean
+}
+
+export function updateBoxModelLinks(links: BoxModelLinks, axis: keyof BoxModelLinks, linked: boolean): BoxModelLinks {
+  if (axis === 'all') {
+    return linked
+      ? { vertical: true, horizontal: true, all: true }
+      : { vertical: true, horizontal: true, all: false }
+  }
+  return { ...links, [axis]: linked, all: false }
+}
+
+export function BoxModelControl({ label, sideLabels, values, links, min, linkLabel, unlinkLabel, linkAllLabel, unlinkAllLabel, onLinkChange, onChange }: {
   label: string
+  sideLabels: readonly [string, string, string, string]
   values: readonly [string, string, string, string]
-  linked: boolean
-  onLinkedChange: (linked: boolean) => void
+  links: BoxModelLinks
+  min?: number
+  linkLabel: string
+  unlinkLabel: string
+  linkAllLabel: string
+  unlinkAllLabel: string
+  onLinkChange: (axis: keyof BoxModelLinks, linked: boolean) => void
   onChange: (index: number, value: string) => void
 }) {
-  const names = ['上', '右', '下', '左'] as const
-  return (
-    <span className={css.boxModelWrap}>
-      <span className={css.boxModel}>
-        {values.map((value, index) => <ScrubNumber key={names[index]} label={`${label} · ${names[index]}`} value={value} fallbackValue="0px" onChange={next => { onChange(index, next) }} />)}
+  const glyphs = ['↑', '→', '↓', '←'] as const
+  const update = (index: number, next: string) => {
+    onChange(index, next)
+    if (links.all) {
+      values.forEach((_, otherIndex) => { if (otherIndex !== index) onChange(otherIndex, next) })
+      return
+    }
+    if (links.vertical && index === 0) onChange(2, next)
+    if (links.vertical && index === 2) onChange(0, next)
+    if (links.horizontal && index === 1) onChange(3, next)
+    if (links.horizontal && index === 3) onChange(1, next)
+  }
+  const field = (index: number) => <ScrubNumber
+    label={sideLabels[index] ?? label}
+    value={values[index] ?? ''}
+    glyph={glyphs[index] ?? '↔'}
+    {...(min === undefined ? {} : { min })}
+    onChange={next => { update(index, next) }}
+  />
+  const axis = (first: number, second: number, key: keyof BoxModelLinks) => {
+    const linked = links[key]
+    const sides = `${sideLabels[first] ?? label} / ${sideLabels[second] ?? label}`
+    const action = linked ? unlinkLabel : linkLabel
+    const buttonLabel = `${action} · ${sides}`
+    return (
+      <span className={css.boxAxis}>
+        {field(first)}
+        {!links.all && (
+          <ToggleButton label={buttonLabel} pressed={linked} onToggle={() => { onLinkChange(key, !linked) }}>
+            <IconLinkOutline14 />
+          </ToggleButton>
+        )}
+        {links.all && <span aria-hidden />}
+        {field(second)}
       </span>
-      <ToggleButton label={`${label} · ${linked ? '取消联动' : '联动四边'}`} pressed={linked} onToggle={() => { onLinkedChange(!linked) }}>
-        {linked ? <IconLinkOutline14 /> : '⌁'}
-      </ToggleButton>
+    )
+  }
+  const canMerge = links.vertical && links.horizontal && !links.all
+  return (
+    <span className={clsx(css.boxModelWrap, canMerge && css.boxModelMergeReady, links.all && css.boxModelAllLinked)} role="group" aria-label={label}>
+      {axis(0, 2, 'vertical')}
+      {axis(3, 1, 'horizontal')}
+      {canMerge && (
+        <span className={css.boxAllLink}>
+          <ToggleButton label={linkAllLabel} pressed={false} onToggle={() => { onLinkChange('all', true) }}>
+            <IconLinkOutline14 />
+          </ToggleButton>
+        </span>
+      )}
+      {links.all && (
+        <span className={css.boxAllLink}>
+          <ToggleButton label={unlinkAllLabel} pressed onToggle={() => { onLinkChange('all', false) }}>
+            <IconLinkOutline14 />
+          </ToggleButton>
+        </span>
+      )}
     </span>
   )
 }
