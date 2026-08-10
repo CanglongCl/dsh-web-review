@@ -108,7 +108,7 @@ describe('dsh-web-review e2e', () => {
     await clickWhenStable(page, page.getByRole('tab', { name: 'Chat' }))
     await page.locator('[data-chat-flow]').evaluate((flow, url) => {
       const row = document.createElement('div')
-      row.dataset.chatFlowKind = 'assistant'
+      row.dataset.chatFlowKind = 'assistant-step'
       const link = document.createElement('a')
       link.dataset.previewE2e = ''
       link.href = url

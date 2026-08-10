@@ -323,7 +323,7 @@ describe('DraftOverlayBar', () => {
     const openPreview = vi.fn()
     renderDock(undefined, undefined, openPreview)
     const assistant = document.createElement('div')
-    assistant.dataset.chatFlowKind = 'assistant'
+    assistant.dataset.chatFlowKind = 'assistant-step'
     const link = document.createElement('a')
     link.href = 'http://127.0.0.1:5173/review'
     assistant.appendChild(link)
