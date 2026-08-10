@@ -1,7 +1,8 @@
-/** Assemble a prebuilt bundle tarball for DSH's official profile installer. */
+/** Assemble a prebuilt bundle tarball and checksum for DSH's official profile installer. */
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -46,7 +47,7 @@ writeFileSync(join(staging, 'cordis.patch.yml'), [
   '',
 ].join('\n'))
 cpSync(join(root, 'README.md'), join(staging, 'README.md'))
-for (const file of ['web-review-preview.jpg', 'web-review-annotation-editor.jpg']) {
+for (const file of ['web-review-demo.gif', 'web-review-preview.jpg', 'web-review-annotation-editor.jpg']) {
   cpSync(join(root, 'docs', 'assets', file), join(staging, 'docs', 'assets', file))
 }
 for (const file of ['index.js', 'client-official.js', 'client-official.js.map']) {
@@ -63,4 +64,14 @@ if (packed.status !== 0) {
   if (packed.stderr !== '') process.stderr.write(packed.stderr)
   process.exit(packed.status ?? 1)
 }
-console.log(`package-official: ${packed.stdout.trim()}`)
+const packedPath = packed.stdout.trim().split(/\r?\n/).at(-1)
+if (packedPath === undefined || packedPath === '') {
+  console.error('package-official: pnpm pack did not report the package filename')
+  process.exit(1)
+}
+const packageName = basename(packedPath)
+const packagePath = join(output, packageName)
+const checksum = createHash('sha256').update(readFileSync(packagePath)).digest('hex')
+writeFileSync(join(output, 'SHA256SUMS'), `${checksum}  ${packageName}\n`)
+console.log(`package-official: ${packageName}`)
+console.log('package-official: SHA256SUMS')

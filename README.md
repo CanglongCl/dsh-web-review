@@ -5,6 +5,10 @@
 把正在开发的网页直接放进 DSH 对话：浏览页面、点选任意元素、写下修改意见，或像设计工具一样临时调整文本、颜色、字体、尺寸、间距、边框与效果。发送后，批注会作为独立的结构化上下文交给当前 Agent，由它修改已连接工作区中的前端源码。
 
 <p align="center">
+  <img width="100%" alt="dsh-web-review 网页预览、元素批注与视觉调整演示" src="./docs/assets/web-review-demo.gif" />
+</p>
+
+<p align="center">
   <img width="49%" alt="dsh-web-review 网页预览" src="./docs/assets/web-review-preview.jpg" />
   <img width="49%" alt="dsh-web-review 元素批注与属性调整器" src="./docs/assets/web-review-annotation-editor.jpg" />
 </p>
@@ -56,10 +60,17 @@
 
 ### 使用官方 bundle 安装
 
-下载 Release 中的 `dsh-external-dsh-web-review-<版本>.tgz`，然后通过 DSH 官方的 profile 插件命令安装到 `web` profile：
+从 GitHub Release 下载 `dsh-external-dsh-web-review-<版本>.tgz` 和 `SHA256SUMS`。将两个文件放在同一目录，先校验安装包完整性：
 
 ```sh
-dsh plugin --profile web add ./dsh-external-dsh-web-review-0.0.1.tgz
+sha256sum -c SHA256SUMS       # Linux
+shasum -a 256 -c SHA256SUMS  # macOS
+```
+
+然后通过 DSH 官方的 profile 插件命令安装到 `web` profile：
+
+```sh
+dsh plugin --profile web add ./dsh-external-dsh-web-review-0.0.2.tgz
 ```
 
 安装命令会把插件加入 `web` profile 的依赖，并根据包内 `dsh.bundle.patch` 声明自动启用配置层。可先检查最终配置，再启动 DSH：
@@ -69,7 +80,7 @@ dsh --profile web --dump-config
 dsh web
 ```
 
-更新或卸载同样使用官方命令：
+更新时下载新版本并再次执行 `add`；卸载使用 `remove`：
 
 ```sh
 dsh plugin --profile web add ./dsh-external-dsh-web-review-0.0.2.tgz
@@ -90,6 +101,23 @@ pnpm package:official
 ```
 
 产物位于 `dist/dsh-external-dsh-web-review-<版本>.tgz`。其中只包含自包含的 Node bundle、使用稳定包名注册的浏览器 bundle、官方 `cordis.patch.yml` 和 README，不包含源码、本机 `node_modules` 或开发用绝对路径配置。
+
+### 维护者本地发布 Release
+
+正式包在已配置 Harness 的开发机上构建和验证，不依赖 GitHub Runner 访问 Harness 源码。发布前先同步根目录与插件包的版本，然后执行完整本地门禁：
+
+```sh
+pnpm check
+```
+
+`pnpm check` 会重新生成并验证 `dist/dsh-external-dsh-web-review-<版本>.tgz` 与 `dist/SHA256SUMS`。检查通过后提交版本修改，创建与包版本一致的 Tag 并推送：
+
+```sh
+git tag -a v0.0.3 -m "dsh-web-review v0.0.3"
+git push origin main v0.0.3
+```
+
+最后在 GitHub Releases 中选择该 Tag，上传 `.tgz` 与 `SHA256SUMS`。带预发布后缀的版本（例如 `v0.1.0-rc.1`）应标记为 prerelease。
 
 ## 使用方法
 

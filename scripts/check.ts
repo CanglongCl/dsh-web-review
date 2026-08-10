@@ -11,12 +11,13 @@
  *  5. build — tsdown produces the node half plus development and official
  *     client bundles;
  *  6. official package — stable bundle id, dsh.bundle declaration, exact
- *     staging allowlist, and tarball output.
+ *     staging allowlist, tarball output, and checksum.
  * Flags: --e2e additionally runs the Playwright browser suite (requires a
  * provider key chain; see tests/e2e-scaffold.ts).
  */
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -133,6 +134,7 @@ const expectedOfficialFiles = [
   'README.md',
   'cordis.patch.yml',
   'docs/assets/web-review-annotation-editor.jpg',
+  'docs/assets/web-review-demo.gif',
   'docs/assets/web-review-preview.jpg',
   'lib/client-official.js',
   'lib/client-official.js.map',
@@ -170,6 +172,17 @@ assert(
   'official tarball exists',
   () => existsSync(join(DIST, `dsh-external-dsh-web-review-${packageManifest.version}.tgz`)),
   () => 'pnpm pack did not produce the expected dist/*.tgz file',
+)
+assert(
+  'official tarball checksum is current',
+  () => {
+    const packageName = `dsh-external-dsh-web-review-${packageManifest.version}.tgz`
+    const packagePath = join(DIST, packageName)
+    if (!existsSync(packagePath) || !existsSync(join(DIST, 'SHA256SUMS'))) return false
+    const checksum = createHash('sha256').update(readFileSync(packagePath)).digest('hex')
+    return readFileSync(join(DIST, 'SHA256SUMS'), 'utf8') === `${checksum}  ${packageName}\n`
+  },
+  () => 'dist/SHA256SUMS is missing or does not match the official tarball',
 )
 
 if (runE2e) {
