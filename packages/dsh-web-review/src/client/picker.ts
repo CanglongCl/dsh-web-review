@@ -31,10 +31,26 @@ const PICKER_STYLE = `
   background-color: rgba(65, 118, 230, 0.10) !important;
 }
 [data-dsh-wv-selected] {
-  outline: 2px solid #679efe !important;
-  outline-offset: 2px !important;
   background-color: rgba(65, 118, 230, 0.10) !important;
 }
+.dsh-wv-selection-box {
+  position: fixed !important;
+  z-index: 2147482999 !important;
+  box-sizing: border-box !important;
+  pointer-events: none !important;
+  border: 2px solid #679efe !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  opacity: 0;
+  transition:
+    left 180ms cubic-bezier(0.2, 0, 0, 1),
+    top 180ms cubic-bezier(0.2, 0, 0, 1),
+    width 180ms cubic-bezier(0.2, 0, 0, 1),
+    height 180ms cubic-bezier(0.2, 0, 0, 1),
+    opacity 100ms ease;
+}
+.dsh-wv-selection-box[data-visible] { opacity: 1; }
+.dsh-wv-selection-box[data-static] { transition: none !important; }
 .dsh-wv-picking, .dsh-wv-picking * { cursor: crosshair !important; }
 .dsh-wv-marker {
   position: fixed !important;
@@ -53,6 +69,11 @@ const PICKER_STYLE = `
   transform: translate(-50%, -50%);
 }
 .dsh-wv-marker:hover { background: #679efe !important; }
+@media (prefers-reduced-motion: reduce) {
+  .dsh-wv-selection-box {
+    transition: opacity 100ms ease !important;
+  }
+}
 `
 
 /** The picker handoff the parent sets on the iframe's window before activate. */
@@ -101,6 +122,8 @@ export const PICKER_SCRIPT = `(function () {
   var active = false;
   var hovered = null;
   var selectedEl = null; // the element whose host editor is open
+  var selectionBox = null;
+  var selectionObserver = null;
   var markers = new Map(); // id -> { el, circle }
   var repositionQueued = false;
 
@@ -108,7 +131,8 @@ export const PICKER_SCRIPT = `(function () {
   function isChrome(el) {
     while (el && el !== document.documentElement) {
       if (el.classList &&
-          el.classList.contains('dsh-wv-marker')) {
+          (el.classList.contains('dsh-wv-marker') ||
+           el.classList.contains('dsh-wv-selection-box'))) {
         return true;
       }
       el = el.parentElement;
@@ -119,17 +143,62 @@ export const PICKER_SCRIPT = `(function () {
   function clearHover() {
     if (hovered) { hovered.removeAttribute('data-dsh-wv-hover'); hovered = null; }
   }
+  function ensureSelectionBox() {
+    if (selectionBox && selectionBox.isConnected) return selectionBox;
+    selectionBox = document.createElement('div');
+    selectionBox.className = 'dsh-wv-selection-box';
+    selectionBox.setAttribute('aria-hidden', 'true');
+    document.documentElement.appendChild(selectionBox);
+    return selectionBox;
+  }
+  function positionSelection(animate) {
+    if (!selectedEl || !selectedEl.isConnected) {
+      if (selectionBox) selectionBox.removeAttribute('data-visible');
+      return;
+    }
+    var r = selectedEl.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) {
+      if (selectionBox) selectionBox.removeAttribute('data-visible');
+      return;
+    }
+    var box = ensureSelectionBox();
+    if (animate) {
+      box.removeAttribute('data-static');
+      box.getBoundingClientRect();
+    } else {
+      box.setAttribute('data-static', '');
+    }
+    box.style.left = (r.left - 2) + 'px';
+    box.style.top = (r.top - 2) + 'px';
+    box.style.width = (r.width + 4) + 'px';
+    box.style.height = (r.height + 4) + 'px';
+    box.setAttribute('data-visible', '');
+    if (!animate) {
+      requestAnimationFrame(function () { box.removeAttribute('data-static'); });
+    }
+  }
+  function observeSelection() {
+    if (selectionObserver) selectionObserver.disconnect();
+    if (!selectedEl || typeof ResizeObserver === 'undefined') return;
+    selectionObserver = new ResizeObserver(function () { queueReposition(); });
+    selectionObserver.observe(selectedEl);
+  }
   function setSelected(el) {
     if (selectedEl === el) return;
-    clearSelected();
+    var animate = !!(selectedEl && selectionBox && selectionBox.hasAttribute('data-visible'));
+    if (selectedEl) selectedEl.removeAttribute('data-dsh-wv-selected');
     selectedEl = el;
     selectedEl.setAttribute('data-dsh-wv-selected', '');
+    observeSelection();
+    positionSelection(animate);
   }
   function clearSelected() {
     if (selectedEl) {
       selectedEl.removeAttribute('data-dsh-wv-selected');
       selectedEl = null;
     }
+    if (selectionObserver) { selectionObserver.disconnect(); selectionObserver = null; }
+    if (selectionBox) selectionBox.removeAttribute('data-visible');
   }
   function onMouseOver(e) {
     if (!active) return;
@@ -170,7 +239,7 @@ export const PICKER_SCRIPT = `(function () {
       if (window.__dshWebviewPicker.onCancel) window.__dshWebviewPicker.onCancel();
     }
   }
-  function onScroll() { if (active || markers.size > 0) queueReposition(); }
+  function onScroll() { if (active || markers.size > 0 || selectedEl) queueReposition(); }
 
   function queueReposition() {
     if (repositionQueued) return;
@@ -178,6 +247,7 @@ export const PICKER_SCRIPT = `(function () {
     requestAnimationFrame(function () {
       repositionQueued = false;
       repositionMarkers();
+      positionSelection(false);
     });
   }
   function repositionMarkers() {

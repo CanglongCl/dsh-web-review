@@ -244,17 +244,24 @@ describe('AnnotationEditor', () => {
     expect(pageKeydown).not.toHaveBeenCalled()
   })
 
-  it('shows navigation feedback only while the element tree is closed', () => {
+  it('keeps the selected target visible outside the element tree', () => {
     const { frame, element } = fixture()
-    const props = {
+    const baseProps = {
       id: 'feedback', patch: createLivePatch(element), frame, comment: '', changes: [], textChange: null,
       t, onCancel: vi.fn(), onConfirm: vi.fn(), onSelectElement: vi.fn(),
-      navigationFeedback: { action: 'parent' as const, sequence: 1 },
     }
-    const view = render(<AnnotationEditor {...props} />)
-    expect(document.querySelector('[data-webview-navigation-feedback]')?.textContent).toContain('h1')
+    const view = render(<AnnotationEditor {...baseProps} navigationFeedback={null} />)
+    expect(document.querySelector('[data-webview-navigation-feedback]')?.textContent).toContain('已选择 h1')
+    fireEvent.click(screen.getByRole('button', { name: zh['editor.adjust'] }))
+    expect(document.querySelector('[data-webview-navigation-feedback]')?.textContent).toContain('已选择 h1')
     view.unmount()
-    render(<AnnotationEditor {...props} initialMode="select" />)
+    render(
+      <AnnotationEditor
+        {...baseProps}
+        initialMode="select"
+        navigationFeedback={{ action: 'parent', sequence: 1 }}
+      />,
+    )
     expect(document.querySelector('[data-webview-navigation-feedback]')).toBeNull()
   })
 

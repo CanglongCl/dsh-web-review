@@ -180,7 +180,6 @@ export function AnnotationEditor({
   const normalStyleRef = useRef('normal')
   const [, forcePosition] = useState(0)
   const editorRef = useRef<HTMLDivElement | null>(null)
-  const [visibleFeedback, setVisibleFeedback] = useState(navigationFeedback)
   const visibleToggleRef = useRef<HTMLButtonElement | null>(null)
   const hiddenToggleRef = useRef<HTMLButtonElement | null>(null)
 
@@ -209,13 +208,6 @@ export function AnnotationEditor({
     if (mode !== 'collapsed') return
     editorRef.current?.focus({ preventScroll: true })
   }, [mode, patch])
-
-  useEffect(() => {
-    setVisibleFeedback(navigationFeedback)
-    if (navigationFeedback === null) return
-    const timeout = window.setTimeout(() => { setVisibleFeedback(null) }, 900)
-    return () => { window.clearTimeout(timeout) }
-  }, [navigationFeedback])
 
   const cancel = (): void => {
     restoreAll(patch)
@@ -411,7 +403,7 @@ export function AnnotationEditor({
   // height. Use the expanded estimate until its larger layout is measurable,
   // otherwise the card can anchor like the collapsed pill and clip below the
   // iframe viewport for one stable render.
-  const preferredHeight = mode === 'select' ? 430 : mode === 'adjust' ? 560 : 54
+  const preferredHeight = mode === 'select' ? 430 : mode === 'adjust' ? 560 : 82
   const measuredHeight = Math.max(editorRef.current?.scrollHeight ?? 0, preferredHeight)
   const placement = placeFloatingEditor({
     target: rect,
@@ -492,18 +484,19 @@ export function AnnotationEditor({
           )}
         </div>
 
-      {mode !== 'select' && visibleFeedback !== null && (
+      {mode !== 'select' && (
         <div
-          key={visibleFeedback.sequence}
           className={css.navigationFeedbackSlot}
           data-webview-navigation-feedback=""
-          data-action={visibleFeedback.action}
+          data-action={navigationFeedback?.action}
           role="status"
           aria-live="polite"
         >
           <div className={css.navigationFeedback}>
             <span className={css.navigationGlyph} aria-hidden>&lt;&gt;</span>
-            <span>{t('editor.select.switched', { target: navigationTargetLabel(patch.element, t) })}</span>
+            <span key={navigationFeedback?.sequence ?? 'current'} className={css.navigationTarget}>
+              {t('editor.select.current', { target: navigationTargetLabel(patch.element, t) })}
+            </span>
           </div>
         </div>
       )}

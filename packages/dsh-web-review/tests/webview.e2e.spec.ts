@@ -236,12 +236,37 @@ describe('dsh-web-review e2e', () => {
     let editor = page.locator('[data-webview-annotation-editor]')
     await editor.waitFor({ timeout: 10_000 })
     await expect.poll(async () => editor.evaluate(element => element.ownerDocument.activeElement === element)).toBe(true)
-    await editor.press('Backslash')
-    await expect.poll(async () => frame.locator('.card').first().getAttribute('data-dsh-wv-selected')).not.toBeNull()
     const feedback = page.locator('[data-webview-navigation-feedback]')
     await feedback.waitFor()
+    expect(await feedback.textContent()).toContain('Selected button')
+    const selectionBox = frame.locator('.dsh-wv-selection-box')
+    await selectionBox.waitFor()
+    expect(await selectionBox.count()).toBe(1)
+    expect(await selectionBox.getAttribute('data-visible')).toBe('')
+    await expect.poll(async () => selectionBox.getAttribute('data-static')).toBeNull()
+    const selectionStyle = await selectionBox.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return {
+        backgroundColor: style.backgroundColor,
+        borderColor: style.borderColor,
+        borderRadius: style.borderRadius,
+        transitionDuration: style.transitionDuration,
+      }
+    })
+    expect(selectionStyle.backgroundColor).toBe('rgba(0, 0, 0, 0)')
+    expect(selectionStyle.borderColor).toBe('rgb(103, 158, 254)')
+    expect(selectionStyle.borderRadius).toBe('6px')
+    expect(selectionStyle.transitionDuration).toContain('0.18s')
+    expect(await frame.locator('button.btn-primary').evaluate(element => getComputedStyle(element).backgroundColor))
+      .toBe('rgba(65, 118, 230, 0.1)')
+    const buttonBox = await selectionBox.boundingBox()
+    await editor.press('Backslash')
+    expect(await selectionBox.evaluate(element => element.getAnimations().length)).toBeGreaterThan(0)
+    await expect.poll(async () => frame.locator('.card').first().getAttribute('data-dsh-wv-selected')).not.toBeNull()
     expect(await feedback.getAttribute('data-action')).toBe('parent')
-    expect(await feedback.textContent()).toContain('Switched to div')
+    expect(await feedback.textContent()).toContain('Selected div')
+    await expect.poll(async () => (await selectionBox.boundingBox())?.height).not.toBe(buttonBox?.height)
+    expect(await selectionBox.count()).toBe(1)
     expect(await frame.locator('body').evaluate(() => (window as unknown as { __reviewObservedKeys: string[] }).__reviewObservedKeys)).toEqual([])
 
     editor = page.locator('[data-webview-annotation-editor]')
