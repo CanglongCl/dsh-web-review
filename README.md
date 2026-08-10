@@ -59,7 +59,7 @@
 下载 Release 中的 `dsh-external-dsh-web-review-<版本>.tgz`，然后通过 DSH 官方的 profile 插件命令安装到 `web` profile：
 
 ```sh
-dsh plugin --profile web add ./dsh-external-dsh-web-review-0.0.1.tgz
+dsh plugin --profile web add ./dsh-external-dsh-web-review-0.0.2.tgz
 ```
 
 安装命令会把插件加入 `web` profile 的依赖，并根据包内 `dsh.bundle.patch` 声明自动启用配置层。可先检查最终配置，再启动 DSH：
