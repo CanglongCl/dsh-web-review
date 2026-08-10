@@ -5,14 +5,14 @@
  * no external runtime imports, so the Loader can import the package from
  * outside the harness without a local node_modules).
  *
- * Browser half: bundles `src/client/index.ts` into lib/client.js as a
- * closure-factory artifact — `window.__ModuleLoader__.load({ id, factory })`
- * with externals resolved through the browser-side module table (the
- * platform modules shared by the shell + the runtime store exemption).
- * Everything else (react, clsx) is inlined.
+ * Browser half: compiles the same `src/client/index.ts` twice as closure-
+ * factory artifacts. `lib/client.js` uses the generated absolute-path id for
+ * the source-checkout development channel; `lib/client-official.js` uses the
+ * stable npm package name for the official DSH bundle tarball. Externals
+ * resolve through the browser module table and everything else is inlined.
  *
  * The banner id MUST equal the boot-graph row id — i.e. the entry name in
- * cordis.yml, generated into entry-name.json by scripts/gen-config.mjs.
+ * cordis.yml, generated into entry-name.json by scripts/gen-config.ts.
  * The browser module loader checks the handoff id against the graph row id.
  */
 import { readFileSync } from 'node:fs'
@@ -23,6 +23,9 @@ import { transform } from 'lightningcss'
 
 const ENTRY_NAME = (
   JSON.parse(readFileSync(new URL('./entry-name.json', import.meta.url), 'utf8')) as { name: string }
+).name
+const PACKAGE_ID = (
+  JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { name: string }
 ).name
 
 /** The shell's shared platform module table (mirror of packages/client/web/src/platform.ts). */
@@ -44,18 +47,9 @@ const CSS_VIRTUAL_SUFFIX = '.mjs'
 /** Externals resolved from the loader module table: platform modules + the runtime exemption. */
 export const CLIENT_EXTERNALS: readonly string[] = [...PLATFORM_MODULES, RUNTIME_STORE_EXEMPTION]
 
-export default [
-  {
-    entry: ['src/index.ts'],
-    outDir: 'lib',
-    format: ['esm'],
-    platform: 'node',
-    target: 'es2024',
-    fixedExtension: false,
-    dts: false,
-    clean: false,
-  },
-  {
+/** Build one client artifact for an install channel and its loader id. */
+function clientBundle(pluginId: string, entryFile: string): UserConfig {
+  return {
     entry: { client: 'src/client/index.ts' },
     outDir: 'lib',
     format: 'cjs',
@@ -90,13 +84,13 @@ export default [
         })
         const classMap: Record<string, string> = {}
         for (const [local, value] of Object.entries(cssExports ?? {})) classMap[local] = value.name
-        const tagId = `${ENTRY_NAME}/${basename(fileId)}`
+        const tagId = `${pluginId}/${basename(fileId)}`
         return [
           `const css = ${JSON.stringify(code.toString())};`,
           `const tagId = ${JSON.stringify(tagId)};`,
           `if (typeof document !== 'undefined' && document.querySelector('style[data-plugin-css=' + JSON.stringify(tagId) + ']') === null) {`,
           `  const tag = document.createElement('style');`,
-          `  tag.dataset.plugin = ${JSON.stringify(ENTRY_NAME)};`,
+          `  tag.dataset.plugin = ${JSON.stringify(pluginId)};`,
           `  tag.dataset.pluginCss = tagId;`,
           `  tag.textContent = css;`,
           `  document.head.appendChild(tag);`,
@@ -106,10 +100,25 @@ export default [
       },
     }],
     outputOptions: {
-      entryFileNames: 'client.js',
-      banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(ENTRY_NAME)}, factory: (require) => {`,
+      entryFileNames: entryFile,
+      banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(pluginId)}, factory: (require) => {`,
       footer: 'return module.exports; } });',
       intro: 'var module = { exports: {} }; var exports = module.exports;',
     },
+  }
+}
+
+export default [
+  {
+    entry: ['src/index.ts'],
+    outDir: 'lib',
+    format: ['esm'],
+    platform: 'node',
+    target: 'es2024',
+    fixedExtension: false,
+    dts: false,
+    clean: false,
   },
+  clientBundle(ENTRY_NAME, 'client.js'),
+  clientBundle(PACKAGE_ID, 'client-official.js'),
 ] satisfies UserConfig[]
