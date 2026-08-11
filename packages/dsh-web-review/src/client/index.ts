@@ -69,6 +69,7 @@ export function makeSyncAnnotations(sessionId: SessionId): WebviewDockInjected['
   let lastScheduledTask: Promise<void> | undefined
   return (draft) => {
     const body = JSON.stringify({ sessionId, ...draft })
+    const clearing = draft.comments.length === 0
     if (lastScheduledTask === undefined && body === lastAcknowledged) return Promise.resolve()
     if (body === lastScheduledBody && lastScheduledTask !== undefined) return lastScheduledTask
     const task = tail.catch(() => undefined).then(async () => {
@@ -78,7 +79,12 @@ export function makeSyncAnnotations(sessionId: SessionId): WebviewDockInjected['
         headers: { 'Content-Type': 'application/json' },
         body,
       })
-      if (!response.ok) throw new Error(`annotation context sync failed (${response.status})`)
+      // Clearing an absent live agent is already satisfied. The host keeps
+      // returning 404 so this route cannot be used as a session-state oracle;
+      // non-empty snapshots still surface the unavailable-agent failure.
+      if (!response.ok && !(clearing && response.status === 404)) {
+        throw new Error(`annotation context sync failed (${response.status})`)
+      }
       lastAcknowledged = body
     })
     tail = task.catch(() => undefined)

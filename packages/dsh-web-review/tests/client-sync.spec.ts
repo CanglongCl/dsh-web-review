@@ -14,6 +14,10 @@ function draft(comment: string): AnnotationDraft {
   }
 }
 
+function emptyDraft(): AnnotationDraft {
+  return { page: { url: '', title: '' }, comments: [] }
+}
+
 function deferredResponse(): { promise: Promise<Response>; resolve: () => void } {
   let resolve!: () => void
   const promise = new Promise<Response>((done) => {
@@ -94,5 +98,14 @@ describe('makeSyncAnnotations', () => {
     await expect(sync(draft('retry'))).rejects.toThrow('annotation context sync failed (404)')
     await expect(sync(draft('retry'))).resolves.toBeUndefined()
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('treats clearing an absent live agent as already satisfied', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 404 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const sync = makeSyncAnnotations('historical-session' as SessionId)
+    await expect(sync(emptyDraft())).resolves.toBeUndefined()
+    await sync(emptyDraft())
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
