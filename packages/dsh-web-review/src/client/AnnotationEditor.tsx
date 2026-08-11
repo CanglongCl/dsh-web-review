@@ -261,11 +261,11 @@ export function AnnotationEditor({
   }, [frame, patch, comment, mode, onSelectElement])
 
   const updateProperty = (property: EditableStyleProperty, next: string): void => {
-    setValues(current => new Map(current).set(property, next))
     const before = originals.get(property) ?? ''
     if (next === before) {
       restoreStyle(patch, property)
       setInvalid(current => { const copy = new Set(current); copy.delete(property); return copy })
+      setValues(current => new Map(current).set(property, next))
       return
     }
     if (
@@ -274,10 +274,14 @@ export function AnnotationEditor({
       || !validCssValue(patch.element, property, next)
     ) {
       setInvalid(current => new Set(current).add(property))
+      setValues(current => new Map(current).set(property, next))
       return
     }
-    setInvalid(current => { const copy = new Set(current); copy.delete(property); return copy })
+    // Record the rollback baseline before the state update can trigger a
+    // render that derives numeric fallbacks for keyword values.
     previewStyle(patch, property, next)
+    setInvalid(current => { const copy = new Set(current); copy.delete(property); return copy })
+    setValues(current => new Map(current).set(property, next))
   }
 
   const updateText = (next: string): void => {
@@ -293,6 +297,10 @@ export function AnnotationEditor({
   }
 
   const numericFallback = (property: EditableStyleProperty): string => {
+    const originalInline = patch.originalStyles.get(property)?.value
+    if (originalInline !== undefined && parseNumeric(originalInline) !== null) return originalInline
+    const baseline = originals.get(property)
+    if (baseline !== undefined && parseNumeric(baseline) !== null) return baseline
     if (property === 'line-height') {
       const fontSize = parseNumeric(valueOf('font-size'))
       return fontSize === null ? '16px' : `${String(Math.round(fontSize.number * 1.2 * 1000) / 1000)}${fontSize.unit || 'px'}`
@@ -335,6 +343,8 @@ export function AnnotationEditor({
         value={value}
         fallbackValue={numericFallback(property)}
         invalid={invalid.has(property)}
+        options={control.options ?? []}
+        presetLabel={t('editor.action.choosePreset')}
         onScrubChange={scrubChange(property)}
         onChange={next => { updateProperty(property, next) }}
         {...(control.step === undefined ? {} : { step: control.step })}
@@ -385,6 +395,8 @@ export function AnnotationEditor({
           label={groupLabel}
           sideLabels={four(controls.map(control => propertyLabel(control, t)))}
           values={four(properties.map(valueOf))}
+          options={controls[0]?.options ?? []}
+          presetLabel={t('editor.action.choosePreset')}
           onScrubChange={scrubChange(prefix)}
           links={links}
           {...(prefix === 'padding' ? { min: 0 } : {})}
@@ -591,6 +603,8 @@ export function AnnotationEditor({
                     link: t('editor.action.linkValues'),
                     unlink: t('editor.action.unlinkValues'),
                   }}
+                  options={PROPERTY_BY_NAME.get('width')?.options ?? []}
+                  presetLabel={t('editor.action.choosePreset')}
                   onWidthChange={next => { updateProperty('width', next) }}
                   onHeightChange={next => { updateProperty('height', next) }}
                   onScrubChange={scrubChange('size')}

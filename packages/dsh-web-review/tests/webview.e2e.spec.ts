@@ -309,6 +309,8 @@ describe('dsh-web-review e2e', () => {
     const original = await heading.evaluate(element => ({
       color: getComputedStyle(element).color,
       fontSize: getComputedStyle(element).fontSize,
+      width: getComputedStyle(element).width,
+      inlineWidth: (element as HTMLElement).style.width,
       text: element.textContent,
     }))
 
@@ -409,14 +411,18 @@ describe('dsh-web-review e2e', () => {
     await editor.getByLabel('Text color', { exact: true }).click()
     await page.getByLabel('Text color · Hex').fill('#613838')
     await fontSizeField.fill('24px')
+    await editor.getByRole('button', { name: 'Width · Choose preset', exact: true }).click()
+    await page.getByRole('menuitem', { name: 'auto' }).click()
 
     await expect.poll(async () => heading.evaluate(element => ({
       color: getComputedStyle(element).color,
       fontSize: getComputedStyle(element).fontSize,
+      inlineWidth: (element as HTMLElement).style.width,
       text: element.textContent,
     })), { timeout: 10_000 }).toEqual({
       color: 'rgb(97, 56, 56)',
       fontSize: '24px',
+      inlineWidth: 'auto',
       text: 'Reviewed magic UI',
     })
 
@@ -454,6 +460,8 @@ describe('dsh-web-review e2e', () => {
     await expect.poll(async () => heading.evaluate(element => ({
       color: getComputedStyle(element).color,
       fontSize: getComputedStyle(element).fontSize,
+      width: getComputedStyle(element).width,
+      inlineWidth: (element as HTMLElement).style.width,
       text: element.textContent,
     })), { timeout: 30_000, message: 'successful send should remove every temporary preview mutation' })
       .toEqual(original)
@@ -463,6 +471,7 @@ describe('dsh-web-review e2e', () => {
     expect(contextText).toContain('Browser annotation:')
     expect(contextText).toContain('Visible viewport at edit time:')
     expect(contextText).toContain('- color: rgb(255, 255, 255) -> #613838')
+    expect(contextText).toContain(`- width: ${original.width} -> auto`)
     expect(contextText).toContain('- text: "魔法 UI 演示页" -> "Reviewed magic UI"')
     expect(contextText).not.toContain('- font-size:')
     await page.close()

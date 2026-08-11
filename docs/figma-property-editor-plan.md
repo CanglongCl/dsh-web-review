@@ -90,8 +90,9 @@ Unit-aware numeric control with:
 - horizontal pointer drag on the label or leading property glyph;
 - ArrowUp/ArrowDown increments, Shift ×10, Alt ×0.1;
 - preserved unit (`px`, `%`, `rem`, `em`, `deg`, or unitless);
-- optional min/max/step and semantic presets such as `auto`/`normal` through a
-  compact adjacent menu;
+- optional min/max/step and a trailing chevron menu for stable, parameter-free
+  CSS keywords such as `auto`, `normal`, and `none`; numeric, unit-bearing,
+  functional, and token-backed values remain freely editable in the same field;
 - double-click/reset action through the existing per-property rollback.
 
 Dragging begins from the committed value and previews continuously. Invalid or
