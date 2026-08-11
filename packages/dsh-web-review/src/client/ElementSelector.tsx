@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { IconChevronDownOutline14, IconChevronRightOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import {
@@ -141,6 +141,15 @@ function TreeNode({
 export function ElementSelector({ root, current, t, onSelect }: ElementSelectorProps): JSX.Element {
   const initialExpanded = useMemo(() => new Set(reviewableAncestors(current).map(treeKeyOf)), [current])
   const [expanded, setExpanded] = useState<Set<string>>(initialExpanded)
+  const [canScrollDown, setCanScrollDown] = useState(false)
+  const viewportRef = useRef<HTMLDivElement | null>(null)
+
+  const syncScrollAffordance = useCallback((): void => {
+    const viewport = viewportRef.current
+    if (viewport === null) return
+    const next = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight > 2
+    setCanScrollDown(value => value === next ? value : next)
+  }, [])
 
   useEffect(() => {
     setExpanded(value => {
@@ -149,6 +158,18 @@ export function ElementSelector({ root, current, t, onSelect }: ElementSelectorP
       return next
     })
   }, [current])
+
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (viewport === null) return
+    syncScrollAffordance()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => { syncScrollAffordance() })
+    observer.observe(viewport)
+    const tree = viewport.firstElementChild
+    if (tree instanceof Element) observer.observe(tree)
+    return () => { observer.disconnect() }
+  }, [expanded, syncScrollAffordance])
 
   const child = firstReviewableChild(current)
   const parent = reviewableParent(current)
@@ -189,18 +210,21 @@ export function ElementSelector({ root, current, t, onSelect }: ElementSelectorP
       <div className={css.treeHeader}>
         <span>{t('editor.select.tree')}</span>
       </div>
-      <div className={css.treeViewport} data-webview-element-tree="">
-        <ul className={css.tree} role="tree" aria-label={t('editor.select.tree')}>
-          <TreeNode
-            element={root}
-            current={current}
-            depth={0}
-            expanded={expanded}
-            t={t}
-            onToggle={toggle}
-            onSelect={onSelect}
-          />
-        </ul>
+      <div className={css.treeViewportShell} {...(canScrollDown ? { 'data-can-scroll-down': '' } : {})}>
+        <div ref={viewportRef} className={css.treeViewport} data-webview-element-tree="" onScroll={syncScrollAffordance}>
+          <ul className={css.tree} role="tree" aria-label={t('editor.select.tree')}>
+            <TreeNode
+              element={root}
+              current={current}
+              depth={0}
+              expanded={expanded}
+              t={t}
+              onToggle={toggle}
+              onSelect={onSelect}
+            />
+          </ul>
+        </div>
+        <div className={css.treeFade} data-webview-element-tree-fade="" aria-hidden="true" />
       </div>
     </div>
   )
