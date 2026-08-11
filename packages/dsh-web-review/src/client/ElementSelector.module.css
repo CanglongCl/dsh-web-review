@@ -60,7 +60,29 @@
   font: 600 11px/16px system-ui, sans-serif;
 }
 
-.treeViewport { flex: 1 1 auto; min-height: 180px; max-height: min(360px, calc(100vh - 290px)); overflow: auto; padding: 6px 8px; }
+.treeViewportShell {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 180px;
+  max-height: min(360px, calc(100vh - 290px));
+  overflow: hidden;
+}
+
+.treeViewport { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 6px 8px; }
+.treeFade {
+  position: absolute;
+  z-index: 1;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 44px;
+  background: linear-gradient(to bottom, rgb(255 255 255 / 0%), #fff 82%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease-out;
+}
+.treeViewportShell[data-can-scroll-down] .treeFade { opacity: 1; }
 .tree,
 .tree ul { margin: 0; padding: 0; list-style: none; }
 
@@ -84,3 +106,7 @@
 .treeRowCurrent .glyph { background: #d9e5ff; color: #315fca; }
 .tag { flex: none; color: var(--dsw-alias-label-primary, #17191c); font: 600 13px/18px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .detail { max-width: 180px; margin-left: 5px; overflow: hidden; color: var(--dsw-alias-label-tertiary, #727780); text-overflow: ellipsis; white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .treeFade { transition-duration: 0s; }
+}

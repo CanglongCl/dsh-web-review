@@ -204,6 +204,23 @@ describe('AnnotationEditor', () => {
     expect(screen.getByRole('button', { name: zh['editor.select'] })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: zh['editor.select'] }))
     expect(document.querySelector('[data-webview-element-selector]')).toBeTruthy()
+    const treeViewport = document.querySelector('[data-webview-element-tree]') as HTMLDivElement
+    const treeShell = treeViewport.parentElement as HTMLDivElement
+    const treeFade = document.querySelector('[data-webview-element-tree-fade]') as HTMLDivElement
+    expect(treeFade.getAttribute('aria-hidden')).toBe('true')
+    Object.defineProperties(treeViewport, {
+      clientHeight: { configurable: true, value: 180 },
+      scrollHeight: { configurable: true, value: 400 },
+      scrollTop: { configurable: true, value: 0, writable: true },
+    })
+    fireEvent.scroll(treeViewport)
+    expect(treeShell.hasAttribute('data-can-scroll-down')).toBe(true)
+    treeViewport.scrollTop = 220
+    fireEvent.scroll(treeViewport)
+    expect(treeShell.hasAttribute('data-can-scroll-down')).toBe(false)
+    treeViewport.scrollTop = 200
+    fireEvent.scroll(treeViewport)
+    expect(treeShell.hasAttribute('data-can-scroll-down')).toBe(true)
     expect(screen.getByRole('button', { name: zh['editor.select.child'] })).toBeTruthy()
     expect(screen.getByRole('button', { name: zh['editor.select.child'] }).textContent).toContain(zh['editor.select.child.short'])
     expect(screen.getByRole('button', { name: zh['editor.select.previousSibling'] }).textContent).toContain(zh['editor.select.previousSibling.short'])
