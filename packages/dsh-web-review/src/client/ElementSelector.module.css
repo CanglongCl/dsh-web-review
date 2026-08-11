@@ -38,7 +38,6 @@
 
 .actions button:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 8%)); }
 .actions button:disabled { cursor: default; opacity: .42; }
-.actions button:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary, #4176e6); outline-offset: 1px; }
 .shortcut {
   min-width: 17px;
   height: 16px;
@@ -64,8 +63,6 @@
 .treeViewport { flex: 1 1 auto; min-height: 180px; max-height: min(360px, calc(100vh - 290px)); overflow: auto; padding: 6px 8px; }
 .tree,
 .tree ul { margin: 0; padding: 0; list-style: none; }
-.tree [role="treeitem"]:focus { outline: none; }
-.tree [role="treeitem"]:focus-visible > .treeRow { outline: 2px solid var(--dsw-alias-state-business-primary, #4176e6); outline-offset: -2px; }
 
 .treeRow { display: flex; align-items: center; min-width: max-content; height: 34px; border: 1px solid transparent; border-radius: 9px; }
 .treeRow:hover { background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%)); }
@@ -81,8 +78,6 @@
 .treeRowCurrent .disclosureExpanded { color: #315fca; }
 .disclosure svg { width: 12px; height: 12px; }
 .disclosureSpacer { flex: none; width: 22px; }
-.disclosure:focus-visible,
-.elementButton:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary, #4176e6); outline-offset: -1px; border-radius: 6px; }
 
 .elementButton { display: flex; align-items: center; min-width: 0; height: 32px; padding: 0 8px 0 0; font: 13px/18px system-ui, sans-serif; }
 .glyph { display: inline-grid; place-items: center; flex: none; width: 20px; height: 20px; margin-right: 7px; border-radius: 5px; background: #f0f1f3; color: var(--dsw-alias-label-tertiary, #727780); font: 10px/20px ui-monospace, SFMono-Regular, Menlo, monospace; }

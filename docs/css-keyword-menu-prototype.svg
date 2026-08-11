@@ -1,0 +1,240 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
+  <title id="title">CSS 数值与关键字复合输入原型</title>
+  <desc id="desc">三幅画板展示复合输入关闭态、下拉展开态与选择关键字后的状态，并对比纯数值和纯枚举控件。</desc>
+  <defs>
+    <filter id="shadow" x="-30%" y="-30%" width="170%" height="190%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#172033" flood-opacity=".16"/>
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#172033" flood-opacity=".10"/>
+    </filter>
+    <filter id="menu-shadow" x="-30%" y="-30%" width="170%" height="190%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#172033" flood-opacity=".18"/>
+    </filter>
+    <style>
+      text { font-family: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; }
+      .title { fill:#17191c; font-size:28px; font-weight:700; }
+      .subtitle { fill:#656b75; font-size:14px; }
+      .state { fill:#17191c; font-size:18px; font-weight:700; }
+      .badge { fill:#2765d8; font-size:12px; font-weight:700; letter-spacing:.8px; }
+      .tiny { fill:#6a7079; font-size:11px; }
+      .label { fill:#555a62; font-size:12px; }
+      .value { fill:#20242a; font-size:12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .menu-value { fill:#20242a; font-size:12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .callout { fill:#2458b8; font-size:12px; font-weight:600; }
+    </style>
+    <g id="chevron" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><path d="m3 5 4 4 4-4"/></g>
+    <g id="check" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 7 3 3 6-7"/></g>
+    <g id="reset" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"><path d="M11 4.5A5 5 0 1 0 12 9M11 4.5V1.8m0 2.7H8.3"/></g>
+  </defs>
+
+  <rect width="1440" height="900" fill="#f4f6f9"/>
+  <text x="54" y="58" class="title">数值可输入，关键字可选择</text>
+  <text x="54" y="86" class="subtitle">保留左侧拖动与中间文本输入；仅在支持常用 CSS 关键字时，于右侧显示下三角。</text>
+
+  <!-- 01 closed -->
+  <g transform="translate(54 126)">
+    <rect width="404" height="610" rx="22" fill="#fff" stroke="#dfe3e8"/>
+    <text x="24" y="38" class="badge">01 · CLOSED</text>
+    <text x="24" y="68" class="state">默认关闭态</text>
+    <text x="24" y="91" class="tiny">直接输入、拖动、下拉三种方式并存</text>
+
+    <g transform="translate(26 120)" filter="url(#shadow)">
+      <rect width="352" height="404" rx="18" fill="#fff" stroke="#dfe3e8"/>
+      <text x="14" y="31" fill="#24282e" font-size="12" font-weight="700">尺寸与布局</text>
+      <path d="m324 24 5 5 5-5" fill="none" stroke="#868c95" stroke-width="1.3"/>
+
+      <text x="14" y="74" class="label">宽度</text>
+      <g transform="translate(182 54)">
+        <rect width="126" height="28" rx="7" fill="#f3f5f7"/>
+        <line x1="30" y1="5" x2="30" y2="23" stroke="#dde1e6"/>
+        <line x1="103" y1="5" x2="103" y2="23" stroke="#dde1e6"/>
+        <text x="15" y="18" fill="#747a82" font-size="10" font-weight="600" text-anchor="middle">W</text>
+        <text x="96" y="18" class="value" text-anchor="end">320px</text>
+        <g transform="translate(109 8)" color="#747a82"><use href="#chevron"/></g>
+      </g>
+      <g transform="translate(316 61)" color="#747a82"><use href="#reset"/></g>
+
+      <text x="14" y="108" class="label">高度</text>
+      <g transform="translate(182 88)">
+        <rect width="126" height="28" rx="7" fill="#f3f5f7"/>
+        <line x1="30" y1="5" x2="30" y2="23" stroke="#dde1e6"/>
+        <line x1="103" y1="5" x2="103" y2="23" stroke="#dde1e6"/>
+        <text x="15" y="18" fill="#747a82" font-size="10" font-weight="600" text-anchor="middle">H</text>
+        <text x="96" y="18" class="value" text-anchor="end">180px</text>
+        <g transform="translate(109 8)" color="#747a82"><use href="#chevron"/></g>
+      </g>
+
+      <text x="14" y="162" fill="#24282e" font-size="12" font-weight="700">间距</text>
+      <text x="14" y="201" class="label">外边距 · 上</text>
+      <g transform="translate(182 181)">
+        <rect width="126" height="28" rx="7" fill="#f3f5f7"/>
+        <line x1="30" y1="5" x2="30" y2="23" stroke="#dde1e6"/>
+        <line x1="103" y1="5" x2="103" y2="23" stroke="#dde1e6"/>
+        <text x="15" y="18" fill="#747a82" font-size="10" text-anchor="middle">↑</text>
+        <text x="96" y="18" class="value" text-anchor="end">24px</text>
+        <g transform="translate(109 8)" color="#747a82"><use href="#chevron"/></g>
+      </g>
+
+      <text x="14" y="235" class="label">内边距 · 上</text>
+      <g transform="translate(182 215)">
+        <rect width="126" height="28" rx="7" fill="#f3f5f7"/>
+        <line x1="30" y1="5" x2="30" y2="23" stroke="#dde1e6"/>
+        <text x="15" y="18" fill="#747a82" font-size="10" text-anchor="middle">↑</text>
+        <text x="117" y="18" class="value" text-anchor="end">16px</text>
+      </g>
+      <text x="308" y="267" class="tiny" text-anchor="end">纯数值：不显示下三角</text>
+
+      <text x="14" y="312" fill="#24282e" font-size="12" font-weight="700">显示</text>
+      <text x="14" y="351" class="label">显示方式</text>
+      <g transform="translate(182 331)">
+        <rect width="126" height="28" rx="7" fill="#f3f5f7"/>
+        <text x="96" y="18" class="value" text-anchor="end">flex</text>
+        <g transform="translate(109 8)" color="#747a82"><use href="#chevron"/></g>
+      </g>
+      <text x="308" y="382" class="tiny" text-anchor="end">纯枚举：沿用现有菜单</text>
+    </g>
+
+    <path d="M305 203 C342 186 354 163 346 143" fill="none" stroke="#4176e6" stroke-width="1.5" stroke-dasharray="4 4"/>
+    <text x="220" y="138" class="callout">新增独立下三角按钮</text>
+  </g>
+
+  <!-- 02 open -->
+  <g transform="translate(518 126)">
+    <rect width="404" height="610" rx="22" fill="#fff" stroke="#dfe3e8"/>
+    <text x="24" y="38" class="badge">02 · OPEN</text>
+    <text x="24" y="68" class="state">关键字菜单展开</text>
+    <text x="24" y="91" class="tiny">菜单 portaled 到宿主，不受编辑器滚动裁切</text>
+
+    <g transform="translate(26 120)" filter="url(#shadow)">
+      <rect width="352" height="404" rx="18" fill="#fff" stroke="#dfe3e8"/>
+      <text x="14" y="31" fill="#24282e" font-size="12" font-weight="700">约束</text>
+      <path d="m324 24 5 5 5-5" fill="none" stroke="#868c95" stroke-width="1.3"/>
+
+      <text x="14" y="74" class="label">最大宽度</text>
+      <g transform="translate(182 54)">
+        <rect width="126" height="28" rx="7" fill="#eef3ff" stroke="#4176e6"/>
+        <line x1="30" y1="5" x2="30" y2="23" stroke="#cdd9f6"/>
+        <line x1="103" y1="5" x2="103" y2="23" stroke="#cdd9f6"/>
+        <text x="15" y="18" fill="#61708a" font-size="10" font-weight="600" text-anchor="middle">W</text>
+        <text x="96" y="18" class="value" text-anchor="end">640px</text>
+        <g transform="translate(109 8) rotate(180 7 7)" color="#4176e6"><use href="#chevron"/></g>
+      </g>
+
+      <text x="14" y="128" class="label">最小宽度</text>
+      <g transform="translate(182 108)">
+        <rect width="126" height="28" rx="7" fill="#f3f5f7"/>
+        <line x1="30" y1="5" x2="30" y2="23" stroke="#dde1e6"/>
+        <line x1="103" y1="5" x2="103" y2="23" stroke="#dde1e6"/>
+        <text x="15" y="18" fill="#747a82" font-size="10" font-weight="600" text-anchor="middle">W</text>
+        <text x="96" y="18" class="value" text-anchor="end">0px</text>
+        <g transform="translate(109 8)" color="#747a82"><use href="#chevron"/></g>
+      </g>
+    </g>
+
+    <g transform="translate(194 205)" filter="url(#menu-shadow)">
+      <rect width="164" height="120" rx="8" fill="#fff" stroke="#d9dde3"/>
+      <g transform="translate(3 3)">
+        <rect width="158" height="28" rx="5" fill="transparent"/>
+        <text x="9" y="18" class="menu-value">none</text>
+      </g>
+      <g transform="translate(3 31)">
+        <rect width="158" height="28" rx="5" fill="#f3f5f7"/>
+        <text x="9" y="18" class="menu-value">min-content</text>
+      </g>
+      <g transform="translate(3 59)">
+        <rect width="158" height="28" rx="5" fill="transparent"/>
+        <text x="9" y="18" class="menu-value">max-content</text>
+      </g>
+      <g transform="translate(3 87)">
+        <rect width="158" height="28" rx="5" fill="transparent"/>
+        <text x="9" y="18" class="menu-value">fit-content</text>
+      </g>
+    </g>
+
+    <path d="M194 344 C153 361 143 391 157 412" fill="none" stroke="#4176e6" stroke-width="1.5" stroke-dasharray="4 4"/>
+    <text x="41" y="431" class="callout">数值当前值不复制进菜单</text>
+    <text x="41" y="453" class="tiny">输入框始终保留 640px；菜单只提供关键字快捷项</text>
+  </g>
+
+  <!-- 03 selected -->
+  <g transform="translate(982 126)">
+    <rect width="404" height="610" rx="22" fill="#fff" stroke="#dfe3e8"/>
+    <text x="24" y="38" class="badge">03 · SELECTED</text>
+    <text x="24" y="68" class="state">选择关键字后</text>
+    <text x="24" y="91" class="tiny">同一 onChange 链路：预览、reset、Confirm、Cancel</text>
+
+    <g transform="translate(26 120)" filter="url(#shadow)">
+      <rect width="352" height="404" rx="18" fill="#fff" stroke="#dfe3e8"/>
+      <text x="14" y="31" fill="#24282e" font-size="12" font-weight="700">约束</text>
+      <path d="m324 24 5 5 5-5" fill="none" stroke="#868c95" stroke-width="1.3"/>
+
+      <text x="14" y="74" class="label">最大宽度</text>
+      <g transform="translate(182 54)">
+        <rect width="126" height="28" rx="7" fill="#f3f5f7"/>
+        <line x1="30" y1="5" x2="30" y2="23" stroke="#dde1e6"/>
+        <line x1="103" y1="5" x2="103" y2="23" stroke="#dde1e6"/>
+        <text x="15" y="18" fill="#747a82" font-size="10" font-weight="600" text-anchor="middle">W</text>
+        <text x="96" y="18" class="value" text-anchor="end">none</text>
+        <g transform="translate(109 8)" color="#747a82"><use href="#chevron"/></g>
+      </g>
+      <g transform="translate(316 61)" color="#4176e6"><use href="#reset"/></g>
+      <circle cx="329" cy="74" r="4" fill="#4176e6"/>
+
+      <text x="14" y="128" class="label">行高</text>
+      <g transform="translate(182 108)">
+        <rect width="126" height="28" rx="7" fill="#f3f5f7"/>
+        <line x1="30" y1="5" x2="30" y2="23" stroke="#dde1e6"/>
+        <line x1="103" y1="5" x2="103" y2="23" stroke="#dde1e6"/>
+        <text x="15" y="18" fill="#747a82" font-size="10" text-anchor="middle">↕</text>
+        <text x="96" y="18" class="value" text-anchor="end">normal</text>
+        <g transform="translate(109 8)" color="#747a82"><use href="#chevron"/></g>
+      </g>
+
+      <text x="14" y="182" class="label">层级</text>
+      <g transform="translate(182 162)">
+        <rect width="126" height="28" rx="7" fill="#f3f5f7"/>
+        <line x1="30" y1="5" x2="30" y2="23" stroke="#dde1e6"/>
+        <line x1="103" y1="5" x2="103" y2="23" stroke="#dde1e6"/>
+        <text x="15" y="18" fill="#747a82" font-size="10" font-weight="600" text-anchor="middle">Z</text>
+        <text x="96" y="18" class="value" text-anchor="end">auto</text>
+        <g transform="translate(109 8)" color="#747a82"><use href="#chevron"/></g>
+      </g>
+
+      <line x1="0" y1="218" x2="352" y2="218" stroke="#e8eaed"/>
+      <text x="14" y="249" fill="#24282e" font-size="12" font-weight="700">值仍可手动覆盖</text>
+      <text x="14" y="282" class="label">最大宽度</text>
+      <g transform="translate(182 262)">
+        <rect width="126" height="28" rx="7" fill="#eef3ff" stroke="#4176e6"/>
+        <line x1="30" y1="5" x2="30" y2="23" stroke="#cdd9f6"/>
+        <line x1="103" y1="5" x2="103" y2="23" stroke="#cdd9f6"/>
+        <text x="15" y="18" fill="#61708a" font-size="10" font-weight="600" text-anchor="middle">W</text>
+        <text x="96" y="18" class="value" text-anchor="end">72rem</text>
+        <g transform="translate(109 8)" color="#4176e6"><use href="#chevron"/></g>
+        <line x1="54" y1="22" x2="97" y2="22" stroke="#4176e6"/>
+      </g>
+      <text x="308" y="320" class="tiny" text-anchor="end">下拉不会锁死文本输入</text>
+
+      <rect x="14" y="350" width="58" height="32" rx="16" fill="#fff" stroke="#d9dde2"/>
+      <text x="43" y="371" fill="#252a31" font-size="12" text-anchor="middle">取消</text>
+      <circle cx="322" cy="366" r="16" fill="#4176e6"/>
+      <g transform="translate(315 359)" color="#fff"><use href="#check"/></g>
+    </g>
+
+    <path d="M327 200 C357 181 365 156 355 136" fill="none" stroke="#4176e6" stroke-width="1.5" stroke-dasharray="4 4"/>
+    <text x="216" y="133" class="callout">选择后立即显示 reset</text>
+  </g>
+
+  <g transform="translate(54 780)">
+    <rect width="1332" height="72" rx="14" fill="#fff" stroke="#dfe3e8"/>
+    <text x="22" y="28" fill="#4c535e" font-size="12" font-weight="600">控件判定</text>
+    <text x="118" y="28" class="value">number + keywords</text>
+    <path d="M275 23h52m-7-5 7 5-7 5" fill="none" stroke="#7c8490" stroke-width="1.4"/>
+    <text x="341" y="28" class="label">复合输入：左 scrub / 中输入 / 右下拉</text>
+    <text x="703" y="28" class="value">number only</text>
+    <path d="M802 23h52m-7-5 7 5-7 5" fill="none" stroke="#7c8490" stroke-width="1.4"/>
+    <text x="868" y="28" class="label">维持现有数值输入</text>
+    <text x="1087" y="28" class="value">enum only</text>
+    <path d="M1170 23h42m-7-5 7 5-7 5" fill="none" stroke="#7c8490" stroke-width="1.4"/>
+    <text x="1224" y="28" class="label">维持 OptionMenu</text>
+    <text x="22" y="53" class="tiny">状态只属于当前编辑器组件；不进入 store、wire 或模型上下文。</text>
+  </g>
+</svg>

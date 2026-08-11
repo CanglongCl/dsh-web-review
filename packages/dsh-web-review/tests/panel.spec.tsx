@@ -2,7 +2,7 @@
 /** Component behavior for the preview tab and acknowledged annotation dock. */
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useSyncExternalStore } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SnapshotSelectorHook, Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
 import {
@@ -130,7 +130,20 @@ function dispatchLink(link: HTMLAnchorElement, event: MouseEvent): boolean {
   return intercepted
 }
 
-afterEach(() => { cleanup(); vi.restoreAllMocks() })
+const storageValues = new Map<string, string>()
+beforeEach(() => {
+  storageValues.clear()
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => storageValues.get(key) ?? null,
+      setItem: (key: string, value: string) => { storageValues.set(key, value) },
+      removeItem: (key: string) => { storageValues.delete(key) },
+      clear: () => { storageValues.clear() },
+    },
+  })
+})
+afterEach(() => { cleanup(); vi.restoreAllMocks(); window.localStorage.clear() })
 
 function renderView(
   sendAnnotationsWithoutDraft: () => Promise<void> = vi.fn(async () => {}),
@@ -337,11 +350,22 @@ describe('WebviewView', () => {
     fireEvent.change(screen.getByLabelText(zh['editor.property.fontSize']), { target: { value: '24px' } })
     expect(button.style.fontSize).toBe('24px')
 
+    const moveHandle = screen.getByRole('button', { name: zh['editor.move'] }) as HTMLButtonElement
+    moveHandle.setPointerCapture = vi.fn()
+    moveHandle.releasePointerCapture = vi.fn()
+    fireEvent.pointerDown(moveHandle, { pointerId: 11, button: 0, clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(moveHandle, { pointerId: 11, clientX: 132, clientY: 120 })
+    fireEvent.pointerUp(moveHandle, { pointerId: 11, clientX: 132, clientY: 120 })
+    const movedEditor = document.querySelector('[data-webview-annotation-editor]') as HTMLDivElement
+    const movedPosition = { left: movedEditor.style.left, top: movedEditor.style.top }
+
     fireEvent.keyDown(frame.contentDocument!.body, { key: '\\', code: 'Backslash' })
     expect(button.style.fontSize).toBe('16px')
     expect(surface.select).toHaveBeenLastCalledWith(card)
     expect((screen.getByPlaceholderText(zh['editor.comment']) as HTMLInputElement).value).toBe('Move this annotation')
     expect(document.querySelector('[data-webview-property-inspector]')).toBeTruthy()
+    const reanchoredEditor = document.querySelector('[data-webview-annotation-editor]') as HTMLDivElement
+    expect({ left: reanchoredEditor.style.left, top: reanchoredEditor.style.top }).toEqual(movedPosition)
 
     fireEvent.click(screen.getByRole('button', { name: zh['editor.select'] }))
     expect(document.querySelector('[data-webview-element-selector] [aria-selected="true"]')?.textContent).toContain('div')
@@ -352,6 +376,44 @@ describe('WebviewView', () => {
       snapshot: { tagName: 'div', className: 'card' },
       changes: [],
     })
+  })
+
+  it('remembers a committed editor size for the next opened element', () => {
+    const surface = mockPickerSurface()
+    vi.spyOn(pickerModule, 'ensurePicker').mockReturnValue(surface)
+    vi.spyOn(pickerModule, 'pickerOf').mockReturnValue(surface)
+    const store = renderView()
+    act(() => {
+      store.actions.setUrl('http://localhost:5173/')
+      store.actions.togglePickMode()
+    })
+    const frame = document.querySelector('iframe') as HTMLIFrameElement
+    Object.defineProperties(frame, {
+      clientWidth: { configurable: true, value: 800 },
+      clientHeight: { configurable: true, value: 600 },
+    })
+    frame.contentDocument!.write('<!doctype html><html><body><button>One</button><button>Two</button></body></html>')
+    frame.contentDocument!.close()
+    fireEvent.load(frame)
+    const [first, second] = [...frame.contentDocument!.querySelectorAll('button')]
+    act(() => { surface.onPick?.(first!) })
+    fireEvent.click(screen.getByRole('button', { name: zh['editor.adjust'] }))
+
+    const handle = document.querySelector('[data-resize-edge="se"]') as HTMLDivElement
+    handle.setPointerCapture = vi.fn()
+    handle.hasPointerCapture = vi.fn(() => true)
+    handle.releasePointerCapture = vi.fn()
+    fireEvent(handle, new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 500, clientY: 500 }))
+    fireEvent(handle, new MouseEvent('pointermove', { bubbles: true, button: 0, clientX: 460, clientY: 460 }))
+    fireEvent(handle, new MouseEvent('pointerup', { bubbles: true, button: 0, clientX: 460, clientY: 460 }))
+    expect(window.localStorage.getItem('dsh-web-review.editor-size.v1')).toBe('{"width":360,"height":520}')
+
+    fireEvent.click(screen.getByRole('button', { name: zh['editor.cancel'] }))
+    act(() => { surface.onPick?.(second!) })
+    fireEvent.click(screen.getByRole('button', { name: zh['editor.adjust'] }))
+    const reopened = document.querySelector('[data-webview-annotation-editor]') as HTMLDivElement
+    expect(reopened.style.width).toBe('360px')
+    expect(reopened.style.height).toBe('520px')
   })
 
   it('keeps the shared annotation state unchanged while the editor is temporarily hidden', () => {

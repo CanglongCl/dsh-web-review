@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="960" viewBox="0 0 1040 960" role="img" aria-labelledby="title desc">
+  <title id="title">批注编辑器拖拽与缩放交互原型</title>
+  <desc id="desc">两幅画板展示展开态新增六点拖拽把手、边缘缩放区，以及移动和调整浮窗尺寸。</desc>
+  <defs>
+    <filter id="shadow" x="-30%" y="-30%" width="170%" height="190%">
+      <feDropShadow dx="0" dy="11" stdDeviation="13" flood-color="#172033" flood-opacity=".16"/>
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#172033" flood-opacity=".08"/>
+    </filter>
+    <filter id="drag-shadow" x="-30%" y="-30%" width="170%" height="190%">
+      <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#172033" flood-opacity=".18"/>
+    </filter>
+    <linearGradient id="canvas" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#edf4ff"/>
+      <stop offset="1" stop-color="#f9fbff"/>
+    </linearGradient>
+    <pattern id="grid" width="22" height="22" patternUnits="userSpaceOnUse">
+      <path d="M22 0H0V22" fill="none" stroke="#dfe8f6" stroke-width="1" opacity=".55"/>
+    </pattern>
+    <style>
+      text { font-family: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; }
+      .h1 { fill:#17191c; font-size:28px; font-weight:700; }
+      .sub { fill:#656b75; font-size:14px; }
+      .state { fill:#17191c; font-size:18px; font-weight:700; }
+      .badge { fill:#2765d8; font-size:12px; font-weight:700; letter-spacing:.8px; }
+      .tiny { fill:#6c727c; font-size:11px; }
+      .label { fill:#4f5661; font-size:12px; }
+      .callout { fill:#2458b8; font-size:12px; font-weight:600; }
+      .menu { fill:#24282e; font-size:12px; }
+    </style>
+    <g id="grip" fill="currentColor">
+      <circle cx="5" cy="3" r="1.25"/><circle cx="11" cy="3" r="1.25"/>
+      <circle cx="5" cy="8" r="1.25"/><circle cx="11" cy="8" r="1.25"/>
+      <circle cx="5" cy="13" r="1.25"/><circle cx="11" cy="13" r="1.25"/>
+    </g>
+    <g id="eye" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M2.2 8s2.15-3.7 5.8-3.7S13.8 8 13.8 8 11.65 11.7 8 11.7 2.2 8 2.2 8Z"/><circle cx="8" cy="8" r="1.7"/>
+    </g>
+    <g id="adjust" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round">
+      <path d="M1 4h4m3 0h6M1 12h6m3 0h4M5 2v4m5 4v4"/><circle cx="6.5" cy="4" r="1.5" fill="white"/><circle cx="8.5" cy="12" r="1.5" fill="white"/>
+    </g>
+    <g id="select" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M1.5 2.5h13v11h-13zM5 2.5v11M1.5 6h3.5M1.5 10h3.5"/></g>
+    <g id="editor">
+      <rect width="348" height="352" rx="18" fill="#fff" stroke="#dfe3e8"/>
+      <circle cx="26" cy="26" r="17" fill="#f3f5f7"/><g transform="translate(18 18)" color="#515862"><use href="#select"/></g>
+      <circle cx="66" cy="26" r="17" fill="#e9f0ff"/><g transform="translate(58 18)" color="#2f67d5"><use href="#adjust"/></g>
+      <text x="90" y="31" fill="#9ba0a8" font-size="12">描述这些更改…</text>
+      <circle cx="282" cy="26" r="17" fill="#f3f5f7"/><g transform="translate(274 18)" color="#555d68"><use href="#grip"/></g>
+      <circle cx="322" cy="26" r="17" fill="#f3f5f7"/><g transform="translate(314 18)" color="#555d68"><use href="#eye"/></g>
+      <line x1="0" y1="52" x2="348" y2="52" stroke="#e6e9ed"/>
+      <rect x="0" y="52" width="348" height="28" fill="#f2f6ff"/><text x="14" y="71" fill="#4b4f57" font-size="11">&lt;&gt; 已选择 h1 · “产品标题”</text>
+      <text x="14" y="108" fill="#24282e" font-size="12" font-weight="700">填充与透明度</text>
+      <text x="14" y="139" class="label">文本颜色</text><rect x="190" y="120" width="140" height="28" rx="7" fill="#f3f5f7"/><circle cx="206" cy="134" r="7" fill="#17191c"/><text x="319" y="138" fill="#31363d" font-size="11" text-anchor="end">#17191c</text>
+      <text x="14" y="173" class="label">背景</text><rect x="190" y="154" width="140" height="28" rx="7" fill="#f3f5f7"/><circle cx="206" cy="168" r="7" fill="#fff" stroke="#ccd1d7"/><text x="319" y="172" fill="#31363d" font-size="11" text-anchor="end">#ffffff</text>
+      <text x="14" y="207" class="label">透明度</text><rect x="190" y="188" width="140" height="28" rx="7" fill="#f3f5f7"/><text x="319" y="206" fill="#31363d" font-size="11" text-anchor="end">100%</text>
+      <line x1="0" y1="230" x2="348" y2="230" stroke="#e6e9ed"/>
+      <text x="14" y="258" fill="#24282e" font-size="12" font-weight="700">字体</text>
+      <text x="14" y="290" class="label">字号</text><rect x="190" y="271" width="140" height="28" rx="7" fill="#f3f5f7"/><text x="319" y="289" fill="#31363d" font-size="11" text-anchor="end">24px</text>
+      <line x1="0" y1="315" x2="348" y2="315" stroke="#e6e9ed"/>
+      <rect x="14" y="326" width="56" height="16" rx="8" fill="#fff" stroke="#d9dde2"/><text x="42" y="338" fill="#555b64" font-size="9" text-anchor="middle">取消</text>
+      <circle cx="322" cy="334" r="12" fill="#4176e6"/><path d="m317 334 3 3 6-7" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  </defs>
+
+  <rect width="1500" height="960" fill="#f4f6f9"/>
+  <text x="48" y="54" class="h1">批注编辑器：把控制权交给用户</text>
+  <text x="48" y="82" class="sub">自动避让仍是默认；展开后可用六点把手移动，也可从四边和四角调整尺寸。</text>
+
+  <!-- 01 handle -->
+  <g transform="translate(48 120)">
+    <rect width="438" height="728" rx="22" fill="#fff" stroke="#dfe3e8"/>
+    <text x="24" y="37" class="badge">01 · EXPANDED</text><text x="24" y="65" class="state">展开态显示专用把手</text><text x="24" y="88" class="tiny">评论输入与属性控件保持原生行为</text>
+    <rect x="20" y="112" width="398" height="592" rx="14" fill="url(#canvas)" stroke="#e2e7ef"/><rect x="20" y="112" width="398" height="592" rx="14" fill="url(#grid)"/>
+    <rect x="47" y="146" width="336" height="82" rx="14" fill="#fff"/><rect x="62" y="161" width="180" height="10" rx="5" fill="#cad8ef"/><rect x="62" y="181" width="264" height="8" rx="4" fill="#e0e7f2"/><rect x="62" y="197" width="226" height="8" rx="4" fill="#e0e7f2"/>
+    <rect x="55" y="153" width="294" height="67" rx="10" fill="none" stroke="#3388ff" stroke-width="2"/><circle cx="359" cy="153" r="11" fill="#3388ff"/><text x="359" y="157" fill="#fff" font-size="10" font-weight="700" text-anchor="middle">1</text>
+    <g transform="translate(44 264)" filter="url(#shadow)"><use href="#editor"/></g>
+    <circle cx="326" cy="290" r="22" fill="none" stroke="#4176e6" stroke-width="2"/><path d="M337 270c34-31 57-31 70-7" fill="none" stroke="#4176e6" stroke-width="1.5" stroke-dasharray="4 4"/><text x="299" y="246" class="callout">34×34px 六点把手</text>
+    <g transform="translate(42 660)"><circle cx="5" cy="5" r="4" fill="#4f8df7"/><text x="17" y="9" class="tiny">只在选择 / 调整展开态出现</text><circle cx="5" cy="28" r="4" fill="#4f8df7"/><text x="17" y="32" class="tiny">最小宽 320 · 最小高 260 / 300</text></g>
+  </g>
+
+  <!-- 02 dragging -->
+  <g transform="translate(531 120)">
+    <rect width="438" height="728" rx="22" fill="#fff" stroke="#dfe3e8"/>
+    <text x="24" y="37" class="badge">02 · DRAGGING</text><text x="24" y="65" class="state">拖到不遮挡的位置</text><text x="24" y="88" class="tiny">捕获指针、实时钳制、松手提交</text>
+    <rect x="20" y="112" width="398" height="592" rx="14" fill="url(#canvas)" stroke="#e2e7ef"/><rect x="20" y="112" width="398" height="592" rx="14" fill="url(#grid)"/>
+    <rect x="47" y="146" width="336" height="82" rx="14" fill="#fff"/><rect x="62" y="161" width="180" height="10" rx="5" fill="#cad8ef"/><rect x="62" y="181" width="264" height="8" rx="4" fill="#e0e7f2"/><rect x="62" y="197" width="226" height="8" rx="4" fill="#e0e7f2"/>
+    <rect x="55" y="153" width="294" height="67" rx="10" fill="none" stroke="#3388ff" stroke-width="2"/><circle cx="359" cy="153" r="11" fill="#3388ff"/><text x="359" y="157" fill="#fff" font-size="10" font-weight="700" text-anchor="middle">1</text>
+    <rect x="45" y="262" width="348" height="352" rx="18" fill="none" stroke="#8ea9d8" stroke-width="1.5" stroke-dasharray="6 6" opacity=".65"/>
+    <path d="M338 289 C305 286 273 319 253 360" fill="none" stroke="#4176e6" stroke-width="2" stroke-linecap="round"/><path d="m247 352 6 9 10-4" fill="none" stroke="#4176e6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <g transform="translate(32 366)" filter="url(#drag-shadow)"><use href="#editor"/><circle cx="282" cy="26" r="17" fill="#dfeaff"/><g transform="translate(274 18)" color="#2f67d5"><use href="#grip"/></g></g>
+    <rect x="32" y="366" width="348" height="352" rx="18" fill="none" stroke="#4176e6" stroke-width="1.5" opacity=".22"/>
+    <text x="252" y="339" class="callout">grab → grabbing</text>
+    <rect x="44" y="665" width="350" height="23" rx="11.5" fill="#eaf1ff"/><text x="219" y="681" fill="#2458b8" font-size="11" font-weight="600" text-anchor="middle">8px 安全边距 · 无惯性 · 不离开预览区</text>
+  </g>
+
+  <g transform="translate(48 884)">
+    <rect width="921" height="44" rx="12" fill="#e9edf3"/>
+    <text x="22" y="28" fill="#4c535e" font-size="12" font-weight="700">状态流</text>
+    <text x="105" y="28" fill="#252a31" font-size="12">自动定位</text><path d="M166 22h74m-7-5 7 5-7 5" fill="none" stroke="#7c8490" stroke-width="1.4"/><text x="252" y="28" class="tiny">拖动 &gt; 3px</text>
+    <text x="330" y="28" fill="#252a31" font-size="12">手动位置</text><path d="M392 22h84m-7-5 7 5-7 5" fill="none" stroke="#7c8490" stroke-width="1.4"/><text x="489" y="28" class="tiny">隐藏 / 切换目标</text><text x="590" y="28" fill="#252a31" font-size="12">保留位置</text>
+    <text x="690" y="28" fill="#59616c" font-size="11">位置随会话 · 尺寸写入 profile 偏好</text>
+  </g>
+</svg>

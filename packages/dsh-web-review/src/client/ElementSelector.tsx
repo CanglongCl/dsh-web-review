@@ -1,12 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { IconChevronDownOutline14, IconChevronRightOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  elementNavigationAction,
   elementTreeDetail,
   firstReviewableChild,
   nextReviewableSibling,
-  navigateElement,
   previousReviewableSibling,
   reviewableAncestors,
   reviewableChildren,
@@ -54,19 +52,15 @@ function treeKeyOf(element: Element): string {
 }
 
 function TreeNode({
-  element, current, depth, expanded, focusedKey, t, onFocus, onKeyDown, onToggle, onSelect, registerItem,
+  element, current, depth, expanded, t, onToggle, onSelect,
 }: {
   element: Element
   current: Element
   depth: number
   expanded: ReadonlySet<string>
-  focusedKey: string
   t: Translate<WebviewKey>
-  onFocus: (element: Element) => void
-  onKeyDown: (event: ReactKeyboardEvent<HTMLLIElement>, element: Element) => void
   onToggle: (element: Element) => void
   onSelect: (element: Element) => void
-  registerItem: (key: string, item: HTMLLIElement | null) => void
 }): JSX.Element {
   const children = reviewableChildren(element)
   const hasChildren = children.length > 0
@@ -83,15 +77,12 @@ function TreeNode({
 
   return (
     <li
-      ref={item => { registerItem(elementKey, item) }}
       role="treeitem"
       aria-level={depth + 1}
       aria-selected={isCurrent}
       aria-expanded={hasChildren ? isExpanded : undefined}
-      tabIndex={focusedKey === elementKey ? 0 : -1}
+      tabIndex={-1}
       data-tree-key={elementKey}
-      onFocus={event => { if (event.target === event.currentTarget) onFocus(element) }}
-      onKeyDown={event => { if (event.target === event.currentTarget) onKeyDown(event, element) }}
     >
       <div
         ref={rowRef}
@@ -108,7 +99,7 @@ function TreeNode({
               aria-expanded={isExpanded}
               tabIndex={-1}
               data-state={isExpanded ? 'expanded' : 'collapsed'}
-              onClick={() => { onFocus(element); onToggle(element) }}
+              onClick={() => { onToggle(element) }}
             >
               {isExpanded ? <IconChevronDownOutline14 size={12} /> : <IconChevronRightOutline14 size={12} />}
             </button>
@@ -119,7 +110,7 @@ function TreeNode({
           className={css.elementButton}
           aria-label={`${element.tagName.toLowerCase()} ${detailOf(element, t)}`}
           tabIndex={-1}
-          onClick={() => { onFocus(element); onSelect(element) }}
+          onClick={() => { onSelect(element) }}
         >
           <ElementGlyph text={!hasChildren} />
           <span className={css.tag}>{element.tagName.toLowerCase()}</span>
@@ -135,13 +126,9 @@ function TreeNode({
               current={current}
               depth={depth + 1}
               expanded={expanded}
-              focusedKey={focusedKey}
               t={t}
-              onFocus={onFocus}
-              onKeyDown={onKeyDown}
               onToggle={onToggle}
               onSelect={onSelect}
-              registerItem={registerItem}
             />
           ))}
         </ul>
@@ -154,9 +141,6 @@ function TreeNode({
 export function ElementSelector({ root, current, t, onSelect }: ElementSelectorProps): JSX.Element {
   const initialExpanded = useMemo(() => new Set(reviewableAncestors(current).map(treeKeyOf)), [current])
   const [expanded, setExpanded] = useState<Set<string>>(initialExpanded)
-  const [focusedKey, setFocusedKey] = useState(() => treeKeyOf(current))
-  const itemRefs = useRef(new Map<string, HTMLLIElement>())
-  const pendingFocus = useRef<string | null>(treeKeyOf(current))
 
   useEffect(() => {
     setExpanded(value => {
@@ -165,25 +149,6 @@ export function ElementSelector({ root, current, t, onSelect }: ElementSelectorP
       return next
     })
   }, [current])
-
-  const visibleElements = useMemo(() => {
-    const result: Element[] = []
-    const visit = (element: Element): void => {
-      result.push(element)
-      if (expanded.has(treeKeyOf(element))) reviewableChildren(element).forEach(visit)
-    }
-    visit(root)
-    return result
-  }, [expanded, root])
-
-  useEffect(() => {
-    const key = pendingFocus.current
-    if (key === null) return
-    const item = itemRefs.current.get(key)
-    if (item === undefined) return
-    pendingFocus.current = null
-    item.focus({ preventScroll: true })
-  }, [expanded, focusedKey])
 
   const child = firstReviewableChild(current)
   const parent = reviewableParent(current)
@@ -199,72 +164,24 @@ export function ElementSelector({ root, current, t, onSelect }: ElementSelectorP
     })
   }
 
-  const focusElement = (element: Element): void => {
-    const key = treeKeyOf(element)
-    pendingFocus.current = key
-    setFocusedKey(key)
-    const item = itemRefs.current.get(key)
-    if (item !== undefined) {
-      pendingFocus.current = null
-      item.focus({ preventScroll: true })
-    }
-  }
-
-  const onTreeKeyDown = (event: ReactKeyboardEvent<HTMLLIElement>, element: Element): void => {
-    if (event.altKey || event.ctrlKey || event.metaKey || event.isDefaultPrevented()) return
-    const navigationAction = elementNavigationAction(event.nativeEvent)
-    if (navigationAction !== null) {
-      const navigationTarget = navigateElement(element, navigationAction)
-      event.preventDefault()
-      event.stopPropagation()
-      if (navigationTarget !== null) onSelect(navigationTarget)
-      return
-    }
-    const children = reviewableChildren(element)
-    const key = treeKeyOf(element)
-    const index = visibleElements.findIndex(candidate => sameElement(candidate, element))
-    let target: Element | null = null
-    if (event.key === 'ArrowDown') target = visibleElements[index + 1] ?? null
-    else if (event.key === 'ArrowUp') target = visibleElements[index - 1] ?? null
-    else if (event.key === 'Home') target = visibleElements[0] ?? null
-    else if (event.key === 'End') target = visibleElements.at(-1) ?? null
-    else if (event.key === 'ArrowRight' && children.length > 0) {
-      if (!expanded.has(key)) toggle(element)
-      else target = children[0] ?? null
-    } else if (event.key === 'ArrowLeft') {
-      if (expanded.has(key) && children.length > 0) toggle(element)
-      else target = reviewableParent(element)
-    } else if (event.key === ' ') {
-      onSelect(element)
-    } else return
-    event.preventDefault()
-    event.stopPropagation()
-    if (target !== null) focusElement(target)
-  }
-
-  const registerItem = (key: string, item: HTMLLIElement | null): void => {
-    if (item === null) itemRefs.current.delete(key)
-    else itemRefs.current.set(key, item)
-  }
-
   const action = (target: Element | null): void => { if (target !== null) onSelect(target) }
 
   return (
     <div className={css.selector} data-webview-element-selector="">
       <div className={css.actions}>
-        <button type="button" aria-label={t('editor.select.child')} disabled={child === null} onClick={() => { action(child) }}>
+        <button type="button" tabIndex={-1} aria-label={t('editor.select.child')} disabled={child === null} onClick={() => { action(child) }}>
           <span>{t('editor.select.child.short')}</span>
           <ShortcutKey>↵</ShortcutKey>
         </button>
-        <button type="button" aria-label={t('editor.select.parent')} disabled={parent === null} onClick={() => { action(parent) }}>
+        <button type="button" tabIndex={-1} aria-label={t('editor.select.parent')} disabled={parent === null} onClick={() => { action(parent) }}>
           <span>{t('editor.select.parent.short')}</span>
           <ShortcutKey>\</ShortcutKey>
         </button>
-        <button type="button" aria-label={t('editor.select.previousSibling')} title={t('editor.select.previousSibling')} disabled={previousSibling === null} onClick={() => { action(previousSibling) }}>
+        <button type="button" tabIndex={-1} aria-label={t('editor.select.previousSibling')} title={t('editor.select.previousSibling')} disabled={previousSibling === null} onClick={() => { action(previousSibling) }}>
           <span>{t('editor.select.previousSibling.short')}</span>
           <ShortcutKey>⇧⇥</ShortcutKey>
         </button>
-        <button type="button" aria-label={t('editor.select.sibling')} title={t('editor.select.sibling')} disabled={nextSibling === null} onClick={() => { action(nextSibling) }}>
+        <button type="button" tabIndex={-1} aria-label={t('editor.select.sibling')} title={t('editor.select.sibling')} disabled={nextSibling === null} onClick={() => { action(nextSibling) }}>
           <span>{t('editor.select.sibling.short')}</span>
           <ShortcutKey>⇥</ShortcutKey>
         </button>
@@ -279,13 +196,9 @@ export function ElementSelector({ root, current, t, onSelect }: ElementSelectorP
             current={current}
             depth={0}
             expanded={expanded}
-            focusedKey={focusedKey}
             t={t}
-            onFocus={focusElement}
-            onKeyDown={onTreeKeyDown}
             onToggle={toggle}
             onSelect={onSelect}
-            registerItem={registerItem}
           />
         </ul>
       </div>

@@ -21,8 +21,20 @@ with the researched control grammar in
 pnpm install
 pnpm gen-config      # regenerate machine-specific launch files after moving the repo
 pnpm dev             # dsh web + the external client-bundle watcher
+pnpm dev:acceptance  # persistent isolated profile/history + demo + bundle watcher
 pnpm demo            # optional fixture page on port 5173
 ```
+
+For repeat manual testing, `pnpm dev:acceptance` keeps its dedicated DSH home
+at `.artifacts/acceptance/dsh-home`. It creates or reuses a provider-free,
+settled **网页批注验收** history through the Harness persistence service; open
+that conversation and click its Demo link to enter Preview. Workspace state and
+other conversation history survive later restarts without changing the normal user profile. The first free port pair is
+saved to `.artifacts/acceptance/ports.json`, so Preview URLs remain valid on
+later restarts (`DSH_WEB_PORT` and `DEMO_PORT` can temporarily override it). On first initialization,
+an existing DSH credential file is copied only when no provider environment
+key is available, with mode `0600`; the ignored acceptance directory never
+enters the package or repository history.
 
 Open `http://127.0.0.1:3090`, connect the workspace whose source the agent may
 edit, then:
@@ -35,6 +47,8 @@ edit, then:
    editor accepts a comment; **Select** opens the DOM hierarchy and **Adjust** expands text, fill, typography,
    dimensions, layout, spacing, border, and effects controls. Changes preview
    live on the page, and each changed row can restore its original value.
+   Numeric fields that also accept CSS keywords keep free-form entry and expose
+   common values such as `auto`, `normal`, and `none` from a trailing menu.
    The hierarchy toolbar moves to the first child, parent, previous sibling, or
    next sibling. Each compact label includes a small shortcut keycap. The
    focused preview canvas uses Enter, Backslash, Shift+Tab, and Tab for the same
