@@ -220,7 +220,7 @@ describe('dsh-web-review e2e', () => {
     await page.close()
   })
 
-  it('scopes canvas shortcuts away from the page and gives the tree standard keyboard behavior', async () => {
+  it('scopes canvas shortcuts away from the page and keeps the tree pointer-only', async () => {
     const page = await newPage(browser)
     onTestFailed(() => saveFailureShot(page, 'element-keyboard-ownership'))
     await bootWithPanel(page, 'element-keyboard-ownership')
@@ -236,6 +236,7 @@ describe('dsh-web-review e2e', () => {
     let editor = page.locator('[data-webview-annotation-editor]')
     await editor.waitFor({ timeout: 10_000 })
     await expect.poll(async () => editor.evaluate(element => element.ownerDocument.activeElement === element)).toBe(true)
+    expect(await frame.locator('button.btn-primary').evaluate(element => element.ownerDocument.activeElement !== element)).toBe(true)
     const feedback = page.locator('[data-webview-navigation-feedback]')
     await feedback.waitFor()
     expect(await feedback.textContent()).toContain('Selected button')
@@ -257,6 +258,14 @@ describe('dsh-web-review e2e', () => {
     expect(selectionStyle.borderColor).toBe('rgb(103, 158, 254)')
     expect(selectionStyle.borderRadius).toBe('6px')
     expect(selectionStyle.transitionDuration).toContain('0.18s')
+    const editorSurfaceStyle = await editor.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { boxShadow: style.boxShadow, clipPath: style.clipPath, overflow: style.overflow }
+    })
+    expect(editorSurfaceStyle.boxShadow).not.toBe('none')
+    expect(editorSurfaceStyle.boxShadow.split(/,\s+(?=rgba?\()/u).length).toBeGreaterThanOrEqual(3)
+    expect(editorSurfaceStyle.clipPath).toBe('none')
+    expect(editorSurfaceStyle.overflow).toBe('hidden')
     expect(await frame.locator('button.btn-primary').evaluate(element => getComputedStyle(element).backgroundColor))
       .toBe('rgba(65, 118, 230, 0.1)')
     const buttonBox = await selectionBox.boundingBox()
@@ -272,6 +281,7 @@ describe('dsh-web-review e2e', () => {
     editor = page.locator('[data-webview-annotation-editor]')
     await editor.press('Tab')
     await expect.poll(async () => frame.locator('.card').nth(1).getAttribute('data-dsh-wv-selected')).not.toBeNull()
+    expect(await editor.evaluate(element => getComputedStyle(element).outlineStyle)).toBe('none')
     expect(await page.locator('[data-webview-navigation-feedback]').getAttribute('data-action')).toBe('next-sibling')
     editor = page.locator('[data-webview-annotation-editor]')
     await editor.press('Shift+Tab')
@@ -282,19 +292,19 @@ describe('dsh-web-review e2e', () => {
     await editor.getByRole('button', { name: 'Select', exact: true }).click()
     const tree = editor.getByRole('tree', { name: 'Element tree' })
     const selected = tree.locator('[role="treeitem"][aria-selected="true"]')
-    await expect.poll(async () => selected.evaluate(element => element.ownerDocument.activeElement === element)).toBe(true)
-    await selected.press('Tab')
+    expect(await selected.getAttribute('tabindex')).toBe('-1')
+    expect(await tree.locator('[role="treeitem"]:focus').count()).toBe(0)
+    await editor.press('Tab')
     expect(await tree.locator('[role="treeitem"][aria-selected="true"]').count()).toBe(1)
     await expect.poll(async () => frame.locator('.card').nth(1).getAttribute('data-dsh-wv-selected')).not.toBeNull()
+    expect(await editor.evaluate(element => getComputedStyle(element).outlineStyle)).toBe('none')
     expect(await page.locator('[data-webview-navigation-feedback]').count()).toBe(0)
-    await tree.locator('[role="treeitem"][aria-selected="true"]').press('Shift+Tab')
+    await editor.press('Shift+Tab')
     await expect.poll(async () => frame.locator('.card').first().getAttribute('data-dsh-wv-selected')).not.toBeNull()
 
-    const restored = tree.locator('[role="treeitem"][aria-selected="true"]')
-    await restored.press('ArrowRight')
-    const focusedTreeItem = tree.locator('[role="treeitem"]:focus')
-    expect(await focusedTreeItem.locator(':scope > [data-webview-element-row]').textContent()).toContain('h3')
-    await restored.press('Enter')
+    await editor.press('ArrowRight')
+    expect(await tree.locator('[role="treeitem"]:focus').count()).toBe(0)
+    await editor.press('Enter')
     await expect.poll(async () => frame.locator('.card').first().locator('h3').getAttribute('data-dsh-wv-selected')).not.toBeNull()
     expect(await frame.locator('body').evaluate(() => (window as unknown as { __reviewObservedKeys: string[] }).__reviewObservedKeys)).toEqual([])
     await page.close()
@@ -323,6 +333,87 @@ describe('dsh-web-review e2e', () => {
     expect(await editor.locator('[data-webview-text-content]').count()).toBe(1)
     expect(await editor.locator('[data-webview-target-title]').count()).toBe(0)
     await editor.getByRole('button', { name: 'Bold' }).waitFor()
+    const editorMoveHandle = editor.getByRole('button', { name: 'Move editor' })
+    // Regression: the first resize must commit while the editor is still in
+    // automatic placement mode; a second gesture must build on that size.
+    for (const delta of [-24, 24]) {
+      const beforeInitialResize = await editor.boundingBox()
+      const initialResizeHandle = await editor.locator('[data-resize-edge="se"]').boundingBox()
+      if (beforeInitialResize === null || initialResizeHandle === null) {
+        throw new Error('Initial resize surfaces must have layout boxes')
+      }
+      await page.mouse.move(
+        initialResizeHandle.x + initialResizeHandle.width / 2,
+        initialResizeHandle.y + initialResizeHandle.height / 2,
+      )
+      await page.mouse.down()
+      await page.mouse.move(
+        initialResizeHandle.x + initialResizeHandle.width / 2 + delta,
+        initialResizeHandle.y + initialResizeHandle.height / 2 + delta,
+        { steps: 3 },
+      )
+      await page.mouse.up()
+      const afterInitialResize = await editor.boundingBox()
+      if (afterInitialResize === null) throw new Error('Initially resized editor must retain a layout box')
+      if (delta < 0) {
+        expect(afterInitialResize.width).toBeLessThan(beforeInitialResize.width)
+        expect(afterInitialResize.height).toBeLessThan(beforeInitialResize.height)
+      } else {
+        expect(afterInitialResize.width).toBeGreaterThan(beforeInitialResize.width)
+        expect(afterInitialResize.height).toBeGreaterThan(beforeInitialResize.height)
+      }
+    }
+    const editorBeforeMove = await editor.boundingBox()
+    const editorMoveBox = await editorMoveHandle.boundingBox()
+    const previewBox = await page.locator('[data-webview-preview-body]').boundingBox()
+    if (editorBeforeMove === null || editorMoveBox === null || previewBox === null) {
+      throw new Error('Expanded editor drag surfaces must have layout boxes')
+    }
+    const moveX = editorBeforeMove.x - previewBox.x > 80 ? -48 : 48
+    const moveY = editorBeforeMove.y - previewBox.y > 80 ? -32 : 32
+    await page.mouse.move(editorMoveBox.x + editorMoveBox.width / 2, editorMoveBox.y + editorMoveBox.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(
+      editorMoveBox.x + editorMoveBox.width / 2 + moveX,
+      editorMoveBox.y + editorMoveBox.height / 2 + moveY,
+      { steps: 3 },
+    )
+    await expect.poll(async () => editor.getAttribute('data-editor-dragging')).not.toBeNull()
+    await page.mouse.up()
+    await expect.poll(async () => editor.getAttribute('data-editor-dragging')).toBeNull()
+    const editorAfterMove = await editor.boundingBox()
+    if (editorAfterMove === null) throw new Error('Moved editor must retain a layout box')
+    expect({ x: Math.round(editorAfterMove.x), y: Math.round(editorAfterMove.y) })
+      .not.toEqual({ x: Math.round(editorBeforeMove.x), y: Math.round(editorBeforeMove.y) })
+    expect(editorAfterMove.x).toBeGreaterThanOrEqual(previewBox.x + 8)
+    expect(editorAfterMove.y).toBeGreaterThanOrEqual(previewBox.y + 8)
+    expect(editorAfterMove.x + editorAfterMove.width).toBeLessThanOrEqual(previewBox.x + previewBox.width - 8)
+    expect(editorAfterMove.y + editorAfterMove.height).toBeLessThanOrEqual(previewBox.y + previewBox.height - 8)
+    const southeastResize = editor.locator('[data-resize-edge="se"]')
+    const resizeBox = await southeastResize.boundingBox()
+    if (resizeBox === null) throw new Error('Expanded editor resize corner must have a layout box')
+    await page.mouse.move(resizeBox.x + resizeBox.width / 2, resizeBox.y + resizeBox.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(resizeBox.x + resizeBox.width / 2 - 40, resizeBox.y + resizeBox.height / 2 - 36, { steps: 3 })
+    await expect.poll(async () => editor.getAttribute('data-editor-resizing')).not.toBeNull()
+    await page.mouse.up()
+    await expect.poll(async () => editor.getAttribute('data-editor-resizing')).toBeNull()
+    const editorAfterResize = await editor.boundingBox()
+    if (editorAfterResize === null) throw new Error('Resized editor must retain a layout box')
+    expect(Math.round(editorAfterResize.width)).toBeLessThan(Math.round(editorAfterMove.width))
+    expect(Math.round(editorAfterResize.height)).toBeLessThan(Math.round(editorAfterMove.height))
+    expect(editorAfterResize.width).toBeGreaterThanOrEqual(320)
+    expect(editorAfterResize.height).toBeGreaterThanOrEqual(300)
+    expect(editorAfterResize.x + editorAfterResize.width).toBeLessThanOrEqual(previewBox.x + previewBox.width - 8)
+    expect(editorAfterResize.y + editorAfterResize.height).toBeLessThanOrEqual(previewBox.y + previewBox.height - 8)
+    const rememberedSize = await page.evaluate(() => {
+      const raw = localStorage.getItem('dsh-web-review.editor-size.v1')
+      return raw === null ? null : JSON.parse(raw) as { width: number; height: number }
+    })
+    expect(rememberedSize).toEqual({
+      width: Math.round(editorAfterResize.width),
+      height: Math.round(editorAfterResize.height),
+    })
     const fontSizeField = editor.getByRole('spinbutton', { name: 'Font size', exact: true })
     expect(await fontSizeField.evaluate(element => element.getBoundingClientRect().width))
       .toBeGreaterThan(120)
@@ -446,6 +537,11 @@ describe('dsh-web-review e2e', () => {
       opacity: getComputedStyle(element).opacity,
       visibility: getComputedStyle(element).visibility,
     }))).toEqual({ hidden: false, opacity: '1', visibility: 'visible' })
+    const editorAfterRestore = await editor.boundingBox()
+    expect(editorAfterRestore === null ? null : {
+      x: Math.round(editorAfterRestore.x),
+      y: Math.round(editorAfterRestore.y),
+    }).toEqual({ x: Math.round(editorAfterMove.x), y: Math.round(editorAfterMove.y) })
     expect(await editor.getByPlaceholder('Describe these changes…').inputValue()).toBe('Use the reviewed heading treatment.')
     expect(await fontSizeField.inputValue()).toBe('24px')
     await editor.getByRole('button', { name: 'Restore original value · Font size' }).click()

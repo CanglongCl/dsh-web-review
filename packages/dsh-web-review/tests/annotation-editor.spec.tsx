@@ -229,20 +229,20 @@ describe('AnnotationEditor', () => {
     expect(select).toHaveBeenLastCalledWith(card.querySelector('h3'), 'Keep this comment', 'select', 'child')
     expect(pageKeydown).not.toHaveBeenCalled()
     select.mockClear()
+    const editor = document.querySelector('[data-webview-annotation-editor]') as HTMLDivElement
     const currentTreeItem = document.querySelector('[data-webview-element-tree] [aria-selected="true"]') as HTMLLIElement
-    currentTreeItem.focus()
+    expect(currentTreeItem.tabIndex).toBe(-1)
+    expect(document.activeElement).toBe(editor)
     fireEvent.keyDown(currentTreeItem, { key: 'Tab', code: 'Tab' })
-    expect(select).toHaveBeenLastCalledWith(frame.contentDocument!.querySelector('main > div:last-child'), 'Keep this comment', 'select')
+    expect(select).toHaveBeenLastCalledWith(frame.contentDocument!.querySelector('main > div:last-child'), 'Keep this comment', 'select', 'next-sibling')
     select.mockClear()
     fireEvent.keyDown(currentTreeItem, { key: 'Enter', code: 'Enter' })
-    expect(select).toHaveBeenLastCalledWith(card.querySelector('h3'), 'Keep this comment', 'select')
+    expect(select).toHaveBeenLastCalledWith(card.querySelector('h3'), 'Keep this comment', 'select', 'child')
     select.mockClear()
     fireEvent.keyDown(currentTreeItem, { key: 'ArrowRight', code: 'ArrowRight' })
-    const focusedChild = document.activeElement as HTMLLIElement
-    expect(focusedChild.textContent).toContain('h3')
-    fireEvent.keyDown(focusedChild, { key: ' ', code: 'Space' })
-    expect(select).toHaveBeenLastCalledWith(card.querySelector('h3'), 'Keep this comment', 'select')
-    select.mockClear()
+    fireEvent.keyDown(currentTreeItem, { key: ' ', code: 'Space' })
+    expect(select).not.toHaveBeenCalled()
+    expect(document.querySelector('[data-webview-element-tree] :focus')).toBeNull()
     expect(document.querySelector('[data-webview-property-inspector]')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: zh['editor.adjust'] }))
@@ -381,4 +381,143 @@ describe('AnnotationEditor', () => {
     expect(element.style.fontSize).toBe('16px')
     expect(cancel).toHaveBeenCalledOnce()
   })
+
+  it('shows a dedicated handle only when expanded and supports drag cancellation', () => {
+    const { frame, element } = fixture()
+    Object.defineProperties(frame, {
+      clientWidth: { configurable: true, value: 640 },
+      clientHeight: { configurable: true, value: 520 },
+    })
+    const move = vi.fn()
+    render(
+      <AnnotationEditor
+        id="p1"
+        patch={createLivePatch(element)}
+        frame={frame}
+        comment=""
+        changes={[]}
+        textChange={null}
+        t={t}
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+        onSelectElement={vi.fn()}
+        onPositionChange={move}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: zh['editor.move'] })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: zh['editor.adjust'] }))
+    const handle = screen.getByRole('button', { name: zh['editor.move'] }) as HTMLButtonElement
+    const editor = document.querySelector('[data-webview-annotation-editor]') as HTMLDivElement
+    handle.setPointerCapture = vi.fn()
+
+    const pointer = (type: string, clientX: number, clientY: number) => {
+      fireEvent(handle, new MouseEvent(type, { bubbles: true, button: 0, clientX, clientY }))
+    }
+    pointer('pointerdown', 100, 100)
+    pointer('pointermove', 102, 101)
+    expect(move).not.toHaveBeenCalled()
+    expect(editor.hasAttribute('data-editor-dragging')).toBe(false)
+
+    pointer('pointermove', 124, 116)
+    expect(move).toHaveBeenCalledWith(expect.objectContaining({ left: expect.any(Number), top: expect.any(Number) }))
+    expect(editor.hasAttribute('data-editor-dragging')).toBe(true)
+
+    pointer('pointercancel', 124, 116)
+    expect(move).toHaveBeenLastCalledWith(null)
+    expect(editor.hasAttribute('data-editor-dragging')).toBe(false)
+  })
+
+  it('resizes from edges with a movement threshold and rolls back cancellation', () => {
+    const { frame, element } = fixture()
+    Object.defineProperties(frame, {
+      clientWidth: { configurable: true, value: 800 },
+      clientHeight: { configurable: true, value: 600 },
+    })
+    const move = vi.fn()
+    const resize = vi.fn()
+    render(
+      <AnnotationEditor
+        id="p1"
+        patch={createLivePatch(element)}
+        frame={frame}
+        comment=""
+        changes={[]}
+        textChange={null}
+        initialMode="adjust"
+        position={{ left: 100, top: 80 }}
+        size={{ width: 400, height: 320 }}
+        t={t}
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+        onSelectElement={vi.fn()}
+        onPositionChange={move}
+        onSizeChange={resize}
+      />,
+    )
+
+    const handle = document.querySelector('[data-resize-edge="nw"]') as HTMLDivElement
+    const editor = document.querySelector('[data-webview-annotation-editor]') as HTMLDivElement
+    expect(document.querySelectorAll('[data-resize-edge]')).toHaveLength(8)
+    handle.setPointerCapture = vi.fn()
+    const pointer = (type: string, clientX: number, clientY: number) => {
+      fireEvent(handle, new MouseEvent(type, { bubbles: true, button: 0, clientX, clientY }))
+    }
+    pointer('pointerdown', 100, 100)
+    pointer('pointermove', 102, 101)
+    expect(resize).not.toHaveBeenCalled()
+    expect(editor.hasAttribute('data-editor-resizing')).toBe(false)
+
+    pointer('pointermove', 140, 130)
+    expect(move).toHaveBeenCalledWith({ left: 140, top: 100 })
+    expect(resize).toHaveBeenCalledWith({ width: 360, height: 300 })
+    expect(editor.hasAttribute('data-editor-resizing')).toBe(true)
+
+    pointer('pointercancel', 140, 130)
+    expect(move).toHaveBeenLastCalledWith({ left: 100, top: 80 })
+    expect(resize).toHaveBeenLastCalledWith({ width: 400, height: 320 })
+    expect(editor.hasAttribute('data-editor-resizing')).toBe(false)
+  })
+
+  it('commits the latest size when pointer capture is lost', () => {
+    const { frame, element } = fixture()
+    Object.defineProperties(frame, {
+      clientWidth: { configurable: true, value: 800 },
+      clientHeight: { configurable: true, value: 600 },
+    })
+    const move = vi.fn()
+    const resize = vi.fn()
+    render(
+      <AnnotationEditor
+        id="p1"
+        patch={createLivePatch(element)}
+        frame={frame}
+        comment=""
+        changes={[]}
+        textChange={null}
+        initialMode="adjust"
+        position={{ left: 100, top: 80 }}
+        size={{ width: 400, height: 320 }}
+        t={t}
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+        onSelectElement={vi.fn()}
+        onPositionChange={move}
+        onSizeChange={resize}
+      />,
+    )
+
+    const handle = document.querySelector('[data-resize-edge="se"]') as HTMLDivElement
+    const pointer = (type: string, clientX: number, clientY: number) => {
+      fireEvent(handle, new MouseEvent(type, { bubbles: true, button: 0, clientX, clientY }))
+    }
+    pointer('pointerdown', 500, 400)
+    pointer('pointermove', 460, 370)
+    expect(resize).toHaveBeenLastCalledWith({ width: 360, height: 300 })
+
+    pointer('lostpointercapture', 460, 370)
+    expect(move).toHaveBeenCalledTimes(1)
+    expect(resize).toHaveBeenCalledTimes(1)
+  })
+
 })

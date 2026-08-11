@@ -142,6 +142,10 @@ export const PICKER_SCRIPT = `(function () {
   function clearHover() {
     if (hovered) { hovered.removeAttribute('data-dsh-wv-hover'); hovered = null; }
   }
+  function releasePageFocus() {
+    var focused = document.activeElement;
+    if (focused && focused !== document.body && typeof focused.blur === 'function') focused.blur();
+  }
   function ensureSelectionBox() {
     if (selectionBox && selectionBox.isConnected) return selectionBox;
     selectionBox = document.createElement('div');
@@ -183,6 +187,7 @@ export const PICKER_SCRIPT = `(function () {
     selectionObserver.observe(selectedEl);
   }
   function setSelected(el) {
+    releasePageFocus();
     if (selectedEl === el) return;
     var animate = !!(selectedEl && selectionBox && selectionBox.hasAttribute('data-visible'));
     if (selectedEl) selectedEl.removeAttribute('data-dsh-wv-selected');
@@ -212,6 +217,13 @@ export const PICKER_SCRIPT = `(function () {
   }
   function onMouseOut(e) {
     if (active && e.target === hovered) clearHover();
+  }
+  function onPointerDown(e) {
+    if (!active || isChrome(e.target)) return;
+    // Picking is host-owned. Do not leave page controls keyboard-focused: the
+    // annotation canvas owns the hierarchy shortcuts while its editor is open.
+    e.preventDefault();
+    releasePageFocus();
   }
   function onClick(e) {
     if (!active) return;
@@ -309,6 +321,7 @@ export const PICKER_SCRIPT = `(function () {
   };
   document.addEventListener('mouseover', onMouseOver, true);
   document.addEventListener('mouseout', onMouseOut, true);
+  document.addEventListener('pointerdown', onPointerDown, true);
   document.addEventListener('click', onClick, true);
   document.addEventListener('keydown', onKeyDown, true);
   document.addEventListener('scroll', onScroll, true);

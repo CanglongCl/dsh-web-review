@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { IconCheckOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
@@ -48,7 +54,14 @@ import {
   navigateElement,
   type ElementNavigationAction,
 } from './element-navigation.ts'
-import { placeFloatingEditor } from './floating-position.ts'
+import {
+  clampFloatingEditorPosition,
+  placeFloatingEditor,
+  resizeFloatingEditor,
+  type FloatingEditorPosition,
+  type FloatingEditorResizeEdge,
+  type FloatingEditorSize,
+} from './floating-position.ts'
 import css from './AnnotationEditor.module.css'
 
 export interface AnnotationEditorValue {
@@ -67,10 +80,15 @@ export interface AnnotationEditorProps {
   textChange: AnnotationTextChange | null
   initialMode?: AnnotationEditorMode
   navigationFeedback?: ElementNavigationFeedback | null
+  position?: FloatingEditorPosition | null
+  size?: FloatingEditorSize | null
   t: Translate<WebviewKey>
   onCancel: () => void
   onConfirm: (value: AnnotationEditorValue) => void
   onSelectElement: (element: Element, comment: string, mode: AnnotationEditorMode, action?: ElementNavigationAction) => void
+  onPositionChange?: (position: FloatingEditorPosition | null) => void
+  onSizeChange?: (size: FloatingEditorSize | null) => void
+  onSizeCommit?: (size: FloatingEditorSize) => void
 }
 
 /** Mutually exclusive surface shown below the annotation compose row. */
@@ -81,6 +99,12 @@ export interface ElementNavigationFeedback {
   action: ElementNavigationAction
   sequence: number
 }
+
+const ignorePositionChange = (): void => {}
+const ignoreSizeChange = (): void => {}
+const ignoreSizeCommit = (): void => {}
+
+const RESIZE_EDGES: readonly FloatingEditorResizeEdge[] = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']
 
 function navigationTargetLabel(element: Element, t: Translate<WebviewKey>): string {
   const tag = element.tagName.toLowerCase()
@@ -124,6 +148,14 @@ function EyeIcon(): JSX.Element {
   )
 }
 
+function DragHandleIcon(): JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      {[3, 8, 13].flatMap(y => [5, 11].map(x => <circle key={`${x}:${y}`} cx={x} cy={y} r="1.25" />))}
+    </svg>
+  )
+}
+
 function AlignIcon({ kind }: { kind: 'left' | 'center' | 'right' | 'justify' }) {
   const widths = kind === 'justify' ? [12, 12, 12] : [12, 8, 11]
   const x = (width: number) => kind === 'center' ? (14 - width) / 2 : kind === 'right' ? 14 - width : 0
@@ -144,7 +176,10 @@ const four = <T,>(values: readonly T[]): [T, T, T, T] => [values[0]!, values[1]!
 export function AnnotationEditor({
   patch, frame, comment: initialComment, changes: initialChanges,
   textChange: initialTextChange, initialMode = 'collapsed', navigationFeedback = null,
-  t, onCancel, onConfirm, onSelectElement,
+  position = null, size = null, t, onCancel, onConfirm, onSelectElement,
+  onPositionChange = ignorePositionChange,
+  onSizeChange = ignoreSizeChange,
+  onSizeCommit = ignoreSizeCommit,
 }: AnnotationEditorProps) {
   const initialMap = useMemo(() => new Map(initialChanges.map(change => [change.property, change])), [initialChanges])
   const originals = useMemo(() => new Map(
@@ -183,6 +218,29 @@ export function AnnotationEditor({
   const editorRef = useRef<HTMLDivElement | null>(null)
   const visibleToggleRef = useRef<HTMLButtonElement | null>(null)
   const hiddenToggleRef = useRef<HTMLButtonElement | null>(null)
+  const dragRef = useRef<{
+    pointerId: number
+    startX: number
+    startY: number
+    origin: FloatingEditorPosition | null
+    originRendered: FloatingEditorPosition
+    latest: FloatingEditorPosition
+    started: boolean
+  } | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const resizeRef = useRef<{
+    pointerId: number
+    edge: FloatingEditorResizeEdge
+    startX: number
+    startY: number
+    originPosition: FloatingEditorPosition | null
+    originSize: FloatingEditorSize | null
+    renderedPosition: FloatingEditorPosition
+    renderedSize: FloatingEditorSize
+    latestSize: FloatingEditorSize
+    started: boolean
+  } | null>(null)
+  const [resizing, setResizing] = useState(false)
 
   const valueOf = (property: EditableStyleProperty): string => values.get(property) ?? originals.get(property) ?? ''
   const changed = (property: EditableStyleProperty): boolean => valueOf(property) !== (originals.get(property) ?? '')
@@ -206,7 +264,6 @@ export function AnnotationEditor({
   useEffect(() => { forcePosition(value => value + 1) }, [mode])
 
   useEffect(() => {
-    if (mode !== 'collapsed') return
     editorRef.current?.focus({ preventScroll: true })
   }, [mode, patch])
 
@@ -418,7 +475,14 @@ export function AnnotationEditor({
 
   const rect = patch.element.getBoundingClientRect()
   const preferredWidth = mode === 'select' ? 414 : mode === 'adjust' ? 400 : 374
-  const width = Math.min(preferredWidth, Math.max(280, frame.clientWidth - 16))
+  const availableWidth = Math.max(0, frame.clientWidth - 16)
+  const availableHeight = Math.max(0, frame.clientHeight - 16)
+  const minimumWidth = Math.min(320, availableWidth)
+  const minimumHeight = Math.min(mode === 'select' ? 260 : 300, availableHeight)
+  const autoWidth = Math.min(preferredWidth, Math.max(280, availableWidth))
+  const width = mode !== 'collapsed' && size !== null
+    ? Math.min(Math.max(size.width, minimumWidth), availableWidth)
+    : autoWidth
   // A mode switch renders before the existing ref reports the new panel's
   // height. Use the expanded estimate until its larger layout is measurable,
   // otherwise the card can anchor like the collapsed pill and clip below the
@@ -433,10 +497,50 @@ export function AnnotationEditor({
     editorHeight: measuredHeight,
     minHeight: mode === 'select' ? 260 : mode === 'adjust' ? 300 : 54,
   })
+  const manualHeight = mode !== 'collapsed' && size !== null
+    ? Math.min(Math.max(size.height, minimumHeight), availableHeight)
+    : Math.min(measuredHeight, availableHeight)
+  const renderedPosition = position === null
+    ? { left: placement.left, top: placement.top }
+    : clampFloatingEditorPosition({
+        position,
+        surfaceWidth: frame.clientWidth,
+        surfaceHeight: frame.clientHeight,
+        editorWidth: width,
+        editorHeight: manualHeight,
+      })
+  const maxHeight = position === null ? placement.maxHeight : manualHeight
   const hiddenLeft = Math.min(
-    Math.max(8, placement.left + width - 36),
+    Math.max(8, renderedPosition.left + width - 36),
     Math.max(8, frame.clientWidth - 44),
   )
+
+  useEffect(() => {
+    if (position === null) return
+    if (position.left === renderedPosition.left && position.top === renderedPosition.top) return
+    onPositionChange(renderedPosition)
+  }, [onPositionChange, position, renderedPosition.left, renderedPosition.top])
+
+  const finishDrag = (cancelled: boolean): void => {
+    const drag = dragRef.current
+    if (drag === null) return
+    if (cancelled && drag.started) onPositionChange(drag.origin)
+    dragRef.current = null
+    setDragging(false)
+  }
+
+  const finishResize = (cancelled: boolean): void => {
+    const resize = resizeRef.current
+    if (resize === null) return
+    if (cancelled && resize.started) {
+      onPositionChange(resize.originPosition)
+      onSizeChange(resize.originSize)
+    } else if (resize.started) {
+      onSizeCommit(resize.latestSize)
+    }
+    resizeRef.current = null
+    setResizing(false)
+  }
 
   const hideEditor = (): void => {
     setActiveScrub(null)
@@ -453,21 +557,91 @@ export function AnnotationEditor({
       <div
         ref={editorRef}
         className={`${css.editor} ${hidden ? css.editorHidden : ''}`}
-        style={{ left: placement.left, top: placement.top, width, maxHeight: placement.maxHeight }}
+        style={{
+          left: renderedPosition.left,
+          top: renderedPosition.top,
+          width,
+          maxHeight,
+          ...(mode !== 'collapsed' && size !== null ? { height: manualHeight } : {}),
+        }}
         data-webview-annotation-editor=""
         data-placement={placement.side}
         {...(activeScrub === null ? {} : { 'data-scrubbing': activeScrub })}
         {...(hidden ? { 'data-editor-hidden': '' } : {})}
+        {...(dragging ? { 'data-editor-dragging': '' } : {})}
+        {...(resizing ? { 'data-editor-resizing': '' } : {})}
         aria-hidden={hidden}
         tabIndex={-1}
         onKeyDown={(event) => {
-          if (event.target === event.currentTarget) moveSelection(event.nativeEvent)
           if (event.key !== 'Escape' || event.defaultPrevented) return
           event.preventDefault()
           if (mode === 'select') setMode('collapsed')
           else cancel()
         }}
+        onKeyDownCapture={(event) => { moveSelection(event.nativeEvent, true) }}
       >
+        {mode !== 'collapsed' && RESIZE_EDGES.map(edge => (
+          <div
+            key={edge}
+            className={css.resizeHandle}
+            data-resize-edge={edge}
+            aria-hidden="true"
+            onPointerDown={(event) => {
+              if (event.button !== 0) return
+              resizeRef.current = {
+                pointerId: event.pointerId,
+                edge,
+                startX: event.clientX,
+                startY: event.clientY,
+                originPosition: position,
+                originSize: size,
+                renderedPosition,
+                renderedSize: { width, height: manualHeight },
+                latestSize: { width, height: manualHeight },
+                started: false,
+              }
+              event.currentTarget.setPointerCapture?.(event.pointerId)
+              event.preventDefault()
+            }}
+            onPointerMove={(event) => {
+              const resize = resizeRef.current
+              if (resize === null || resize.pointerId !== event.pointerId) return
+              const deltaX = event.clientX - resize.startX
+              const deltaY = event.clientY - resize.startY
+              if (!resize.started && Math.hypot(deltaX, deltaY) <= 3) return
+              if (!resize.started) {
+                resize.started = true
+                setResizing(true)
+              }
+              const next = resizeFloatingEditor({
+                edge: resize.edge,
+                position: resize.renderedPosition,
+                size: resize.renderedSize,
+                deltaX,
+                deltaY,
+                surfaceWidth: frame.clientWidth,
+                surfaceHeight: frame.clientHeight,
+                minWidth: minimumWidth,
+                minHeight: minimumHeight,
+              })
+              onPositionChange(next.position)
+              onSizeChange(next.size)
+              resize.latestSize = next.size
+            }}
+            onPointerUp={(event) => {
+              const resize = resizeRef.current
+              if (resize === null || resize.pointerId !== event.pointerId) return
+              finishResize(false)
+              if (event.currentTarget.hasPointerCapture?.(event.pointerId) === true) {
+                event.currentTarget.releasePointerCapture?.(event.pointerId)
+              }
+            }}
+            onPointerCancel={() => { finishResize(true) }}
+            // Capture loss is also the normal end signal in some browsers.
+            // Preserve the last valid geometry; only pointercancel rolls back.
+            onLostPointerCapture={() => { finishResize(false) }}
+          />
+        ))}
         <div className={`${css.composeRow} ${mode !== 'collapsed' ? css.composeRowExpanded : ''}`}>
           <button type="button" className={mode === 'select' ? `${css.adjust} ${css.adjustActive}` : css.adjust} aria-label={t('editor.select')} title={t('editor.select')} aria-expanded={mode === 'select'} onClick={() => { setMode(value => value === 'select' ? 'collapsed' : 'select') }}>
             <SelectIcon />
@@ -486,6 +660,56 @@ export function AnnotationEditor({
               if (event.key === 'Enter') { event.preventDefault(); confirm() }
             }}
           />
+          {mode !== 'collapsed' && (
+            <button
+              type="button"
+              className={css.dragHandle}
+              aria-label={t('editor.move')}
+              title={t('editor.move')}
+              onPointerDown={(event) => {
+                if (event.button !== 0) return
+                dragRef.current = {
+                  pointerId: event.pointerId,
+                  startX: event.clientX,
+                  startY: event.clientY,
+                  origin: position,
+                  originRendered: renderedPosition,
+                  latest: renderedPosition,
+                  started: false,
+                }
+                event.currentTarget.setPointerCapture?.(event.pointerId)
+              }}
+              onPointerMove={(event) => {
+                const drag = dragRef.current
+                if (drag === null || drag.pointerId !== event.pointerId) return
+                const dx = event.clientX - drag.startX
+                const dy = event.clientY - drag.startY
+                if (!drag.started && Math.hypot(dx, dy) <= 3) return
+                if (!drag.started) {
+                  drag.started = true
+                  setDragging(true)
+                }
+                drag.latest = clampFloatingEditorPosition({
+                  position: { left: drag.originRendered.left + dx, top: drag.originRendered.top + dy },
+                  surfaceWidth: frame.clientWidth,
+                  surfaceHeight: frame.clientHeight,
+                  editorWidth: width,
+                  editorHeight: manualHeight,
+                })
+                onPositionChange(drag.latest)
+              }}
+              onPointerUp={(event) => {
+                const drag = dragRef.current
+                if (drag === null || drag.pointerId !== event.pointerId) return
+                finishDrag(false)
+                event.currentTarget.releasePointerCapture?.(event.pointerId)
+              }}
+              onPointerCancel={() => { finishDrag(true) }}
+              onLostPointerCapture={() => { finishDrag(true) }}
+            >
+              <DragHandleIcon />
+            </button>
+          )}
           <button
             ref={visibleToggleRef}
             type="button"
@@ -688,7 +912,7 @@ export function AnnotationEditor({
         ref={hiddenToggleRef}
         type="button"
         className={`${css.visibilityFab} ${hidden ? '' : css.visibilityFabHidden}`}
-        style={{ left: hiddenLeft, top: placement.top }}
+        style={{ left: hiddenLeft, top: renderedPosition.top }}
         aria-label={t('editor.show')}
         title={t('editor.show')}
         aria-pressed={hidden}

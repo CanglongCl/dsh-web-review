@@ -58,7 +58,7 @@ export async function ensureAcceptanceHistory(options: AcceptanceHistoryOptions)
   const { harness, dshHome, cwd, demoUrl } = options
   const moduleUrl = (path: string) => pathToFileURL(path).href
   const cordis = await import(moduleUrl(join(
-    harness, 'packages/core/session/node_modules/cordis/lib/index.js',
+    harness, 'packages/core/session/node_modules/@deepseek-ai/cordis/lib/index.js',
   ))) as CordisModule
   const sessionModule = await import(moduleUrl(join(
     harness, 'packages/core/session/lib/index.js',

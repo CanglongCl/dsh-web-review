@@ -60,6 +60,8 @@ import {
   type EditorPatchTransaction,
 } from './editor-transaction.ts'
 import type { WebviewStore } from './stores.ts'
+import type { FloatingEditorPosition, FloatingEditorSize } from './floating-position.ts'
+import { readEditorSize, writeEditorSize } from './editor-size-memory.ts'
 import css from './WebviewView.module.css'
 
 /** Full composed props: runtime + store + locale shares. */
@@ -85,6 +87,24 @@ interface EditorSession {
   comment: string
   mode: AnnotationEditorMode
   navigationFeedback: ElementNavigationFeedback | null
+  position: FloatingEditorPosition | null
+  size: FloatingEditorSize | null
+}
+
+function loadPreferredEditorSize(): FloatingEditorSize | null {
+  try {
+    return typeof window === 'undefined' ? null : readEditorSize(window.localStorage)
+  } catch {
+    return null
+  }
+}
+
+function persistPreferredEditorSize(size: FloatingEditorSize): void {
+  try {
+    writeEditorSize(window.localStorage, size)
+  } catch {
+    // Access to profile storage can be disabled; in-memory memory still works.
+  }
 }
 
 /** Stable pick id without depending on crypto.randomUUID availability. */
@@ -123,6 +143,7 @@ export function WebviewView({
   const editorRef = useRef(editor)
   editorRef.current = editor
   const navigationSequence = useRef(0)
+  const preferredEditorSize = useRef<FloatingEditorSize | null>(loadPreferredEditorSize())
   /** Exact inline/text rollback ledgers; DOM references never enter the store. */
   const patchRefs = useRef(new Map<string, LiveElementPatch>())
   const handledPickResetRevision = useRef(state.pickResetRevision)
@@ -215,6 +236,7 @@ export function WebviewView({
       id, element, snapshot: existing?.snapshot ?? snapshotOf(element), existing, patch,
       original: existing === null ? null : { element, patch },
       comment: existing?.comment ?? '', mode: 'collapsed', navigationFeedback: null,
+      position: null, size: preferredEditorSize.current,
     })
   }
 
@@ -593,10 +615,22 @@ export function WebviewView({
               textChange={editor.original !== null && sameElement(editor.original.element, editor.element) ? editor.existing?.textChange ?? null : null}
               initialMode={editor.mode}
               navigationFeedback={editor.navigationFeedback}
+              position={editor.position}
+              size={editor.size}
               t={t}
               onCancel={() => { closeEditor(false) }}
               onConfirm={confirmEditor}
               onSelectElement={selectEditorElement}
+              onPositionChange={(position) => {
+                setEditor(current => current === null ? null : { ...current, position })
+              }}
+              onSizeChange={(size) => {
+                setEditor(current => current === null ? null : { ...current, size })
+              }}
+              onSizeCommit={(size) => {
+                preferredEditorSize.current = size
+                persistPreferredEditorSize(size)
+              }}
             />
           )}
         </div>
