@@ -223,7 +223,7 @@ export function ScrubNumber({ label, value, onChange, onScrubChange, step = 1, m
   step?: number
   min?: number
   max?: number
-  glyph?: string
+  glyph?: ReactNode
   fallbackValue?: string
   invalid?: boolean
 }) {

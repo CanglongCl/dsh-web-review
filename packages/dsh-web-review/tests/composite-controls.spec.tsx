@@ -57,7 +57,7 @@ describe('Composite inspector controls', () => {
 
   it('renders corners as a spatial matrix while preserving CSS serialization order', () => {
     const change = vi.fn()
-    render(
+    const view = render(
       <RadiusControl
         label="Radius"
         value="1px 2px 3px 4px"
@@ -70,6 +70,13 @@ describe('Composite inspector controls', () => {
     )
     const fields = screen.getAllByRole('spinbutton')
     expect(fields.map(field => field.getAttribute('aria-label'))).toEqual(['Top left', 'Top right', 'Bottom left', 'Bottom right'])
+    expect([...view.container.querySelectorAll('[data-corner-radius-glyph]')].map(glyph => glyph.getAttribute('data-corner-radius-glyph'))).toEqual([
+      'top-left', 'top-right', 'bottom-left', 'bottom-right',
+    ])
+    expect([...view.container.querySelectorAll('[data-corner-radius-glyph] path')].map(path => path.getAttribute('transform'))).toEqual([
+      'rotate(0 8 8)', 'rotate(90 8 8)', 'rotate(270 8 8)', 'rotate(180 8 8)',
+    ])
+    expect(view.container.textContent).not.toMatch(/[↖↗↙↘]/u)
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Bottom left' }), { target: { value: '9px' } })
     expect(change).toHaveBeenLastCalledWith('1px 2px 3px 9px')
   })

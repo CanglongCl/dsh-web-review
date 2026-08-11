@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { IconLinkOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   ColorControl,
@@ -20,7 +20,7 @@ import {
 import css from './CompositeControls.module.css'
 
 function Cell({ badge, label, value, fallbackValue = '0px', onChange, onScrubChange }: {
-  badge: string
+  badge: ReactNode
   label: string
   value: string
   fallbackValue?: string
@@ -31,6 +31,26 @@ function Cell({ badge, label, value, fallbackValue = '0px', onChange, onScrubCha
     <span className={css.fieldCell}>
       <ScrubNumber label={label} value={value} glyph={badge} fallbackValue={fallbackValue} onChange={onChange} onScrubChange={onScrubChange} />
     </span>
+  )
+}
+
+function CornerRadiusGlyph({ corner }: { corner: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' }) {
+  const rotations = {
+    'top-left': 0,
+    'top-right': 90,
+    'bottom-right': 180,
+    'bottom-left': 270,
+  } as const
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden data-corner-radius-glyph={corner}>
+      <path
+        d="M13 3H9a6 6 0 0 0-6 6v4"
+        transform={`rotate(${String(rotations[corner])} 8 8)`}
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
   )
 }
 
@@ -118,12 +138,12 @@ export function RadiusControl({ label, value, cornerLabels, linkLabel, unlinkLab
   // CSS stores corners clockwise (TL, TR, BR, BL); the two-row control is
   // spatial, so its second row must render BL then BR.
   const visualOrder = [0, 1, 3, 2] as const
-  const badges = ['↖', '↗', '↙', '↘'] as const
+  const corners = ['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const
   return (
     <span className={css.quad}>
       {visualOrder.map((valueIndex, visualIndex) => <Cell
         key={valueIndex}
-        badge={badges[visualIndex]!}
+        badge={<CornerRadiusGlyph corner={corners[visualIndex]!} />}
         label={cornerLabels[valueIndex]!}
         value={parsed[valueIndex]!}
         onScrubChange={onScrubChange}
