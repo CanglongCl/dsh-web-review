@@ -22,6 +22,7 @@ import {
   WELCOME_NOTICE_SETTINGS_NAMESPACE,
   WELCOME_NOTICE_VERSION,
 } from '@deepseek-ai/dsh-client-ui-settings-general'
+import { harnessWebLaunch } from '../../../scripts/harness-cli.ts'
 import { resolveHarnessRoot } from '../../../scripts/harness-path.ts'
 
 /** Repo root (dsh-web-review). */
@@ -68,7 +69,7 @@ export async function waitFor(check: () => Promise<boolean> | boolean, timeoutMs
 }
 
 /**
- * Start the dev instance (`dsh web --dev --patch ./cordis.yml`, no bundle
+ * Start the dev instance (`dsh web --patch ./cordis.yml`, no bundle
  * watch — the e2e asserts the built bundle) and the demo page server on
  * free ports. Returns the URLs plus a stopper.
  */
@@ -148,27 +149,21 @@ export async function startServices(): Promise<E2EServices> {
   ].join('\n'))
 
   const harness = resolveHarnessRoot(REPO_ROOT)
-  const bin = join(harness, 'bin', 'dsh')
-  const web = spawn(bin, [
-    'web',
-    '--dev',
-    '--host', '127.0.0.1',
-    '--port', String(webPort),
-    '--patch', overlayPath,
-  ], {
+  const launch = harnessWebLaunch(harness, overlayPath, '127.0.0.1', webPort, {
+    ...process.env,
+    DSH_HOME: dshHome,
+    ...(apiKey === undefined ? {} : { DEEPSEEK_API_KEY: apiKey }),
+    // With either supported credential source the probe message hits the
+    // configured provider; only a truly credential-free run uses a dead
+    // loopback so failure settles instantly (a hung turn churns the header).
+    ...(apiKey === undefined && !hasStoredCredentials
+      ? { DEEPSEEK_BASE_URL: 'http://127.0.0.1:9' }
+      : {}),
+  })
+  const web = spawn(launch.command, launch.args, {
     cwd: REPO_ROOT,
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: {
-      ...process.env,
-      DSH_HOME: dshHome,
-      ...(apiKey === undefined ? {} : { DEEPSEEK_API_KEY: apiKey }),
-      // With either supported credential source the probe message hits the
-      // configured provider; only a truly credential-free run uses a dead
-      // loopback so failure settles instantly (a hung turn churns the header).
-      ...(apiKey === undefined && !hasStoredCredentials
-        ? { DEEPSEEK_BASE_URL: 'http://127.0.0.1:9' }
-        : {}),
-    },
+    env: launch.env,
   })
   web.stdout?.on('data', capture('web'))
   web.stderr?.on('data', capture('web'))
@@ -183,13 +178,23 @@ export async function startServices(): Promise<E2EServices> {
 
   const webUrl = `http://127.0.0.1:${webPort}`
   const demoUrl = `http://127.0.0.1:${demoPort}`
+  const earlyExit = new Promise<never>((_resolve, reject) => {
+    const failed = (label: string, detail: string) => {
+      reject(new Error(`${label} exited before readiness (${detail})\n${logs.join('\n')}`))
+    }
+    web.once('error', error => { failed('web', String(error)) })
+    web.once('exit', (code, signal) => { failed('web', signal ?? `status ${code ?? 'unknown'}`) })
+    demo.once('error', error => { failed('demo', String(error)) })
+    demo.once('exit', (code, signal) => { failed('demo', signal ?? `status ${code ?? 'unknown'}`) })
+  })
   try {
-    await waitFor(async () => (await fetch(webUrl)).ok, 90_000, 'web ready')
-    await waitFor(async () => (await fetch(demoUrl)).ok, 30_000, 'demo ready')
+    await Promise.race([waitFor(async () => (await fetch(webUrl)).ok, 90_000, 'web ready'), earlyExit])
+    await Promise.race([waitFor(async () => (await fetch(demoUrl)).ok, 30_000, 'demo ready'), earlyExit])
   } catch (error) {
     console.error(logs.join('\n'))
     web.kill('SIGTERM')
     demo.kill('SIGTERM')
+    await rm(dshHome, { recursive: true, force: true }).catch(() => {})
     throw error
   }
 

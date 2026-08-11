@@ -1,6 +1,6 @@
 import { isLocalPreviewUrl } from '../proxy-url.ts'
 
-/** Assistant message rows expose this semantic marker in Harness 0810. */
+/** Assistant message rows expose this semantic marker in Harness 0811. */
 const ASSISTANT_ROW = '[data-chat-flow-kind="assistant-step"]'
 
 /**
