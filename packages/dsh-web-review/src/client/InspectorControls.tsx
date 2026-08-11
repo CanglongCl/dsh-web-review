@@ -215,7 +215,7 @@ function formatted(number: number, unit: string): string {
   return `${String(Object.is(rounded, -0) ? 0 : rounded)}${unit}`
 }
 
-export function ScrubNumber({ label, value, onChange, onScrubChange, step = 1, min, max, glyph = '↔', fallbackValue, invalid = false }: {
+export function ScrubNumber({ label, value, onChange, onScrubChange, step = 1, min, max, glyph = '↔', fallbackValue, invalid = false, options = [], presetLabel }: {
   label: string
   value: string
   onChange: (value: string) => void
@@ -226,13 +226,28 @@ export function ScrubNumber({ label, value, onChange, onScrubChange, step = 1, m
   glyph?: string
   fallbackValue?: string
   invalid?: boolean
+  options?: readonly string[]
+  presetLabel?: string
 }) {
   const drag = useRef<{ x: number; value: number; unit: string; started: boolean } | null>(null)
   const scrubChangeRef = useRef(onScrubChange)
   scrubChangeRef.current = onScrubChange
+  const lastNumericValue = useRef(parseNumeric(value) ?? (fallbackValue === undefined ? null : parseNumeric(fallbackValue)))
+  const parsedValue = parseNumeric(value)
+  if (parsedValue !== null) lastNumericValue.current = parsedValue
   const focusValue = useRef(value)
+  const presetRef = useRef<HTMLButtonElement>(null)
+  const [presetOpen, setPresetOpen] = useState(false)
+  const hasOptions = options.length > 0
+  const presetItems: MenuEntry[] = options.map(option => ({ id: option, label: option }))
+  const closePresets = () => {
+    setPresetOpen(false)
+    queueMicrotask(() => { presetRef.current?.focus() })
+  }
   const clamp = (number: number) => Math.min(max ?? Number.POSITIVE_INFINITY, Math.max(min ?? Number.NEGATIVE_INFINITY, number))
-  const numericValue = () => parseNumeric(value) ?? (fallbackValue === undefined ? null : parseNumeric(fallbackValue))
+  const numericValue = () => parseNumeric(value)
+    ?? lastNumericValue.current
+    ?? (fallbackValue === undefined ? null : parseNumeric(fallbackValue))
   const canScrub = numericValue() !== null
   const increment = (delta: number) => {
     const parsed = numericValue()
@@ -249,8 +264,19 @@ export function ScrubNumber({ label, value, onChange, onScrubChange, step = 1, m
   useEffect(() => () => {
     if (drag.current?.started === true) scrubChangeRef.current?.(false)
   }, [])
+  useEffect(() => {
+    if (!presetOpen) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      closePresets()
+    }
+    document.addEventListener('keydown', closeOnEscape, true)
+    return () => { document.removeEventListener('keydown', closeOnEscape, true) }
+  }, [presetOpen])
   return (
-    <span className={css.numberWrap} data-webview-scrub-control="">
+    <span className={clsx(css.numberWrap, hasOptions && css.numberWrapWithOptions)} data-webview-scrub-control="">
       <button
         type="button"
         className={css.numberHandle}
@@ -305,6 +331,33 @@ export function ScrubNumber({ label, value, onChange, onScrubChange, step = 1, m
           increment((event.key === 'ArrowUp' ? step : -step) * factor)
         }}
       />
+      {hasOptions && (
+        <span className={css.numberPreset}>
+          <Menu
+            open={presetOpen}
+            compact
+            portal
+            align="end"
+            items={presetItems}
+            selectedId={options.includes(value) ? value : undefined}
+            onSelect={(next) => { onChange(next); closePresets() }}
+            onClose={closePresets}
+            anchor={(
+              <button
+                ref={presetRef}
+                type="button"
+                className={css.numberPresetTrigger}
+                aria-label={`${label} · ${presetLabel ?? ''}`.trim()}
+                aria-haspopup="menu"
+                aria-expanded={presetOpen}
+                onClick={() => { setPresetOpen(open => !open) }}
+              >
+                <IconChevronDownOutline14 className={clsx(css.numberPresetChevron, presetOpen && css.numberPresetChevronOpen)} />
+              </button>
+            )}
+          />
+        </span>
+      )}
     </span>
   )
 }
@@ -431,12 +484,14 @@ export function updateBoxModelLinks(links: BoxModelLinks, axis: keyof BoxModelLi
   return { ...links, [axis]: linked, all: false }
 }
 
-export function BoxModelControl({ label, sideLabels, values, links, min, linkLabel, unlinkLabel, linkAllLabel, unlinkAllLabel, onLinkChange, onChange, onScrubChange }: {
+export function BoxModelControl({ label, sideLabels, values, links, min, options = [], presetLabel, linkLabel, unlinkLabel, linkAllLabel, unlinkAllLabel, onLinkChange, onChange, onScrubChange }: {
   label: string
   sideLabels: readonly [string, string, string, string]
   values: readonly [string, string, string, string]
   links: BoxModelLinks
   min?: number
+  options?: readonly string[]
+  presetLabel?: string
   linkLabel: string
   unlinkLabel: string
   linkAllLabel: string
@@ -462,6 +517,8 @@ export function BoxModelControl({ label, sideLabels, values, links, min, linkLab
     value={values[index] ?? ''}
     glyph={glyphs[index] ?? '↔'}
     {...(min === undefined ? {} : { min })}
+    options={options}
+    {...(presetLabel === undefined ? {} : { presetLabel })}
     onScrubChange={onScrubChange}
     onChange={next => { update(index, next) }}
   />

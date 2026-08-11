@@ -140,6 +140,45 @@ describe('AnnotationEditor', () => {
     expect(element.style.fontSize).toBe('16px')
   })
 
+  it('previews mixed CSS keywords, keeps pure controls distinct, and cancels exactly', () => {
+    const { frame, element } = fixture()
+    element.style.width = '120px'
+    const patch = createLivePatch(element)
+    const cancel = vi.fn()
+    render(
+      <AnnotationEditor
+        id="mixed-values"
+        patch={patch}
+        frame={frame}
+        comment=""
+        changes={[]}
+        textChange={null}
+        t={t}
+        onCancel={cancel}
+        onConfirm={vi.fn()}
+        onSelectElement={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: zh['editor.adjust'] }))
+    expect(screen.queryByRole('button', { name: `${zh['editor.property.opacity']} · ${zh['editor.action.choosePreset']}` })).toBeNull()
+    expect(screen.getByRole('button', { name: zh['editor.property.display'] }).getAttribute('aria-haspopup')).toBe('menu')
+    expect((screen.getByRole('spinbutton', { name: zh['editor.property.width'] }) as HTMLInputElement).value).toBe('120px')
+
+    fireEvent.click(screen.getByRole('button', { name: `${zh['editor.property.width']} · ${zh['editor.action.choosePreset']}` }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'auto' }))
+    expect(element.style.width).toBe('auto')
+    expect(patch.originalStyles.get('width')?.value).toBe('120px')
+    expect(screen.getByRole('button', { name: `${zh['editor.reset']} · ${zh['editor.group.size']}` })).toBeTruthy()
+    fireEvent.keyDown(screen.getByRole('spinbutton', { name: zh['editor.property.width'] }), { key: 'ArrowUp' })
+    expect(element.style.width).toBe('121px')
+    fireEvent.click(screen.getByRole('button', { name: `${zh['editor.property.width']} · ${zh['editor.action.choosePreset']}` }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'auto' }))
+
+    fireEvent.click(screen.getByRole('button', { name: zh['editor.cancel'] }))
+    expect(element.style.width).toBe('120px')
+    expect(cancel).toHaveBeenCalledOnce()
+  })
+
   it('opens a mutually exclusive hierarchy selector and supports canvas shortcuts', () => {
     const frame = document.createElement('iframe')
     document.body.appendChild(frame)

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   BoxModelControl,
@@ -42,6 +42,61 @@ describe('Inspector controls', () => {
     render(<ScrubNumber label="Line height" value="normal" fallbackValue="19.2px" step={1} onChange={change} />)
     fireEvent.keyDown(screen.getByRole('spinbutton', { name: 'Line height' }), { key: 'ArrowUp' })
     expect(change).toHaveBeenCalledWith('20.2px')
+  })
+
+  it('keeps mixed CSS values editable and selects keyword suggestions from a trailing menu', async () => {
+    const change = vi.fn()
+    const view = render(
+      <ScrubNumber
+        label="Width"
+        value="320px"
+        options={['auto', 'min-content', 'max-content']}
+        presetLabel="Choose preset"
+        onChange={change}
+      />,
+    )
+    expect((screen.getByRole('spinbutton', { name: 'Width' }) as HTMLInputElement).value).toBe('320px')
+    const trigger = screen.getByRole('button', { name: 'Width · Choose preset' })
+    fireEvent.click(trigger)
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.queryByRole('menuitem', { name: '320px' })).toBeNull()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'auto' }))
+    expect(change).toHaveBeenCalledWith('auto')
+    await waitFor(() => { expect(document.activeElement).toBe(trigger) })
+
+    view.rerender(
+      <ScrubNumber
+        label="Width"
+        value="auto"
+        fallbackValue="0px"
+        options={['auto', 'min-content', 'max-content']}
+        presetLabel="Choose preset"
+        onChange={change}
+      />,
+    )
+    fireEvent.click(trigger)
+    expect(screen.getByRole('menuitem', { name: 'auto' }).className).toContain('selected')
+    fireEvent.keyDown(trigger, { key: 'Escape' })
+    await waitFor(() => { expect(trigger.getAttribute('aria-expanded')).toBe('false') })
+    fireEvent.keyDown(screen.getByRole('spinbutton', { name: 'Width' }), { key: 'ArrowUp' })
+    expect(change).toHaveBeenLastCalledWith('321px')
+  })
+
+  it('omits the trailing menu for number-only values and contains menu Escape', async () => {
+    const outerKey = vi.fn()
+    render(
+      <div onKeyDown={outerKey}>
+        <ScrubNumber label="Padding" value="12px" onChange={vi.fn()} />
+        <ScrubNumber label="Margin" value="12px" options={['auto']} presetLabel="Choose preset" onChange={vi.fn()} />
+      </div>,
+    )
+    expect(screen.queryByRole('button', { name: 'Padding · Choose preset' })).toBeNull()
+    const trigger = screen.getByRole('button', { name: 'Margin · Choose preset' })
+    fireEvent.click(trigger)
+    outerKey.mockClear()
+    fireEvent.keyDown(trigger, { key: 'Escape' })
+    await waitFor(() => { expect(trigger.getAttribute('aria-expanded')).toBe('false') })
+    expect(outerKey).not.toHaveBeenCalled()
   })
 
   it('reports the complete pointer scrub lifecycle after the drag threshold', () => {
@@ -194,6 +249,29 @@ describe('Inspector controls', () => {
     expect(change.mock.calls).toEqual([[3, '24px'], [0, '24px'], [1, '24px'], [2, '24px']])
     fireEvent.click(screen.getByRole('button', { name: 'Unlink all sides' }))
     expect(linkChange).toHaveBeenLastCalledWith('all', false)
+  })
+
+  it('applies a margin keyword through the existing four-side link model', () => {
+    const change = vi.fn()
+    render(
+      <BoxModelControl
+        label="Margin"
+        sideLabels={['Margin top', 'Margin right', 'Margin bottom', 'Margin left']}
+        values={['4px', '8px', '12px', '16px']}
+        links={{ vertical: true, horizontal: true, all: true }}
+        options={['auto']}
+        presetLabel="Choose preset"
+        linkLabel="Link values"
+        unlinkLabel="Unlink values"
+        linkAllLabel="Link all sides"
+        unlinkAllLabel="Unlink all sides"
+        onLinkChange={vi.fn()}
+        onChange={change}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Margin top · Choose preset' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'auto' }))
+    expect(change.mock.calls).toEqual([[0, 'auto'], [1, 'auto'], [2, 'auto'], [3, 'auto']])
   })
 
   it('falls back from the four-side lock to both axis locks', () => {

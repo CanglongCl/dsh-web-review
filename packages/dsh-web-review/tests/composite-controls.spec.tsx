@@ -24,6 +24,28 @@ describe('Composite inspector controls', () => {
     expect(width).toHaveBeenCalledWith('200px')
   })
 
+  it('offers the configured sizing keywords on both dimensions', () => {
+    const width = vi.fn()
+    const height = vi.fn()
+    render(
+      <SizeControl
+        width="100px"
+        height="50px"
+        options={['auto', 'min-content']}
+        presetLabel="Choose preset"
+        labels={{ width: 'Width', height: 'Height', link: 'Link values', unlink: 'Unlink values' }}
+        onWidthChange={width}
+        onHeightChange={height}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Width · Choose preset' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Height · Choose preset' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Width · Choose preset' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'auto' }))
+    expect(width).toHaveBeenCalledWith('auto')
+    expect(height).not.toHaveBeenCalled()
+  })
+
   it('edits radius as linked or independent corners', () => {
     const change = vi.fn()
     const view = render(

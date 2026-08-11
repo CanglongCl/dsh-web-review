@@ -11,6 +11,7 @@
     "package:official": "pnpm build && tsx scripts/package-official.ts",
     "build:watch": "pnpm --filter @dsh-external/dsh-web-review watch",
     "dev": "tsx scripts/dev.ts",
+    "dev:acceptance": "tsx scripts/acceptance.ts",
     "demo": "tsx demo/server.ts",
     "test": "pnpm build && vitest run",
     "test:watch": "vitest",

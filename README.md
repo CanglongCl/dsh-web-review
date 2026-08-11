@@ -42,6 +42,7 @@
 - 支持安全的直接文本修改。
 - 支持文本色、背景、透明度、字体、字重、字号、行高、字间距、对齐和文本装饰。
 - 支持宽高、显示与定位、Margin、Padding、边框、圆角、约束和效果。
+- 对同时接受数值与 CSS 关键字的属性保留自由输入，并在右侧下拉中提供 `auto`、`normal`、`none` 等常用值。
 - 修改即时预览；每个已变更字段都能单独重置，取消时恢复精确的原始内联值与优先级。
 
 ### AI 协作闭环
@@ -158,4 +159,9 @@ pnpm package:official # 构建 DSH 官方 profile bundle 安装包
 pnpm test:e2e       # 真实 GUI + 代理 + 点选 + 批注发送链路
 pnpm check:e2e      # 两者一起运行
 pnpm demo           # 启动仓库内置演示页，默认 http://127.0.0.1:5173
+pnpm dev:acceptance # 专用隔离 profile + 持久对话历史 + demo + bundle watch
 ```
+
+`dev:acceptance` 将测试 profile 固定保存在 `.artifacts/acceptance/dsh-home`。
+启动时会通过 Harness 自己的会话持久化接口创建或复用“网页批注验收”mock 历史，不调用模型。打开该会话并点击其中的 Demo 链接即可进入 Preview；停止、重启仍会保留工作区与其他历史。它不会读取或修改日常使用的 DSH profile。首次选择的空闲端口保存在 `.artifacts/acceptance/ports.json`，后续重启保持 URL 不变；也可通过 `DSH_WEB_PORT`、`DEMO_PORT` 临时覆盖。
+若环境变量中没有 provider key，首次初始化会从默认 DSH profile 复制已有凭据到该隔离目录，并将权限设为 `0600`；凭据内容不会进入日志或版本库。

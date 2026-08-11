@@ -19,17 +19,28 @@ import {
 } from './composite-properties.ts'
 import css from './CompositeControls.module.css'
 
-function Cell({ badge, label, value, fallbackValue = '0px', onChange, onScrubChange }: {
+function Cell({ badge, label, value, fallbackValue = '0px', options = [], presetLabel, onChange, onScrubChange }: {
   badge: string
   label: string
   value: string
   fallbackValue?: string
+  options?: readonly string[]
+  presetLabel?: string
   onChange: (value: string) => void
   onScrubChange?: ((active: boolean) => void) | undefined
 }) {
   return (
     <span className={css.fieldCell}>
-      <ScrubNumber label={label} value={value} glyph={badge} fallbackValue={fallbackValue} onChange={onChange} onScrubChange={onScrubChange} />
+      <ScrubNumber
+        label={label}
+        value={value}
+        glyph={badge}
+        fallbackValue={fallbackValue}
+        options={options}
+        {...(presetLabel === undefined ? {} : { presetLabel })}
+        onChange={onChange}
+        onScrubChange={onScrubChange}
+      />
     </span>
   )
 }
@@ -56,10 +67,12 @@ function LinkToggle({ linked, linkLabel, unlinkLabel, onChange }: {
   )
 }
 
-export function SizeControl({ width, height, labels, onWidthChange, onHeightChange, onScrubChange }: {
+export function SizeControl({ width, height, labels, options = [], presetLabel, onWidthChange, onHeightChange, onScrubChange }: {
   width: string
   height: string
   labels: { width: string; height: string; link: string; unlink: string }
+  options?: readonly string[]
+  presetLabel?: string
   onWidthChange: (value: string) => void
   onHeightChange: (value: string) => void
   onScrubChange?: ((active: boolean) => void) | undefined
@@ -89,8 +102,8 @@ export function SizeControl({ width, height, labels, onWidthChange, onHeightChan
   }
   return (
     <span className={css.pair}>
-      <Cell badge="W" label={labels.width} value={width} onChange={next => { coupled(next, true) }} onScrubChange={onScrubChange} />
-      <Cell badge="H" label={labels.height} value={height} onChange={next => { coupled(next, false) }} onScrubChange={onScrubChange} />
+      <Cell badge="W" label={labels.width} value={width} options={options} {...(presetLabel === undefined ? {} : { presetLabel })} onChange={next => { coupled(next, true) }} onScrubChange={onScrubChange} />
+      <Cell badge="H" label={labels.height} value={height} options={options} {...(presetLabel === undefined ? {} : { presetLabel })} onChange={next => { coupled(next, false) }} onScrubChange={onScrubChange} />
       <LinkToggle linked={linked} linkLabel={labels.link} unlinkLabel={labels.unlink} onChange={toggle} />
     </span>
   )
