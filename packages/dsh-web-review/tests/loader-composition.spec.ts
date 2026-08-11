@@ -3,8 +3,9 @@
  * test-only cordis.yml booted through the real Loader + Include mounts the
  * webserver and this package; a local fixture http server stands in for the
  * target; assertions observe the user-visible HTTP surface of the running
- * proxy route (rewritten HTML, stripped headers, pass-through, POST, error
- * containment). Module importing is stubbed via the Loader's internal seam
+ * proxy route (rewritten HTML, redirects, stripped headers, byte-safe POST,
+ * HEAD, query references and error containment). Module importing is stubbed
+ * via the Loader's internal seam
  * (the harness's own webserver suite pattern); everything else — fibers,
  * injects, routes, the HTTP stack — is real.
  */
@@ -49,6 +50,47 @@ beforeAll(async () => {
     const url = new URL(req.url ?? '/', 'http://target.test')
     res.setHeader('x-frame-options', 'DENY')
     res.setHeader('content-security-policy', "default-src 'none'")
+    res.setHeader('set-cookie', 'preview-secret=must-not-reach-host')
+    res.setHeader('clear-site-data', '"cookies"')
+    if (url.pathname === '/redirect') {
+      res.writeHead(302, { location: '/nested/page.html' })
+      res.end()
+      return
+    }
+    if (url.pathname === '/remote-redirect') {
+      res.writeHead(302, { location: 'https://example.com/' })
+      res.end()
+      return
+    }
+    if (url.pathname === '/post-303' && req.method === 'POST') {
+      res.writeHead(303, { location: '/query?redirected=yes' })
+      res.end()
+      return
+    }
+    if (url.pathname === '/post-307' && req.method === 'POST') {
+      res.writeHead(307, { location: '/binary' })
+      res.end()
+      return
+    }
+    if (url.pathname === '/nested/page.html') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+      res.end('<html><head></head><body><img src="asset.png"></body></html>')
+      return
+    }
+    if (url.pathname === '/query') {
+      res.writeHead(200, { 'content-type': 'text/plain', 'x-seen-method': req.method ?? '' })
+      res.end(url.search)
+      return
+    }
+    if (url.pathname === '/binary' && req.method === 'POST') {
+      const chunks: Buffer[] = []
+      req.on('data', (chunk: Buffer | string) => { chunks.push(Buffer.from(chunk)) })
+      req.on('end', () => {
+        res.writeHead(200, { 'content-type': 'application/octet-stream' })
+        res.end(Buffer.concat(chunks))
+      })
+      return
+    }
     if (req.method === 'POST') {
       let body = ''
       req.on('data', (chunk) => { body += chunk })
@@ -143,7 +185,7 @@ function proxyPath(target: string): string {
 function annotationSnapshot(sessionId = 'session-1', comments = 1): AnnotationSnapshot {
   return {
     sessionId,
-    page: { url: 'https://example.com/', title: 'Example Domain' },
+    page: { url: 'http://localhost:5173/', title: 'Example Domain' },
     comments: Array.from({ length: comments }, (_, index) => ({
       id: `pick-${index + 1}`,
       comment: 'Make this heading smaller.',
@@ -190,13 +232,16 @@ describe('/webview-proxy (real Loader + webserver composition)', () => {
     expect(response.headers.get('content-type')).toContain('text/html')
     expect(response.headers.get('x-frame-options')).toBeNull()
     expect(response.headers.get('content-security-policy')).toBeNull()
+    expect(response.headers.get('set-cookie')).toBeNull()
+    expect(response.headers.get('clear-site-data')).toBeNull()
     const body = await response.text()
     expect(body).toContain(`<base href="${PROXY_PREFIX}/http%3A//127.0.0.1%3A${fixturePort}/">`)
-    // Absolute + root-relative attribute URLs rewritten; relative left to <base>.
-    expect(body).toContain(`href="${PROXY_PREFIX}/http%3A//target.test/page2.html"`)
+    // Local root-relative URLs are proxied; remote and plain-relative URLs
+    // keep browser-native behavior and never become host-origin content.
+    expect(body).toContain('href="http://target.test/page2.html"')
     expect(body).toContain(`href="${PROXY_PREFIX}/http%3A//127.0.0.1%3A${fixturePort}/rooted.html"`)
-    expect(body).toContain(`src="${PROXY_PREFIX}/http%3A//127.0.0.1%3A${fixturePort}/img.png"`)
-    expect(body).toContain(`action="${PROXY_PREFIX}/http%3A//target.test/submit"`)
+    expect(body).toContain('src="img.png"')
+    expect(body).toContain('action="http://target.test/submit"')
   })
 
   it('passes non-HTML through unchanged', async () => {
@@ -218,6 +263,62 @@ describe('/webview-proxy (real Loader + webserver composition)', () => {
     expect(await response.text()).toBe('posted:a=1&b=2')
   })
 
+  it('forwards binary POST bodies without text transcoding', async () => {
+    await loadComposition()
+    const bytes = Uint8Array.from([0, 255, 128, 13, 10, 1])
+    const response = await fetch(`http://127.0.0.1:${port}${proxyPath(fixtureUrl + '/binary')}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/octet-stream' },
+      body: bytes,
+    })
+    expect(response.status).toBe(200)
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes)
+  })
+
+  it('uses the final redirect URL as the document base', async () => {
+    await loadComposition()
+    const fixturePort = String(new URL(fixtureUrl).port)
+    const response = await fetch(`http://127.0.0.1:${port}${proxyPath(fixtureUrl + '/redirect')}`)
+    const body = await response.text()
+    expect(body).toContain(
+      `<base href="${PROXY_PREFIX}/http%3A//127.0.0.1%3A${fixturePort}/nested/page.html">`,
+    )
+    expect(body).toContain('src="asset.png"')
+  })
+
+  it('matches Fetch POST redirect semantics for 303 and 307', async () => {
+    await loadComposition()
+    const converted = await fetch(`http://127.0.0.1:${port}${proxyPath(fixtureUrl + '/post-303')}`, {
+      method: 'POST', body: 'discarded', headers: { 'content-type': 'text/plain' },
+    })
+    expect(converted.headers.get('x-seen-method')).toBe('GET')
+    expect(await converted.text()).toBe('?redirected=yes')
+
+    const bytes = Uint8Array.from([0, 255, 7])
+    const preserved = await fetch(`http://127.0.0.1:${port}${proxyPath(fixtureUrl + '/post-307')}`, {
+      method: 'POST', body: bytes, headers: { 'content-type': 'application/octet-stream' },
+    })
+    expect(new Uint8Array(await preserved.arrayBuffer())).toEqual(bytes)
+  })
+
+  it('promotes query-only proxy references into the encoded target URL', async () => {
+    await loadComposition()
+    const response = await fetch(
+      `http://127.0.0.1:${port}${proxyPath(fixtureUrl + '/query?old=1')}?new=2&next=yes`,
+    )
+    expect(await response.text()).toBe('?new=2&next=yes')
+  })
+
+  it('forwards HEAD as HEAD and returns no response body', async () => {
+    await loadComposition()
+    const response = await fetch(`http://127.0.0.1:${port}${proxyPath(fixtureUrl + '/query')}`, {
+      method: 'HEAD',
+    })
+    expect(response.status).toBe(200)
+    expect(response.headers.get('x-seen-method')).toBe('HEAD')
+    expect(await response.text()).toBe('')
+  })
+
   it('rejects malformed targets with 400', async () => {
     await loadComposition()
     for (const path of [`${PROXY_PREFIX}/`, `${PROXY_PREFIX}/not%20a%20url`, `${PROXY_PREFIX}/file%3A//etc/passwd`]) {
@@ -233,6 +334,16 @@ describe('/webview-proxy (real Loader + webserver composition)', () => {
     const put = await fetch(`http://127.0.0.1:${port}${proxyPath(fixtureUrl + '/')}`, { method: 'PUT' })
     expect(put.status).toBe(405)
   })
+
+  it('rejects direct remote targets and local-to-remote redirects', async () => {
+    await loadComposition()
+    const direct = await fetch(`http://127.0.0.1:${port}${proxyPath('https://example.com/')}`)
+    expect(direct.status).toBe(400)
+    const redirected = await fetch(
+      `http://127.0.0.1:${port}${proxyPath(fixtureUrl + '/remote-redirect')}`,
+    )
+    expect(redirected.status).toBe(502)
+  })
 })
 
 describe('/webview-annotations (real Loader + webserver composition)', () => {
@@ -245,10 +356,13 @@ describe('/webview-annotations (real Loader + webserver composition)', () => {
       body: JSON.stringify(annotationSnapshot()),
     })
     const response = await request()
-    expect(response.status).toBe(204)
+    expect(response.status).toBe(200)
     expect(response.headers.get('x-webview-annotation-result')).toBe('pending')
+    const receipt = await response.json() as { kind: string; snapshotId: string }
+    expect(receipt).toMatchObject({ kind: 'ready', snapshotId: expect.any(String) })
     const duplicate = await request()
     expect(duplicate.headers.get('x-webview-annotation-result')).toBe('deduplicated')
+    expect(await duplicate.json()).toEqual(receipt)
   })
 
   it('clears pending state without creating a model context', async () => {
@@ -274,7 +388,7 @@ describe('/webview-annotations (real Loader + webserver composition)', () => {
     })
     expect((await post()).status).toBe(404)
     const first = registerStubAgent()
-    expect((await post()).status).toBe(204)
+    expect((await post()).status).toBe(200)
     first.dispose()
     const replacement = registerStubAgent()
     expect((await post()).headers.get('x-webview-annotation-result')).toBe('pending')

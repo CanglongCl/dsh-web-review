@@ -13,6 +13,7 @@ import {
 } from '../src/annotation-contract.ts'
 import {
   acknowledgeAnnotationEvent,
+  type AnnotationCommitState,
   attachPendingAnnotationContext,
   forgetAgent,
   formatAnnotationContext,
@@ -24,7 +25,7 @@ import {
 function snapshot(overrides: Partial<AnnotationSnapshot> = {}): AnnotationSnapshot {
   return {
     sessionId: 'session-1',
-    page: { url: 'https://example.com/', title: 'Example Domain' },
+    page: { url: 'http://localhost:5173/', title: 'Example Domain' },
     comments: [{
       id: 'pick-1',
       comment: 'Make this heading smaller.',
@@ -75,6 +76,42 @@ describe('parseAnnotationBody', () => {
     expect(parseAnnotationBody('not json')).toBeUndefined()
     expect(parseAnnotationBody(JSON.stringify(snapshot({ sessionId: '' })))).toBeUndefined()
     expect(parseAnnotationBody(JSON.stringify({ ...snapshot(), sessionId: 42 }))).toBeUndefined()
+  })
+
+  it('rejects unknown wire keys at every object boundary', () => {
+    const base = snapshot().comments[0]!
+    expect(parseAnnotationBody(JSON.stringify({ ...snapshot(), extra: true }))).toBeUndefined()
+    expect(parseAnnotationBody(JSON.stringify(snapshot({
+      page: { ...snapshot().page, extra: true } as never,
+    })))).toBeUndefined()
+    expect(parseAnnotationBody(JSON.stringify(snapshot({
+      comments: [{ ...base, extra: true } as never],
+    })))).toBeUndefined()
+    expect(parseAnnotationBody(JSON.stringify(snapshot({
+      comments: [{ ...base, changes: [{ property: 'color', before: '#000', after: '#fff', extra: true } as never] }],
+    })))).toBeUndefined()
+    expect(parseAnnotationBody(JSON.stringify(snapshot({
+      comments: [{ ...base, anchor: { framework: 'react', component: 'App', file: 'src/App.tsx', extra: true } as never }],
+    })))).toBeUndefined()
+  })
+
+  it('requires a local page and at least one user-authored intent per comment', () => {
+    const base = snapshot().comments[0]!
+    expect(parseAnnotationBody(JSON.stringify(snapshot({
+      page: { url: 'file:///tmp/page.html', title: 'Local' },
+    })))).toBeUndefined()
+    expect(parseAnnotationBody(JSON.stringify(snapshot({
+      page: { url: 'https://example.com/', title: 'Remote' },
+    })))).toBeUndefined()
+    expect(parseAnnotationBody(JSON.stringify(snapshot({
+      comments: [{ ...base, comment: '  ', changes: [], textChange: null }],
+    })))).toBeUndefined()
+    expect(parseAnnotationBody(JSON.stringify(snapshot({
+      comments: [{ ...base, comment: '', changes: [{ property: 'color', before: '#000', after: '#fff' }] }],
+    })))?.comments).toHaveLength(1)
+    expect(parseAnnotationBody(JSON.stringify(snapshot({
+      comments: [{ ...base, stableClasses: ['hero-title', 'hero-title'] }],
+    })))).toBeUndefined()
   })
 
   it('pins count and field limits', () => {
@@ -141,7 +178,7 @@ describe('formatAnnotationContext', () => {
     expect(output).toContain('Each Comment field is user-authored input to apply.')
     expect(output).toContain('## User Comment 1')
     expect(output).toContain('File: browser:Example Domain')
-    expect(output).toContain('Page URL: https://example.com/')
+    expect(output).toContain('Page URL: http://localhost:5173/')
     expect(output).toContain('Target: heading "Example Domain"')
     expect(output).toContain('Target selector: html > body > div > h1')
     expect(output).toContain('Stable classes: hero-title')
@@ -197,45 +234,52 @@ describe('formatAnnotationContext', () => {
 describe('pending annotation admission', () => {
   it('stores snapshots without injecting and deduplicates repeats', () => {
     const { agents } = harness()
-    const state = new Map<string, string>()
-    expect(storeAnnotationSnapshot(agents, state, snapshot())).toBe('pending')
-    expect(state.get('session-1')).toContain('# Browser comments')
-    expect(storeAnnotationSnapshot(agents, state, snapshot())).toBe('deduplicated')
+    const state: AnnotationCommitState = new Map()
+    const first = storeAnnotationSnapshot(agents, state, snapshot())
+    expect(first.kind).toBe('pending')
+    expect(state.get(SessionId('session-1'))?.context).toContain('# Browser comments')
+    const duplicate = storeAnnotationSnapshot(agents, state, snapshot())
+    expect(duplicate.kind).toBe('deduplicated')
+    if (!('pending' in first) || !('pending' in duplicate)) throw new Error('expected pending receipts')
+    expect(duplicate.pending.snapshotId).toBe(first.pending.snapshotId)
   })
 
   it('replaces changed pending snapshots and clearing removes them without model context', () => {
     const { agents } = harness()
-    const state = new Map<string, string>()
-    storeAnnotationSnapshot(agents, state, snapshot())
+    const state: AnnotationCommitState = new Map()
+    const first = storeAnnotationSnapshot(agents, state, snapshot())
     const changed = snapshot()
     changed.comments[0]!.comment = 'Use a different font.'
-    expect(storeAnnotationSnapshot(agents, state, changed)).toBe('pending')
-    expect(state.get('session-1')).toContain('Use a different font.')
-    expect(storeAnnotationSnapshot(agents, state, snapshot({ comments: [] }))).toBe('cleared')
+    const second = storeAnnotationSnapshot(agents, state, changed)
+    expect(second.kind).toBe('pending')
+    if (!('pending' in first) || !('pending' in second)) throw new Error('expected pending receipts')
+    expect(second.pending.snapshotId).not.toBe(first.pending.snapshotId)
+    expect(state.get(SessionId('session-1'))?.context).toContain('Use a different font.')
+    expect(storeAnnotationSnapshot(agents, state, snapshot({ comments: [] })).kind).toBe('cleared')
     expect(state.size).toBe(0)
-    expect(storeAnnotationSnapshot(agents, state, snapshot({ comments: [] }))).toBe('initial-empty')
+    expect(storeAnnotationSnapshot(agents, state, snapshot({ comments: [] })).kind).toBe('initial-empty')
   })
 
   it('requires a live agent, rejects rendered overflow and forgets disposed state', () => {
     const { agent, agents } = harness()
-    const state = new Map<string, string>()
-    expect(storeAnnotationSnapshot(agents, state, snapshot({ sessionId: 'missing' }))).toBe('agent-not-found')
+    const state: AnnotationCommitState = new Map()
+    expect(storeAnnotationSnapshot(agents, state, snapshot({ sessionId: 'missing' })).kind).toBe('agent-not-found')
     const base = snapshot().comments[0]!
     const large = snapshot({ comments: Array.from({ length: MAX_ANNOTATIONS }, (_, index) => ({
       ...base,
       id: `p${index}`,
       comment: 'x'.repeat(ANNOTATION_LIMITS.comment),
     })) })
-    expect(storeAnnotationSnapshot(agents, state, large)).toBe('context-too-large')
+    expect(storeAnnotationSnapshot(agents, state, large).kind).toBe('context-too-large')
     expect(state.size).toBe(0)
-    state.set(agent.id, 'active')
+    expect(storeAnnotationSnapshot(agents, state, snapshot()).kind).toBe('pending')
     forgetAgent(state, agent)
     expect(state.size).toBe(0)
   })
 
   it('adds pending context only to an entered step and preserves downstream messages', async () => {
     const { agent, agents } = harness()
-    const state = new Map<string, string>()
+    const state: AnnotationCommitState = new Map()
     storeAnnotationSnapshot(agents, state, snapshot())
     const existing = createUserMessage({
       source: { kind: 'plugin', plugin: 'existing' },
@@ -248,10 +292,10 @@ describe('pending annotation admission', () => {
     expect(decision.messages).toHaveLength(2)
     expect(decision.messages[0]).toBe(existing)
     expect(decision.messages[1]).toMatchObject({
-      source: { kind: 'plugin', plugin: 'dsh-web-review' },
+      source: { kind: 'plugin', plugin: 'dsh-web-review', snapshotId: expect.any(String) },
       content: [{ type: 'text', text: expect.stringContaining('# Browser comments') }],
     })
-    expect(state.has('session-1')).toBe(true)
+    expect(state.has(SessionId('session-1'))).toBe(true)
 
     const blocked: PreStepDecision = { kind: 'reject' }
     expect(await attachPendingAnnotationContext(state, agent, async () => blocked)).toBe(blocked)
@@ -259,7 +303,7 @@ describe('pending annotation admission', () => {
 
   it('consumes only the exact context event that actually committed', async () => {
     const { agent, agents } = harness()
-    const state = new Map<string, string>()
+    const state: AnnotationCommitState = new Map()
     storeAnnotationSnapshot(agents, state, snapshot())
     const decision = await attachPendingAnnotationContext(state, agent, async () => ({ kind: 'enter', messages: [] }))
     if (decision.kind !== 'enter') throw new Error('expected enter')
@@ -270,7 +314,7 @@ describe('pending annotation admission', () => {
     changed.comments[0]!.comment = 'Newer pending change.'
     storeAnnotationSnapshot(agents, state, changed)
     acknowledgeAnnotationEvent(state, agent.id, contextEvent(admitted))
-    expect(state.get(agent.id)).toContain('Newer pending change.')
+    expect(state.get(agent.id)?.context).toContain('Newer pending change.')
 
     const nextDecision = await attachPendingAnnotationContext(state, agent, async () => ({ kind: 'enter', messages: [] }))
     if (nextDecision.kind !== 'enter') throw new Error('expected enter')
@@ -284,6 +328,7 @@ describe('pending annotation admission', () => {
 describe('readRequestBody', () => {
   function request(chunks: Array<string | Buffer>): IncomingMessage {
     return {
+      headers: {},
       [Symbol.asyncIterator]: async function* () {
         for (const chunk of chunks) yield chunk
       },

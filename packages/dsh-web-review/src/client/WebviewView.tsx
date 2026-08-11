@@ -36,7 +36,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import { ANNOTATION_LIMITS, MAX_ANNOTATIONS } from '../annotation-contract.ts'
-import { proxyUrl } from '../rewrite.ts'
+import { proxyUrl } from '../proxy-url.ts'
 import { ensurePicker, isSameOrigin, pickerOf, snapshotOf, type MarkerEntry, type PickerSurface } from './picker.ts'
 import type { ElementSnapshot } from './contract.ts'
 import type { PickItem } from './contract.ts'
@@ -54,6 +54,11 @@ import {
 } from './live-patch.ts'
 import { normalizePreviewUrl } from './navigation-url.ts'
 import { sameElement, type ElementNavigationAction } from './element-navigation.ts'
+import {
+  discardEditorTransaction,
+  rollbackEditorTransaction,
+  type EditorPatchTransaction,
+} from './editor-transaction.ts'
 import type { WebviewStore } from './stores.ts'
 import css from './WebviewView.module.css'
 
@@ -98,23 +103,12 @@ function titleOf(frame: HTMLIFrameElement | null): string {
   }
 }
 
-/** Compact fallback element identity for the dock detail card. */
-export function elementLabel(s: ElementSnapshot): string {
-  const id = s.id !== '' ? `#${s.id}` : ''
-  const classes = s.className !== ''
-    ? `.${s.className.trim().split(/\s+/).filter(Boolean).join('.')}`
-    : ''
-  return `${s.tagName}${id}${classes}`
-}
-
 /** The preview tab view (see module doc). */
 export function WebviewView({
   useStore, useSession, useInput, inputActions, actions, sendAnnotationsWithoutDraft, t,
 }: WebviewSlotProps) {
   const state = useStore((s) => s)
   const input = useInput(s => s)
-  const latestHumanMessageSeq = useSession(session =>
-    session.nodes.findLast(node => node.kind === 'user')?.seq ?? -1)
   const promptError = useSession(session => session.promptError)
   // Effect/event callbacks read the freshest state and props through refs.
   const stateRef = useRef(state)
@@ -131,14 +125,13 @@ export function WebviewView({
   const navigationSequence = useRef(0)
   /** Exact inline/text rollback ledgers; DOM references never enter the store. */
   const patchRefs = useRef(new Map<string, LiveElementPatch>())
+  const handledPickResetRevision = useRef(state.pickResetRevision)
   /** Whether the current frame content is same-origin (picker-capable). */
   const [pickerReady, setPickerReady] = useState(false)
   /** Browser Navigation API state, sampled after each iframe document load. */
   const [historyState, setHistoryState] = useState({ canGoBack: false, canGoForward: false })
   /** Dedicated annotation submission state; the stock composer stays untouched. */
   const [sendingAnnotations, setSendingAnnotations] = useState(false)
-  /** Non-empty drafts submit through the stock machine and acknowledge by durable user seq. */
-  const draftSendBoundary = useRef<number | null>(null)
   const promptErrorAtSend = useRef(promptError)
 
   /** Reconcile the iframe marker circles with the current picks. The store
@@ -170,7 +163,7 @@ export function WebviewView({
         const previous = patchRefs.current.get(pick.id)
         if (previous !== undefined && previous.element !== found) restoreAll(previous)
         const patch = createLivePatch(found)
-        applyCommitted(patch, pick.changes ?? [], pick.textChange)
+        applyCommitted(patch, pick.changes, pick.textChange)
         patchRefs.current.set(pick.id, patch)
       } else {
         pickRefs.current.delete(pick.id)
@@ -179,11 +172,23 @@ export function WebviewView({
     syncMarkers()
   }
 
+  const editorTransaction = (session: EditorSession): EditorPatchTransaction => {
+    const committed = session.original === null || session.existing === null
+      ? null
+      : {
+          patch: session.original.patch,
+          changes: session.existing.changes,
+          textChange: session.existing.textChange,
+        }
+    return { current: session.patch, committed }
+  }
+
   const restoreEditorBaseline = (session: EditorSession): void => {
-    restoreAll(session.patch)
-    if (session.original !== null && sameElement(session.original.element, session.element) && session.existing !== null) {
-      applyCommitted(session.original.patch, session.existing.changes ?? [], session.existing.textChange)
-    }
+    rollbackEditorTransaction(editorTransaction(session))
+  }
+
+  const discardEditor = (session: EditorSession): void => {
+    discardEditorTransaction(editorTransaction(session))
   }
 
   const closeEditor = (restore: boolean): void => {
@@ -202,7 +207,7 @@ export function WebviewView({
     } else {
       patch = patchRefs.current.get(id) ?? createLivePatch(element)
       if (patch.element !== element) patch = createLivePatch(element)
-      applyCommitted(patch, existing.changes ?? [], existing.textChange)
+      applyCommitted(patch, existing.changes, existing.textChange)
       patchRefs.current.set(id, patch)
     }
     pickerOf(frameRef.current)?.select(element)
@@ -313,18 +318,29 @@ export function WebviewView({
   // Annotation removal/clear/send consumes its temporary page mutation too.
   useEffect(() => {
     const ids = new Set(state.picks.map(pick => pick.id))
+    const reset = handledPickResetRevision.current !== state.pickResetRevision
+    handledPickResetRevision.current = state.pickResetRevision
+    const current = editorRef.current
+    if (current !== null && (reset || (current.existing !== null && !ids.has(current.id)))) {
+      discardEditor(current)
+      pickerOf(frameRef.current)?.clearSelection()
+      setEditor(null)
+    }
     for (const [id, patch] of patchRefs.current) {
-      if (ids.has(id) || editorRef.current?.id === id) continue
+      if (ids.has(id)) continue
       restoreAll(patch)
       patchRefs.current.delete(id)
       pickRefs.current.delete(id)
     }
-  }, [state.picks])
+  }, [state.pickResetRevision, state.picks])
 
   // HMR/unmount must not strand temporary inline declarations in the page.
   useEffect(() => () => {
+    const current = editorRef.current
+    if (current !== null) discardEditor(current)
     for (const patch of patchRefs.current.values()) restoreAll(patch)
     patchRefs.current.clear()
+    pickRefs.current.clear()
   }, [])
 
   // Focus signal: a dock detail row clicked this pick id — locate the element in
@@ -348,24 +364,21 @@ export function WebviewView({
     actionsRef.current.setFocusPickId(null)
   }, [state.focusPickId])
 
-  // A non-empty draft submission is asynchronous behind the input machine's
-  // void action. Its durable user node is the supported success boundary.
+  // The dock consumes only a matching durable plugin-context id and then
+  // clears the picks. That exact store transition is this view's success edge.
   useEffect(() => {
-    const boundary = draftSendBoundary.current
-    if (boundary === null || latestHumanMessageSeq <= boundary) return
-    draftSendBoundary.current = null
+    if (!sendingAnnotations || state.picks.length !== 0) return
     setSendingAnnotations(false)
     if (stateRef.current.pickMode) actionsRef.current.togglePickMode()
-  }, [latestHumanMessageSeq])
+  }, [sendingAnnotations, state.picks.length])
 
   // Prompt failures stay on the stock session surface; mirror a concise
   // Preview error and keep the annotation state retryable.
   useEffect(() => {
-    if (draftSendBoundary.current === null || promptError === null || promptError === promptErrorAtSend.current) return
-    draftSendBoundary.current = null
+    if (!sendingAnnotations || promptError === null || promptError === promptErrorAtSend.current) return
     setSendingAnnotations(false)
     actionsRef.current.setError(t('panel.pick.sendError'))
-  }, [promptError, t])
+  }, [promptError, sendingAnnotations, t])
 
   /** Navigate the iframe to `url`; a new page invalidates the previous picks. */
   const navigate = (url: string): void => {
@@ -383,17 +396,22 @@ export function WebviewView({
 
   const frameSrc = state.url !== '' ? proxyUrl(state.url) : undefined
   const pickDisabled = !pickerReady || state.url === ''
-  const visibleError = state.annotationSyncError ?? state.error
+  const visibleError = state.annotationSync.status === 'error' ? state.annotationSync.message : state.error
+  const inputBusy = input.phase === 'adjudicating' || input.phase === 'submitting'
   const canSendAnnotations = state.picks.length > 0
-    && state.annotationSync === 'synced'
+    && state.annotationSync.status === 'ready'
     && !sendingAnnotations
+    && !inputBusy
 
   const submitAnnotations = async (): Promise<void> => {
     if (!canSendAnnotations) return
+    if (input.draft.trim().startsWith('/')) {
+      actions.setError(t('panel.pick.slashDraft'))
+      return
+    }
     setSendingAnnotations(true)
     actions.setError(null)
     if (input.draft.trim() !== '') {
-      draftSendBoundary.current = latestHumanMessageSeq
       promptErrorAtSend.current = promptError
       inputActions.submit()
       return
@@ -411,6 +429,12 @@ export function WebviewView({
   const confirmEditor = (value: AnnotationEditorValue): void => {
     const current = editorRef.current
     if (current === null) return
+    if (current.existing !== null && !stateRef.current.picks.some(pick => pick.id === current.id)) {
+      discardEditor(current)
+      pickerOf(frameRef.current)?.clearSelection()
+      setEditor(null)
+      return
+    }
     const pick: PickItem = {
       id: current.id,
       snapshot: current.snapshot,
@@ -566,7 +590,7 @@ export function WebviewView({
               frame={frameRef.current}
               comment={editor.comment}
               changes={editor.original !== null && sameElement(editor.original.element, editor.element) ? editor.existing?.changes ?? [] : []}
-              textChange={editor.original !== null && sameElement(editor.original.element, editor.element) ? editor.existing?.textChange : null}
+              textChange={editor.original !== null && sameElement(editor.original.element, editor.element) ? editor.existing?.textChange ?? null : null}
               initialMode={editor.mode}
               navigationFeedback={editor.navigationFeedback}
               t={t}

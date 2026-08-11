@@ -19,7 +19,7 @@ describe('Composite inspector controls', () => {
       />,
     )
     fireEvent.click(screen.getByRole('button', { name: 'Link values' }))
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Width', exact: true }), { target: { value: '200px' } })
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Width' }), { target: { value: '200px' } })
     expect(height).toHaveBeenCalledWith('100px')
     expect(width).toHaveBeenCalledWith('200px')
   })
@@ -37,7 +37,7 @@ describe('Composite inspector controls', () => {
         onChange={change}
       />,
     )
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Top left', exact: true }), { target: { value: '12px' } })
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Top left' }), { target: { value: '12px' } })
     expect(change).toHaveBeenLastCalledWith('12px')
     fireEvent.click(screen.getByRole('button', { name: 'Unlink values' }))
     view.rerender(
@@ -51,7 +51,7 @@ describe('Composite inspector controls', () => {
         onChange={change}
       />,
     )
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Top left', exact: true }), { target: { value: '12px' } })
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Top left' }), { target: { value: '12px' } })
     expect(change).toHaveBeenLastCalledWith('12px 8px 8px 8px')
   })
 
@@ -92,7 +92,7 @@ describe('Composite inspector controls', () => {
         onChange={change}
       />,
     )
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Translate X', exact: true }), { target: { value: '10px' } })
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Translate X' }), { target: { value: '10px' } })
     expect(change).toHaveBeenCalledWith('translateX(10px)')
   })
 })

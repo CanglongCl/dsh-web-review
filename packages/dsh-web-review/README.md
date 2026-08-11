@@ -2,7 +2,7 @@
 
 External `dsh web` plugin that adds a Preview conversation tab, same-origin
 page proxy, in-frame element picker, and browser-comment context injection.
-Assistant-authored HTTP(S) links open directly in Preview, and the plugin adds
+Assistant-authored local-loopback HTTP(S) links open directly in Preview, and the plugin adds
 a short system-prompt capability note so the agent can offer a verified local
 frontend review link when useful.
 The harness checkout is not modified.
@@ -28,8 +28,9 @@ Open `http://127.0.0.1:3090`, connect the workspace whose source the agent may
 edit, then:
 
 1. Open the **Web Preview** conversation tab.
-2. Enter a URL and press Enter. The page loads through `/webview-proxy` so the
-   picker can access its document.
+2. Enter a local-loopback URL and press Enter. The page loads through
+   `/webview-proxy` so the picker can access its document. Public and LAN
+   targets are deliberately rejected.
 3. Toggle **Add page comments** and click a page element. The solid-white host
    editor accepts a comment; **Select** opens the DOM hierarchy and **Adjust** expands text, fill, typography,
    dimensions, layout, spacing, border, and effects controls. Changes preview
@@ -56,9 +57,9 @@ the prepared browser comments. With no draft, it sends the fixed localized
 request “Please apply the page comments to the frontend implementation.” because
 the stock input machine deliberately treats an empty draft as a no-op.
 
-The agent may also provide a Markdown link to a running frontend page. An
-ordinary click on that assistant link activates Preview and loads the target;
-modifier clicks retain the browser's normal external-link behavior.
+The agent may also provide a Markdown link to a running local frontend page.
+An ordinary click on that loopback assistant link activates Preview and loads
+the target. Remote links and modifier clicks retain normal browser behavior.
 
 ## Context model
 
@@ -103,21 +104,25 @@ Consequently the external plugin cannot make annotation commit and an
 arbitrary simultaneous Send click one client-side atomic operation. The plugin
 uses `agent/pre-step` only to preserve downstream rejection or append one
 separately sourced message after downstream entry; it never rewrites claimed
-message content. Treat the inject-on-send check as the ready boundary. After a durable human message appears, the consumed
-annotation capsule clears automatically. Sending while preparation is still in
-flight leaves the capsule visible for retry.
+message content. Treat the inject-on-send check as the ready boundary. The
+capsule clears only when the durable plugin Context record carries the exact
+node-issued snapshot id; unrelated or older user/context records cannot clear
+a newer snapshot. Sending while preparation is still in flight leaves the
+capsule visible for retry.
 
 ## Known limitations
 
-- **Same-origin trust boundary:** proxied page JavaScript currently executes on
+- **Local-only same-origin trust boundary:** only loopback/wildcard development
+  hosts are accepted, and redirects to remote targets are rejected before the
+  remote request. Proxied page JavaScript still executes on
   the host origin because the picker uses direct frame references. Structured
   validation prevents a page from supplying preformatted context, but it does
   not isolate arbitrary scripts from host routes. A complete fix requires a
   dedicated proxy origin and validated `postMessage` bridge. Only preview
-  trusted development pages until that architecture lands.
-- Absolute URLs embedded in page JavaScript and WebSocket endpoints are not
-  rewritten. Relative and root-relative resources work through the injected
-  `<base>`; dev-server HMR WebSockets do not.
+  trusted local development pages until that architecture lands.
+- Absolute and root-relative URLs embedded in page JavaScript, plus WebSocket
+  endpoints, are not rewritten. Plain-relative URLs resolve through the
+  injected `<base>`; dev-server HMR WebSockets do not.
 - Server-side proxy fetches carry no browser cookies, so login-gated pages
   cannot be annotated.
 - The generated launch entry is machine-specific. Run `pnpm gen-config` after
@@ -127,8 +132,9 @@ flight leaves the capsule visible for retry.
   successful send, navigation, and unmount restore the original DOM. Text is
   editable only for an element with one safe direct text node.
 - Preview refresh after workspace edits is manual.
-- HTML attribute rewriting is intentionally narrow and regex-based; exotic
-  markup may degrade to pass-through behavior for affected attributes.
+- HTML rewriting uses a parser and intentionally touches only the documented
+  URL-bearing attributes. Remote absolute resources retain browser-native
+  cross-origin behavior rather than being served from the host origin.
 
 ## Verification
 

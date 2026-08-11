@@ -4,9 +4,10 @@
  * model-facing content.
  */
 import type { IncomingMessage } from 'node:http'
+import { randomUUID } from 'node:crypto'
 import type { Agent, AgentRegistry, PreStepDecision } from '@deepseek-ai/dsh-agent'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
+import { createUserMessage } from '@deepseek-ai/dsh-llm/message'
+import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session/types'
 import {
   ANNOTATION_LIMITS,
   MAX_ANNOTATION_CHANGES,
@@ -16,22 +17,28 @@ import {
   type AnnotationAnchor,
   type AnnotationComment,
   type AnnotationSnapshot,
+  AnnotationSnapshotId,
+  annotationSnapshotIdOfSource,
+  type AnnotationSnapshotId as AnnotationSnapshotIdType,
 } from './annotation-contract.ts'
 import { isEditableStyleProperty, isSafeAnnotationStyleValue } from './annotation-properties.ts'
+import { isLocalPreviewUrl } from './proxy-url.ts'
+import { readRequestBytes } from './proxy-transport.ts'
 
 /** Plugin provenance recorded on every injected context message. */
 export const ANNOTATION_SOURCE = { kind: 'plugin', plugin: 'dsh-web-review' } as const
 
-/** Per-plugin-instance state used only to deduplicate full snapshots. */
-export type AnnotationCommitState = Map<string, string>
+export interface PendingAnnotationContext {
+  snapshotId: AnnotationSnapshotIdType
+  context: string
+}
+
+/** Per-plugin-instance state keyed by the authoritative live agent identity. */
+export type AnnotationCommitState = Map<SessionId, PendingAnnotationContext>
 
 export type AnnotationCommitResult =
-  | 'pending'
-  | 'cleared'
-  | 'deduplicated'
-  | 'initial-empty'
-  | 'agent-not-found'
-  | 'context-too-large'
+  | { kind: 'pending' | 'deduplicated'; pending: PendingAnnotationContext }
+  | { kind: 'cleared' | 'initial-empty' | 'agent-not-found' | 'context-too-large' }
 
 type UnknownRecord = Record<string, unknown>
 
@@ -39,6 +46,16 @@ function recordOf(value: unknown): UnknownRecord | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? value as UnknownRecord
     : undefined
+}
+
+function exactKeys(
+  record: UnknownRecord,
+  required: readonly string[],
+  optional: readonly string[] = [],
+): boolean {
+  const allowed = new Set([...required, ...optional])
+  return required.every(key => Object.hasOwn(record, key))
+    && Object.keys(record).every(key => allowed.has(key))
 }
 
 function boundedString(value: unknown, cap: number, allowEmpty = true): string | undefined {
@@ -51,6 +68,7 @@ function parseAnchor(value: unknown): AnnotationAnchor | null | undefined {
   if (value === null) return null
   const record = recordOf(value)
   if (record === undefined) return undefined
+  if (!exactKeys(record, ['framework', 'component', 'file'], ['line'])) return undefined
   if (record.framework !== 'react' && record.framework !== 'vue' && record.framework !== 'svelte') return undefined
   const component = boundedString(record.component, ANNOTATION_LIMITS.anchorComponent)
   const file = boundedString(record.file, ANNOTATION_LIMITS.anchorFile, false)
@@ -72,6 +90,7 @@ function parseChanges(value: unknown): AnnotationComment['changes'] | undefined 
   for (const raw of value) {
     const record = recordOf(raw)
     if (record === undefined) return undefined
+    if (!exactKeys(record, ['property', 'before', 'after'])) return undefined
     const property = boundedString(record.property, 64, false)
     const before = boundedString(record.before, ANNOTATION_LIMITS.styleValue)
     const after = boundedString(record.after, ANNOTATION_LIMITS.styleValue)
@@ -90,6 +109,7 @@ function parseTextChange(value: unknown): AnnotationComment['textChange'] | unde
   if (value === null) return null
   const record = recordOf(value)
   if (record === undefined) return undefined
+  if (!exactKeys(record, ['before', 'after'])) return undefined
   const before = boundedString(record.before, ANNOTATION_LIMITS.textValue)
   const after = boundedString(record.after, ANNOTATION_LIMITS.textValue)
   if (before === undefined || after === undefined || before === after) return undefined
@@ -99,6 +119,7 @@ function parseTextChange(value: unknown): AnnotationComment['textChange'] | unde
 function parseViewport(value: unknown): AnnotationComment['viewport'] | undefined {
   const record = recordOf(value)
   if (record === undefined) return undefined
+  if (!exactKeys(record, ['width', 'height'])) return undefined
   const width = record.width
   const height = record.height
   if (
@@ -113,6 +134,10 @@ function parseViewport(value: unknown): AnnotationComment['viewport'] | undefine
 function parseComment(value: unknown): AnnotationComment | undefined {
   const record = recordOf(value)
   if (record === undefined) return undefined
+  if (!exactKeys(record, [
+    'id', 'comment', 'tagName', 'role', 'label', 'cssPath', 'fullPath',
+    'stableClasses', 'anchor', 'changes', 'textChange', 'viewport',
+  ])) return undefined
   const id = boundedString(record.id, ANNOTATION_LIMITS.id, false)
   const comment = boundedString(record.comment, ANNOTATION_LIMITS.comment)
   const tagName = boundedString(record.tagName, ANNOTATION_LIMITS.tagName, false)
@@ -134,11 +159,14 @@ function parseComment(value: unknown): AnnotationComment | undefined {
     return undefined
   }
   const stableClasses: string[] = []
+  const classNames = new Set<string>()
   for (const value of record.stableClasses) {
     const className = boundedString(value, ANNOTATION_LIMITS.stableClass, false)
-    if (className === undefined) return undefined
+    if (className === undefined || classNames.has(className)) return undefined
+    classNames.add(className)
     stableClasses.push(className)
   }
+  if (comment.trim() === '' && changes.length === 0 && textChange === null) return undefined
   return {
     id, comment, tagName, role, label, cssPath, fullPath, stableClasses, anchor,
     changes, textChange, viewport,
@@ -156,11 +184,13 @@ export function parseAnnotationBody(body: string): AnnotationSnapshot | undefine
   const record = recordOf(value)
   const page = recordOf(record?.page)
   if (record === undefined || page === undefined || !Array.isArray(record.comments)) return undefined
+  if (!exactKeys(record, ['sessionId', 'page', 'comments']) || !exactKeys(page, ['url', 'title'])) return undefined
   const sessionId = boundedString(record.sessionId, ANNOTATION_LIMITS.sessionId, false)
   const url = boundedString(page.url, ANNOTATION_LIMITS.pageUrl)
   const title = boundedString(page.title, ANNOTATION_LIMITS.pageTitle)
   if (sessionId === undefined || url === undefined || title === undefined) return undefined
   if (record.comments.length > MAX_ANNOTATIONS) return undefined
+  if (record.comments.length > 0 && !isLocalPreviewUrl(url)) return undefined
   const comments: AnnotationComment[] = []
   const ids = new Set<string>()
   let totalChanges = 0
@@ -264,18 +294,19 @@ export function storeAnnotationSnapshot(
   snapshot: AnnotationSnapshot,
 ): AnnotationCommitResult {
   const agent = agents.get(SessionId(snapshot.sessionId))
-  if (agent === undefined) return 'agent-not-found'
-  const previous = state.get(snapshot.sessionId)
+  if (agent === undefined) return { kind: 'agent-not-found' }
+  const previous = state.get(agent.id)
   if (snapshot.comments.length === 0) {
-    if (previous === undefined) return 'initial-empty'
-    state.delete(snapshot.sessionId)
-    return 'cleared'
+    if (previous === undefined) return { kind: 'initial-empty' }
+    state.delete(agent.id)
+    return { kind: 'cleared' }
   }
   const context = formatAnnotationContext(snapshot)
-  if (context.length > MAX_ANNOTATION_CONTEXT) return 'context-too-large'
-  if (context === previous) return 'deduplicated'
-  state.set(snapshot.sessionId, context)
-  return 'pending'
+  if (context.length > MAX_ANNOTATION_CONTEXT) return { kind: 'context-too-large' }
+  if (context === previous?.context) return { kind: 'deduplicated', pending: previous }
+  const pending = { snapshotId: AnnotationSnapshotId(randomUUID()), context }
+  state.set(agent.id, pending)
+  return { kind: 'pending', pending }
 }
 
 /**
@@ -290,11 +321,11 @@ export async function attachPendingAnnotationContext(
 ): Promise<PreStepDecision> {
   const decision = await next()
   if (decision.kind !== 'enter') return decision
-  const context = state.get(agent.id)
-  if (context === undefined) return decision
+  const pending = state.get(agent.id)
+  if (pending === undefined) return decision
   const annotation = createUserMessage({
-    source: ANNOTATION_SOURCE,
-    content: [{ type: 'text', text: context }],
+    source: { ...ANNOTATION_SOURCE, snapshotId: pending.snapshotId },
+    content: [{ type: 'text', text: pending.context }],
   })
   return {
     kind: 'enter',
@@ -305,16 +336,18 @@ export async function attachPendingAnnotationContext(
 /** Consume only the exact pending text that actually entered the session log. */
 export function acknowledgeAnnotationEvent(
   state: AnnotationCommitState,
-  sessionId: string,
+  sessionId: SessionId,
   event: SessionEvent,
 ): void {
   if (event.type !== 'user/message') return
   const source = event.data.source
-  if (source.kind !== 'plugin' || source.plugin !== ANNOTATION_SOURCE.plugin) return
+  const snapshotId = annotationSnapshotIdOfSource(source)
+  if (snapshotId === undefined) return
   const text = event.data.content.length === 1 && event.data.content[0]?.type === 'text'
     ? event.data.content[0].text
     : undefined
-  if (text !== undefined && state.get(sessionId) === text) state.delete(sessionId)
+  const current = state.get(sessionId)
+  if (text !== undefined && current?.snapshotId === snapshotId && current.context === text) state.delete(sessionId)
 }
 
 /** Release dedupe state when the exact live agent leaves the registry. */
@@ -324,13 +357,6 @@ export function forgetAgent(state: AnnotationCommitState, agent: Pick<Agent, 'id
 
 /** Read a request body up to `maxBytes`; reject beyond the cap. */
 export async function readRequestBody(req: IncomingMessage, maxBytes: number): Promise<string | undefined> {
-  const chunks: Buffer[] = []
-  let total = 0
-  for await (const chunk of req) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-    total += buffer.length
-    if (total > maxBytes) throw new Error(`body exceeds ${maxBytes} bytes`)
-    chunks.push(buffer)
-  }
-  return chunks.length === 0 ? undefined : Buffer.concat(chunks).toString('utf8')
+  const body = await readRequestBytes(req, maxBytes)
+  return body?.toString('utf8')
 }

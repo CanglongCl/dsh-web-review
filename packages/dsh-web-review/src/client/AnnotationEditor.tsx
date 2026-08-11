@@ -6,6 +6,7 @@ import type {
   AnnotationTextChange,
   AnnotationViewport,
 } from '../annotation-contract.ts'
+import { ANNOTATION_LIMITS } from '../annotation-contract.ts'
 import {
   isSafeAnnotationStyleValue,
   type EditableStyleProperty,
@@ -27,7 +28,6 @@ import {
   InspectorRow,
   InspectorSection,
   OptionMenu,
-  parseNumeric,
   ScrubNumber,
   SegmentedControl,
   StyleGlyph,
@@ -37,6 +37,7 @@ import {
   ToggleGroup,
   updateBoxModelLinks,
 } from './InspectorControls.tsx'
+import { parseNumeric } from './inspector-values.ts'
 import { PROPERTY_BY_NAME, PROPERTY_GROUPS, type PropertyControl } from './property-editor-config.ts'
 import type { WebviewKey } from './locales.ts'
 import { RadiusControl, ShadowControl, SizeControl, TransformControl } from './CompositeControls.tsx'
@@ -63,7 +64,7 @@ export interface AnnotationEditorProps {
   frame: HTMLIFrameElement
   comment: string
   changes: readonly AnnotationStyleChange[]
-  textChange: AnnotationTextChange | null | undefined
+  textChange: AnnotationTextChange | null
   initialMode?: AnnotationEditorMode
   navigationFeedback?: ElementNavigationFeedback | null
   t: Translate<WebviewKey>
@@ -217,7 +218,10 @@ export function AnnotationEditor({
 
   const textChanged = originalText !== undefined && text !== originalText
   const dirty = comment.trim() !== '' || currentChanges().length > 0 || textChanged
-  const canConfirm = invalid.size === 0 && dirty
+  const canConfirm = invalid.size === 0
+    && comment.length <= ANNOTATION_LIMITS.comment
+    && text.length <= ANNOTATION_LIMITS.textValue
+    && dirty
 
   const confirm = (): void => {
     if (!canConfirm) return
@@ -264,7 +268,11 @@ export function AnnotationEditor({
       setInvalid(current => { const copy = new Set(current); copy.delete(property); return copy })
       return
     }
-    if (next.trim() === '' || !validCssValue(patch.element, property, next)) {
+    if (
+      next.length > ANNOTATION_LIMITS.styleValue
+      || next.trim() === ''
+      || !validCssValue(patch.element, property, next)
+    ) {
       setInvalid(current => new Set(current).add(property))
       return
     }
@@ -458,7 +466,7 @@ export function AnnotationEditor({
           <input
             className={`${css.commentInput} dsh-wv-comment-input`}
             value={comment}
-            maxLength={4000}
+            maxLength={ANNOTATION_LIMITS.comment}
             placeholder={t('editor.comment')}
             onChange={event => { setComment(event.target.value) }}
             onKeyDown={(event) => {
@@ -516,7 +524,12 @@ export function AnnotationEditor({
             {originalText !== undefined && (
               <InspectorSection label={t('editor.text')}>
                 <InspectorRow wide label={t('editor.text')} changed={textChanged} resetLabel={t('editor.reset')} onReset={() => { updateText(originalText) }}>
-                  <TextAreaField label={t('editor.text')} value={text} onChange={updateText} />
+                  <TextAreaField
+                    label={t('editor.text')}
+                    value={text}
+                    maxLength={ANNOTATION_LIMITS.textValue}
+                    onChange={updateText}
+                  />
                 </InspectorRow>
               </InspectorSection>
             )}

@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "rootDir": "src",
+    "outDir": "lib/types/client"
+  },
+  "include": [
+    "src/client",
+    "src/css-modules.d.ts",
+    "src/annotation-contract.ts",
+    "src/annotation-properties.ts",
+    "src/proxy-url.ts"
+  ]
+}

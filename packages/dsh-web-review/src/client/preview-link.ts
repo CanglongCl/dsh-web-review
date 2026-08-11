@@ -1,8 +1,10 @@
+import { isLocalPreviewUrl } from '../proxy-url.ts'
+
 /** Assistant message rows expose this semantic marker in Harness 0810. */
 const ASSISTANT_ROW = '[data-chat-flow-kind="assistant-step"]'
 
 /**
- * Resolve an assistant-authored HTTP(S) link from an ordinary left click.
+ * Resolve an assistant-authored local-loopback HTTP(S) link from an ordinary left click.
  * Modifier clicks keep the browser's external-link behavior.
  */
 export function previewHrefFromClick(event: MouseEvent): string | undefined {
@@ -16,7 +18,8 @@ export function previewHrefFromClick(event: MouseEvent): string | undefined {
   const href = anchor.getAttribute('href') ?? ''
   if (!/^https?:\/\//i.test(href)) return undefined
   try {
-    return new URL(href).href
+    const normalized = new URL(href).href
+    return isLocalPreviewUrl(normalized) ? normalized : undefined
   } catch {
     return undefined
   }

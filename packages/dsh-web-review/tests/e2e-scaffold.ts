@@ -8,12 +8,12 @@
  * follows the harness's dialog flow, and failure evidence lands in the
  * gitignored `.artifacts/`.
  */
-import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { homedir, tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Locator, Page } from 'playwright'
 import { chromium } from 'playwright'
@@ -78,23 +78,32 @@ export async function startServices(): Promise<E2EServices> {
   // Isolated harness home: a fresh GUI must boot into the hero (workspace
   // picker) state instead of inheriting the developer's ~/.dsh sessions.
   const dshHome = await mkdtemp(join(tmpdir(), 'dsh-web-review-e2e-home-'))
-  // Configuration-level overlay dismissal, mirroring the harness: resolve
-  // the provider key through the same chain the product uses (repo .env,
-  // then the current user's harness home .env) so the model onboarding
-  // closes itself (deepSeekReadiness → 'configured'); pre-write the
+  // Configuration-level overlay dismissal, mirroring the harness: preserve
+  // the product's provider chain (inherited key, repo/home .env, then the
+  // default DSH credentials file) so model onboarding closes itself
+  // (deepSeekReadiness → 'configured'); pre-write the
   // welcome-notice acknowledgement into $DSH_HOME/settings.yaml (exact
-  // version match) so the first-boot notice never renders. With a real key
-  // the blank-state probe message succeeds and the session stays
+  // version match) so the first-boot notice never renders. With a configured
+  // credential the blank-state probe succeeds and the session stays
   // non-blank; without one it fails instantly against a dead endpoint.
-  for (const candidate of [join(REPO_ROOT, '.env'), join(homedir(), '.dsh', '.env')]) {
-    try {
-      process.loadEnvFile(candidate)
-      break
-    } catch {
-      // Candidate absent — try the next.
+  if (process.env.DEEPSEEK_API_KEY === undefined) {
+    for (const candidate of [join(REPO_ROOT, '.env'), join(homedir(), '.dsh', '.env')]) {
+      try {
+        process.loadEnvFile(candidate)
+        if (process.env.DEEPSEEK_API_KEY !== undefined) break
+      } catch {
+        // Candidate absent — try the next.
+      }
     }
   }
   const apiKey = process.env.DEEPSEEK_API_KEY
+  const defaultCredentials = join(homedir(), '.dsh', '.credentials.yaml')
+  const hasStoredCredentials = apiKey === undefined && existsSync(defaultCredentials)
+  if (hasStoredCredentials) {
+    const stagedCredentials = join(dshHome, '.credentials.yaml')
+    copyFileSync(defaultCredentials, stagedCredentials)
+    chmodSync(stagedCredentials, 0o600)
+  }
   writeFileSync(join(dshHome, 'settings.yaml'), [
     `${WELCOME_NOTICE_SETTINGS_NAMESPACE}:`,
     `  ${WELCOME_NOTICE_ACK_FIELD}: ${WELCOME_NOTICE_VERSION}`,
@@ -152,11 +161,13 @@ export async function startServices(): Promise<E2EServices> {
     env: {
       ...process.env,
       DSH_HOME: dshHome,
-      DEEPSEEK_API_KEY: apiKey,
-      // With a real key the probe message hits the real provider; without
-      // one, point it at a dead loopback so the failure settles instantly
-      // (a hung turn would churn the session header).
-      ...(apiKey === undefined ? { DEEPSEEK_BASE_URL: 'http://127.0.0.1:9' } : {}),
+      ...(apiKey === undefined ? {} : { DEEPSEEK_API_KEY: apiKey }),
+      // With either supported credential source the probe message hits the
+      // configured provider; only a truly credential-free run uses a dead
+      // loopback so failure settles instantly (a hung turn churns the header).
+      ...(apiKey === undefined && !hasStoredCredentials
+        ? { DEEPSEEK_BASE_URL: 'http://127.0.0.1:9' }
+        : {}),
     },
   })
   web.stdout?.on('data', capture('web'))

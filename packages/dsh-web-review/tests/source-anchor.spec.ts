@@ -68,6 +68,17 @@ describe('sourceAnchorOf — React (dev mode)', () => {
     expect(sourceAnchorOf(el)).toBeNull()
   })
 
+  it('terminates cyclic fiber chains and still resolves a valid source', () => {
+    const el = document.createElement('div')
+    const fiber: Record<string, unknown> = {
+      type: { name: 'Hero' },
+      _debugSource: { fileName: 'src/components/Hero.tsx', lineNumber: 8 },
+    }
+    fiber.return = fiber
+    attach(el, '__reactFiber$cycle', fiber)
+    expect(expectAnchor(el)).toMatchObject({ file: 'src/components/Hero.tsx', line: 8, component: 'Hero' })
+  })
+
   it('recognizes the legacy __reactInternalInstance$ fiber prefix', () => {
     const el = document.createElement('div')
     attach(el, '__reactInternalInstance$legacy', {
@@ -149,5 +160,28 @@ describe('sourceAnchorOf — fallbacks and priority', () => {
     attach(el, '__svelte_meta', null)
     expect(() => sourceAnchorOf(el)).not.toThrow()
     expect(sourceAnchorOf(el)).toBeNull()
+  })
+
+  it('ignores invalid primitive fields and throwing metadata accessors', () => {
+    const el = document.createElement('div')
+    attach(el, '__reactFiber$invalid', {
+      _debugSource: { fileName: 42, lineNumber: '12' },
+      return: null,
+    })
+    Object.defineProperty(el, '__vueParentComponent', {
+      configurable: true,
+      get() { throw new Error('page-owned getter') },
+    })
+    attach(el, '__svelte_meta', { loc: { file: 7, line: -1 } })
+    expect(() => sourceAnchorOf(el)).not.toThrow()
+    expect(sourceAnchorOf(el)).toBeNull()
+  })
+
+  it('normalizes Windows source paths and omits invalid line numbers', () => {
+    const el = document.createElement('div')
+    attach(el, '__svelte_meta', { loc: { file: 'C:\\project\\src\\Hero.svelte', line: 0 } })
+    expect(expectAnchor(el)).toEqual({
+      framework: 'svelte', component: 'Hero', file: 'src/Hero.svelte',
+    })
   })
 })

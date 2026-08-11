@@ -2,6 +2,7 @@
  * Store factory suite: the write set and state invariants.
  */
 import { describe, expect, it } from 'vitest'
+import { AnnotationSnapshotId } from '../src/annotation-contract.ts'
 import { createWebviewStore } from '../src/client/stores.ts'
 import type { PickItem } from '../src/client/contract.ts'
 
@@ -19,6 +20,7 @@ function pick(id: string): PickItem {
       },
     },
     comment: '',
+    changes: [], textChange: null, viewport: { width: 0, height: 0 },
   }
 }
 
@@ -26,8 +28,9 @@ describe('createWebviewStore', () => {
   it('seeds the initial state', () => {
     const store = createWebviewStore().create()
     expect(store.getSnapshot()).toMatchObject({
-      url: '', urlDraft: '', title: '', pickMode: false, picks: [], error: null, focusPickId: null,
-      annotationSync: 'idle', annotationSyncError: null,
+      url: '', urlDraft: '', title: '', pickMode: false, picks: [], pickResetRevision: 0,
+      error: null, focusPickId: null,
+      annotationSync: { status: 'idle' },
     })
   })
 
@@ -59,6 +62,7 @@ describe('createWebviewStore', () => {
     store.actions.addPick(pick('b'))
     store.actions.clearPicks()
     expect(store.getSnapshot().picks).toEqual([])
+    expect(store.getSnapshot().pickResetRevision).toBe(1)
   })
 
   it('togglePickMode exits pick mode', () => {
@@ -84,9 +88,9 @@ describe('createWebviewStore', () => {
     expect(store.getSnapshot().error).toBe('boom')
     store.actions.setError(null)
     expect(store.getSnapshot().error).toBeNull()
-    store.actions.setAnnotationSync('error', 'sync failed')
-    expect(store.getSnapshot()).toMatchObject({ annotationSync: 'error', annotationSyncError: 'sync failed' })
-    store.actions.setAnnotationSync('synced')
-    expect(store.getSnapshot()).toMatchObject({ annotationSync: 'synced', annotationSyncError: null })
+    store.actions.setAnnotationSync({ status: 'error', message: 'sync failed' })
+    expect(store.getSnapshot()).toMatchObject({ annotationSync: { status: 'error', message: 'sync failed' } })
+    store.actions.setAnnotationSync({ status: 'ready', snapshotId: AnnotationSnapshotId('snapshot-1') })
+    expect(store.getSnapshot()).toMatchObject({ annotationSync: { status: 'ready', snapshotId: 'snapshot-1' } })
   })
 })

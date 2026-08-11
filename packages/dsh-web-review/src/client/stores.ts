@@ -6,7 +6,14 @@
  * sends to the preview tab (detail-row click → locate the element in the iframe).
  */
 import { defineStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type { AnnotationSnapshotId } from '../annotation-contract.ts'
 import type { PickItem } from './contract.ts'
+
+export type AnnotationSyncState =
+  | { status: 'idle' }
+  | { status: 'syncing' }
+  | { status: 'ready'; snapshotId: AnnotationSnapshotId }
+  | { status: 'error'; message: string }
 
 export interface WebviewState {
   /** Current loaded URL used by the iframe and annotation evidence. */
@@ -19,14 +26,14 @@ export interface WebviewState {
   pickMode: boolean
   /** Annotation entries, each with its own comment. */
   picks: PickItem[]
+  /** Monotonic explicit reset signal; also discards an uncommitted editor. */
+  pickResetRevision: number
   /** Last user-visible error, cleared on the next gesture. */
   error: string | null
   /** One-shot focus signal: a dock detail row selected this pick id. */
   focusPickId: string | null
   /** Browser → host context commit state shown by the composer capsule. */
-  annotationSync: 'idle' | 'syncing' | 'synced' | 'error'
-  /** Last annotation commit failure, separate from preview/navigation errors. */
-  annotationSyncError: string | null
+  annotationSync: AnnotationSyncState
 }
 
 /**
@@ -42,10 +49,10 @@ export function createWebviewStore() {
       title: '',
       pickMode: false,
       picks: [],
+      pickResetRevision: 0,
       error: null,
       focusPickId: null,
-      annotationSync: 'idle',
-      annotationSyncError: null,
+      annotationSync: { status: 'idle' },
     }),
     actions: {
       setUrl: (d, url: string) => {
@@ -65,17 +72,13 @@ export function createWebviewStore() {
         d.picks = d.picks.map(current => current.id === id ? pick : current)
       },
       removePick: (d, id: string) => { d.picks = d.picks.filter((p) => p.id !== id) },
-      clearPicks: (d) => { d.picks = [] },
+      clearPicks: (d) => {
+        d.picks = []
+        d.pickResetRevision += 1
+      },
       setError: (d, error: string | null) => { d.error = error },
       setFocusPickId: (d, id: string | null) => { d.focusPickId = id },
-      setAnnotationSync: (
-        d,
-        status: WebviewState['annotationSync'],
-        error: string | null = null,
-      ) => {
-        d.annotationSync = status
-        d.annotationSyncError = error
-      },
+      setAnnotationSync: (d, state: AnnotationSyncState) => { d.annotationSync = state },
     },
   })
 }

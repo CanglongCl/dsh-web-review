@@ -46,24 +46,30 @@ const CSS_VIRTUAL_SUFFIX = '.mjs'
 
 /** Externals resolved from the loader module table: platform modules + the runtime exemption. */
 export const CLIENT_EXTERNALS: readonly string[] = [...PLATFORM_MODULES, RUNTIME_STORE_EXEMPTION]
+/** Third-party packages intentionally embedded in the browser artifact. */
+const CLIENT_BUNDLED_DEPENDENCIES = ['clsx', 'css-selector-generator'] as const
 
 /** Build one client artifact for an install channel and its loader id. */
 function clientBundle(pluginId: string, entryFile: string): UserConfig {
   return {
     entry: { client: 'src/client/index.ts' },
+    tsconfig: 'tsconfig.client.json',
     outDir: 'lib',
     format: 'cjs',
     platform: 'browser',
     dts: false,
     sourcemap: true,
     clean: false,
-    external: [...CLIENT_EXTERNALS],
+    deps: {
+      neverBundle: [...CLIENT_EXTERNALS],
+      alwaysBundle: (id: string) => CLIENT_EXTERNALS.includes(id) ? undefined : true,
+      onlyBundle: [...CLIENT_BUNDLED_DEPENDENCIES],
+    },
     define: {
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
       'import.meta.env.MODE': JSON.stringify(process.env.NODE_ENV ?? 'production'),
       'import.meta.env': JSON.stringify({ MODE: process.env.NODE_ENV ?? 'production' }),
     },
-    noExternal: (id: string) => (CLIENT_EXTERNALS.includes(id) ? undefined : true),
     plugins: [{
       name: 'dsh-web-review-css-modules-inline',
       resolveId(source: string, importer: string | undefined) {
@@ -111,6 +117,7 @@ function clientBundle(pluginId: string, entryFile: string): UserConfig {
 export default [
   {
     entry: ['src/index.ts'],
+    tsconfig: 'tsconfig.node.json',
     outDir: 'lib',
     format: ['esm'],
     platform: 'node',
@@ -118,6 +125,12 @@ export default [
     fixedExtension: false,
     dts: false,
     clean: false,
+    deps: {
+      // The Loader artifact intentionally inlines its small DSH helpers and
+      // parser graph; the post-build gate rejects any surviving bare import.
+      alwaysBundle: ['parse5', 'entities'],
+      onlyBundle: ['parse5', 'entities'],
+    },
   },
   clientBundle(ENTRY_NAME, 'client.js'),
   clientBundle(PACKAGE_ID, 'client-official.js'),

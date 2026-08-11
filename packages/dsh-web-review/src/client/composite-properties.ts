@@ -1,4 +1,4 @@
-import { parseColor, parseNumeric } from './InspectorControls.tsx'
+import { parseColor, parseNumeric } from './inspector-values.ts'
 
 export type QuadValues = [string, string, string, string]
 

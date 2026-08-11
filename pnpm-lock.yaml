@@ -53,6 +53,9 @@ importers:
       css-selector-generator:
         specifier: ^3.9.2
         version: 3.9.2
+      parse5:
+        specifier: ^7.3.0
+        version: 7.3.0
     devDependencies:
       '@cordisjs/plugin-include':
         specifier: link:/Users/canglong/Program/deepseek-harness/vendor/include

@@ -344,7 +344,7 @@ describe('dsh-web-review e2e', () => {
       const footer = element.querySelector('[data-webview-editor-footer]')
       const inactiveRow = element.querySelector('[data-inspector-row]:not([data-scrub-active])')
       const section = active?.closest('section')
-      if (!(active instanceof HTMLElement) || inspector === null || compose === null || footer === null || inactiveRow === null || section === null) return null
+      if (!(active instanceof HTMLElement) || inspector === null || compose == null || footer === null || inactiveRow === null || section == null) return null
       return {
         activeVisibility: getComputedStyle(active).visibility,
         activePointerEvents: getComputedStyle(active).pointerEvents,

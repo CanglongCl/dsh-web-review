@@ -11,17 +11,22 @@ import {
   IconWarningOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
-import type { AnnotationDraft } from '../annotation-contract.ts'
+import type { ConversationNode } from '@deepseek-ai/dsh-client-runtime/client'
+import {
+  annotationSnapshotIdOfSource,
+  type AnnotationDraft,
+  type AnnotationSyncReceipt,
+} from '../annotation-contract.ts'
 import { annotationDraft } from './annotation-snapshot.ts'
 import type { ElementSnapshot, PickItem } from './contract.ts'
 import type { WebviewStore } from './stores.ts'
-import { elementLabel } from './WebviewView.tsx'
+import { elementLabel } from './element-label.ts'
 import { previewHrefFromClick } from './preview-link.ts'
 import css from './DraftOverlayBar.module.css'
 
 /** Host acknowledgement face bound to one session by the slot registration. */
 export interface WebviewDockInjected {
-  syncAnnotations: (snapshot: AnnotationDraft) => Promise<void>
+  syncAnnotations: (snapshot: AnnotationDraft) => Promise<AnnotationSyncReceipt>
   openPreview: (url: string) => void
 }
 
@@ -47,18 +52,23 @@ function sourceOf(pick: PickItem): string {
   return anchor.component.trim() === '' ? source : `${source} · ${anchor.component}`
 }
 
+function annotationContextId(node: ConversationNode): ReturnType<typeof annotationSnapshotIdOfSource> {
+  return node.kind === 'context' ? annotationSnapshotIdOfSource(node.source) : undefined
+}
+
 /** Annotation composer capsule and hover/focus detail card. */
 export function DraftOverlayBar({ useStore, useSession, actions, syncAnnotations, openPreview, t }: WebviewDockProps) {
   const state = useStore((s) => s)
-  const latestHumanMessageSeq = useSession((session) =>
-    session.nodes.findLast(node => node.kind === 'user')?.seq ?? -1)
+  const latestAnnotationContextId = useSession((session) => {
+    const node = session.nodes.findLast(candidate => annotationContextId(candidate) !== undefined)
+    return node === undefined ? undefined : annotationContextId(node)
+  })
   const [open, setOpen] = useState(false)
   const [retry, setRetry] = useState(0)
   const detailsId = useId()
   const revision = useRef(0)
   const hadAnnotations = useRef(false)
   const initialized = useRef(false)
-  const lastHumanMessageSeq = useRef(latestHumanMessageSeq)
   const tRef = useRef(t)
   tRef.current = t
   const openPreviewRef = useRef(openPreview)
@@ -84,23 +94,25 @@ export function DraftOverlayBar({ useStore, useSession, actions, syncAnnotations
     const clearing = state.picks.length === 0
     const initialEmpty = clearing && !initialized.current
     initialized.current = true
-    if (clearing && !hadAnnotations.current && !initialEmpty && state.annotationSync !== 'error') {
-      actions.setAnnotationSync('synced')
+    if (clearing && !hadAnnotations.current && !initialEmpty && state.annotationSync.status !== 'error') {
+      actions.setAnnotationSync({ status: 'idle' })
       return
     }
     if (!clearing) hadAnnotations.current = true
     const currentRevision = ++revision.current
-    if (!initialEmpty) actions.setAnnotationSync('syncing')
+    if (!initialEmpty) actions.setAnnotationSync({ status: 'syncing' })
     const snapshot = annotationDraft(state.url, state.title, state.picks)
     void syncAnnotations(snapshot).then(
-      () => {
+      (receipt) => {
         if (revision.current !== currentRevision) return
         if (clearing) hadAnnotations.current = false
-        actions.setAnnotationSync('synced')
+        actions.setAnnotationSync(receipt.kind === 'ready'
+          ? { status: 'ready', snapshotId: receipt.snapshotId }
+          : { status: 'idle' })
       },
       () => {
         if (revision.current !== currentRevision) return
-        actions.setAnnotationSync('error', tRef.current('dock.sync.error'))
+        actions.setAnnotationSync({ status: 'error', message: tRef.current('dock.sync.error') })
       },
     )
     return () => { revision.current += 1 }
@@ -110,26 +122,28 @@ export function DraftOverlayBar({ useStore, useSession, actions, syncAnnotations
     if (state.picks.length === 0) setOpen(false)
   }, [state.picks.length])
 
-  // A new durable human message is the client-visible proof that stock
-  // composer admission committed. Clear only annotations whose pending
-  // snapshot was already acknowledged before that boundary; sending while a
-  // sync is still in flight deliberately leaves them visible for retry.
+  // Only this snapshot's durable plugin context proves admission. A generic
+  // human sequence cannot distinguish an older admitted A from a newer ready B.
   useEffect(() => {
-    if (latestHumanMessageSeq <= lastHumanMessageSeq.current) return
-    lastHumanMessageSeq.current = latestHumanMessageSeq
-    if (state.picks.length > 0 && state.annotationSync === 'synced') actions.clearPicks()
-  }, [actions, latestHumanMessageSeq, state.annotationSync, state.picks.length])
+    if (
+      state.picks.length > 0 && state.annotationSync.status === 'ready'
+      && latestAnnotationContextId === state.annotationSync.snapshotId
+    ) actions.clearPicks()
+  }, [actions, latestAnnotationContextId, state.annotationSync, state.picks.length])
 
   const clearing = state.picks.length === 0
-  if (clearing && state.annotationSync !== 'syncing' && state.annotationSync !== 'error') return null
+  const syncStatus = state.annotationSync.status === 'ready' || state.annotationSync.status === 'idle'
+    ? 'synced'
+    : state.annotationSync.status
+  if (clearing && syncStatus !== 'syncing' && syncStatus !== 'error') return null
 
   const count = state.picks.length
   const countLabel = clearing
     ? t('dock.clearing')
     : t('dock.count', { count: String(count) })
-  const statusLabel = state.annotationSync === 'syncing'
+  const statusLabel = syncStatus === 'syncing'
     ? t('dock.syncing')
-    : state.annotationSync === 'error'
+    : syncStatus === 'error'
       ? t('dock.sync.retry')
       : t('dock.synced')
 
@@ -202,7 +216,7 @@ export function DraftOverlayBar({ useStore, useSession, actions, syncAnnotations
         <div
           className={css.capsule}
           data-webview-annotation-capsule=""
-          data-sync-status={state.annotationSync}
+          data-sync-status={syncStatus}
         >
           <button
             type="button"
@@ -210,19 +224,19 @@ export function DraftOverlayBar({ useStore, useSession, actions, syncAnnotations
             aria-expanded={open}
             aria-controls={!clearing ? detailsId : undefined}
             aria-label={`${countLabel} · ${statusLabel}`}
-            title={state.annotationSync === 'error' ? statusLabel : undefined}
+            title={syncStatus === 'error' ? statusLabel : undefined}
             onClick={() => {
-              if (state.annotationSync === 'error') setRetry(value => value + 1)
+              if (syncStatus === 'error') setRetry(value => value + 1)
               if (!clearing) setOpen(true)
             }}
           >
             <span className={css.lead} aria-hidden><IconQueueOutline14 /></span>
             <span className={css.count}>{countLabel}</span>
-            {state.annotationSync !== 'synced' && (
+            {syncStatus !== 'synced' && (
               <span className={css.status} title={statusLabel} aria-hidden>
-                {state.annotationSync === 'syncing' && <IconLoadingOutline16 size={14} className={css.spinner} />}
-                {state.annotationSync === 'error' && <IconWarningOutline16 size={14} />}
-                {state.annotationSync === 'error' && <span>{t('dock.sync.failed')}</span>}
+                {syncStatus === 'syncing' && <IconLoadingOutline16 size={14} className={css.spinner} />}
+                {syncStatus === 'error' && <IconWarningOutline16 size={14} />}
+                {syncStatus === 'error' && <span>{t('dock.sync.failed')}</span>}
               </span>
             )}
           </button>

@@ -6,6 +6,7 @@
   "description": "dsh-web-review plugin repo: webui right-side page preview + element annotation + AI-driven source edits",
   "scripts": {
     "gen-config": "tsx scripts/gen-config.ts",
+    "setup:links": "tsx scripts/link-harness-deps.ts",
     "setup:harness": "tsx scripts/dev.ts --setup-only",
     "build": "pnpm gen-config && pnpm --filter @dsh-external/dsh-web-review build",
     "package:official": "pnpm build && tsx scripts/package-official.ts",
@@ -17,6 +18,7 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "prepare:hooks": "git config core.hooksPath scripts/git-hooks",
     "prepare": "pnpm prepare:hooks",
+    "typecheck": "tsc -b --force && tsc -p tsconfig.tests.json",
     "check": "tsx scripts/check.ts",
     "check:e2e": "tsx scripts/check.ts --e2e"
   },

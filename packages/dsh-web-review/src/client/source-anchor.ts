@@ -39,14 +39,18 @@ const SKIP_COMPONENTS = new Set([
   'PathnameContextProviderAdapter', 'Hot', 'Inner', 'Forward', 'Root',
 ])
 
+/** Framework chains are untrusted and may be cyclic or maliciously deep. */
+const MAX_METADATA_DEPTH = 100
+
 function isUserComponent(name: string | undefined): name is string {
   return name !== undefined && name.length >= 2 && /^[A-Z]/.test(name) && !name.startsWith('_') && !SKIP_COMPONENTS.has(name)
 }
 
 /** Relativize an absolute source path to the project (src/...). */
 function relativizeFile(fileName: string): string {
-  const match = fileName.match(/(?:^|\/)(src\/.*)/)
-  return match !== null && match[1] !== undefined ? match[1] : fileName
+  const normalized = fileName.replace(/\\/g, '/')
+  const match = normalized.match(/(?:^|\/)(src\/.*)/u)
+  return match?.[1] ?? normalized
 }
 
 function truncate(value: string, cap: number): string {
@@ -63,46 +67,68 @@ function readMeta<T>(get: () => T | undefined): T | undefined {
   }
 }
 
+function isObjectLike(value: unknown): value is object {
+  return (typeof value === 'object' && value !== null) || typeof value === 'function'
+}
+
+function propertyOf(value: unknown, key: PropertyKey): unknown {
+  if (!isObjectLike(value)) return undefined
+  return readMeta(() => Reflect.get(value, key))
+}
+
+function stringOf(value: unknown, allowEmpty = false): string | undefined {
+  if (typeof value !== 'string' || (!allowEmpty && value.length === 0)) return undefined
+  return value
+}
+
+function lineOf(value: unknown): number | undefined {
+  return Number.isSafeInteger(value) && (value as number) > 0 ? value as number : undefined
+}
+
+/** Walk a React-style return chain once, bounded and cycle-safe. */
+function walkFiber(start: unknown, visit: (node: object) => boolean): void {
+  const seen = new WeakSet<object>()
+  let current = start
+  for (let depth = 0; depth < MAX_METADATA_DEPTH && isObjectLike(current); depth += 1) {
+    if (seen.has(current)) return
+    seen.add(current)
+    if (!visit(current)) return
+    current = propertyOf(current, 'return')
+  }
+}
+
 /** React (dev mode): walk the fiber chain for `_debugSource` and user components. */
 function reactAnchor(el: Element): SourceAnchor | null {
-  const fiberKey = Object.keys(el).find((key) => REACT_FIBER_KEYS.some((prefix) => key.startsWith(prefix)))
+  const fiberKey = (readMeta(() => Object.keys(el)) ?? [])
+    .find(key => REACT_FIBER_KEYS.some(prefix => key.startsWith(prefix)))
   if (fiberKey === undefined) return null
-  const fiber = readMeta(() => (el as unknown as Record<string, unknown>)[fiberKey] as object | undefined)
-  if (fiber === undefined || fiber === null) return null
+  const fiber = propertyOf(el, fiberKey)
+  if (!isObjectLike(fiber)) return null
 
   // Closest `_debugSource` wins (the element's own fiber, else an ancestor).
-  const source = readMeta(() => {
-    let walker: unknown = fiber
-    while (typeof walker === 'object' && walker !== null) {
-      const node = walker as { _debugSource?: unknown; return?: unknown }
-      if (node._debugSource !== undefined) return node._debugSource as { fileName?: string; lineNumber?: number }
-      walker = node.return
-    }
-    return undefined
+  let source: unknown
+  walkFiber(fiber, (node) => {
+    const candidate = propertyOf(node, '_debugSource')
+    if (candidate === undefined || candidate === null) return true
+    source = candidate
+    return false
   })
-  const fileName = readMeta(() => (source as { fileName?: string } | undefined)?.fileName)
+  const fileName = stringOf(propertyOf(source, 'fileName'))
   if (fileName === undefined) return null
 
   // User component chain (innermost first, at most 3, then outermost-first).
   const components: string[] = []
-  readMeta(() => {
-    let walker: unknown = fiber
-    while (typeof walker === 'object' && walker !== null) {
-      const node = walker as { type?: unknown; return?: unknown }
-      const type = node.type as { displayName?: string; name?: string } | null | undefined
-      if (type !== null && type !== undefined) {
-        const name = type.displayName ?? type.name
-        if (isUserComponent(name) && !components.includes(name)) components.push(name)
-      }
-      if (components.length >= 3) break
-      walker = node.return
-    }
+  walkFiber(fiber, (node) => {
+    const type = propertyOf(node, 'type')
+    const name = stringOf(propertyOf(type, 'displayName')) ?? stringOf(propertyOf(type, 'name'))
+    if (isUserComponent(name) && !components.includes(name)) components.push(name)
+    return components.length < 3
   })
 
-  const line = readMeta(() => (source as { lineNumber?: number } | undefined)?.lineNumber)
+  const line = lineOf(propertyOf(source, 'lineNumber'))
   return {
     framework: 'react',
-    component: components.reverse().join(' › ') || 'Unknown',
+    component: truncate(components.reverse().join(' › ') || 'Unknown', 500),
     file: truncate(relativizeFile(fileName), 160),
     ...(line !== undefined ? { line } : {}),
   }
@@ -110,39 +136,37 @@ function reactAnchor(el: Element): SourceAnchor | null {
 
 /** Vue 3 (`__vueParentComponent`): component `type.__file` carries the SFC path. */
 function vue3Anchor(el: Element): SourceAnchor | null {
-  const instance = readMeta(() => (el as { __vueParentComponent?: unknown }).__vueParentComponent as {
-    type?: { __file?: string; name?: string; __name?: string }
-  } | undefined)
-  const file = readMeta(() => instance?.type?.__file)
+  const instance = propertyOf(el, '__vueParentComponent')
+  const type = propertyOf(instance, 'type')
+  const file = stringOf(propertyOf(type, '__file'))
   if (file === undefined) return null
+  const component = stringOf(propertyOf(type, 'name')) ?? stringOf(propertyOf(type, '__name')) ?? 'Unknown'
   return {
     framework: 'vue',
-    component: readMeta(() => instance?.type?.name ?? instance?.type?.__name) ?? 'Unknown',
+    component: truncate(component, 500),
     file: truncate(relativizeFile(file), 160),
   }
 }
 
 /** Vue 2 (`__vue__`): `$options.__file` carries the SFC path. */
 function vue2Anchor(el: Element): SourceAnchor | null {
-  const vm = readMeta(() => (el as { __vue__?: unknown }).__vue__ as {
-    $options?: { __file?: string; name?: string }
-  } | undefined)
-  const file = readMeta(() => vm?.$options?.__file)
+  const options = propertyOf(propertyOf(el, '__vue__'), '$options')
+  const file = stringOf(propertyOf(options, '__file'))
   if (file === undefined) return null
   return {
     framework: 'vue',
-    component: readMeta(() => vm?.$options?.name) ?? 'Unknown',
+    component: truncate(stringOf(propertyOf(options, 'name')) ?? 'Unknown', 500),
     file: truncate(relativizeFile(file), 160),
   }
 }
 
 /** Svelte 5 (dev mode): `__svelte_meta.loc` carries the source location. */
 function svelteAnchor(el: Element): SourceAnchor | null {
-  const loc = readMeta(() => (el as { __svelte_meta?: { loc?: { file?: string; line?: number } } }).__svelte_meta?.loc)
-  const file = readMeta(() => loc?.file)
+  const loc = propertyOf(propertyOf(el, '__svelte_meta'), 'loc')
+  const file = stringOf(propertyOf(loc, 'file'))
   if (file === undefined) return null
-  const base = file.split('/').pop() ?? file
-  const line = readMeta(() => loc?.line)
+  const base = file.replace(/\\/g, '/').split('/').pop() ?? file
+  const line = lineOf(propertyOf(loc, 'line'))
   return {
     framework: 'svelte',
     component: base.replace(/\.svelte$/i, ''),
@@ -158,5 +182,9 @@ function svelteAnchor(el: Element): SourceAnchor | null {
  * @param el - the element (untrusted page DOM, read-only).
  */
 export function sourceAnchorOf(el: Element): SourceAnchor | null {
-  return reactAnchor(el) ?? vue3Anchor(el) ?? vue2Anchor(el) ?? svelteAnchor(el)
+  return readMeta(() => reactAnchor(el))
+    ?? readMeta(() => vue3Anchor(el))
+    ?? readMeta(() => vue2Anchor(el))
+    ?? readMeta(() => svelteAnchor(el))
+    ?? null
 }

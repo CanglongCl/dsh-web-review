@@ -10,8 +10,8 @@
  * external package does not require a local node_modules.
  *
  * The proxy route is a thin shell over the pure functions in rewrite.ts:
- * parse the path-encoded target, fetch it server-side (redirect-follow,
- * timeout, body cap, no cookies), strip CSP/XFO, rewrite HTML, pass
+ * parse the path-encoded local target, follow local redirects server-side
+ * (timeout, streaming body cap, no cookies), sanitize headers, rewrite HTML, pass
  * everything else through. POST forwards the body (rewritten form actions).
  * Annotation validation, stable formatting, pending state and admission live in
  * annotation-context.ts; this route remains a transport shell.
@@ -31,13 +31,20 @@ import {
   type AnnotationCommitState,
 } from './annotation-context.ts'
 import {
-  PROXY_PREFIX,
-  decodeTarget,
-  isHttpUrl,
   rewriteHtml,
 } from './rewrite.ts'
+import { PROXY_PREFIX, decodeTarget, isLocalPreviewUrl } from './proxy-url.ts'
 import { PREVIEW_GUIDANCE } from './preview-guidance.ts'
-export { PROXY_PREFIX } from './rewrite.ts'
+import {
+  BodyLimitError,
+  decodeHtml,
+  fetchLocalResponse,
+  isHtmlContentType,
+  readRequestBytes,
+  readResponseBytes,
+  sanitizedResponseHeaders,
+} from './proxy-transport.ts'
+export { PROXY_PREFIX } from './proxy-url.ts'
 export { PREVIEW_GUIDANCE } from './preview-guidance.ts'
 
 /** Plugin identity for diagnostics and the client-modules scan. */
@@ -53,19 +60,16 @@ export const MAX_BODY = 10 * 1024 * 1024
 export const ANNOTATIONS_PREFIX = '/webview-annotations'
 /** Request headers forwarded to the target (deliberately no cookies). */
 const FORWARD_HEADERS = ['accept', 'accept-language', 'content-type']
-/** Response headers stripped on every proxied response. */
-const STRIP_HEADERS = [
-  'content-security-policy',
-  'content-security-policy-report-only',
-  'x-frame-options',
-  'content-encoding',
-  'content-length',
-]
 /** Route prefix with trailing slash — the path-encoded target follows it. */
 const TARGET_PREFIX = `${PROXY_PREFIX}/`
 
 /** Allowed methods: GET/HEAD browse, POST form submission. */
-const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'POST'])
+type ProxyMethod = 'GET' | 'HEAD' | 'POST'
+const ALLOWED_METHODS = new Set<ProxyMethod>(['GET', 'HEAD', 'POST'])
+
+function proxyMethod(value: string): ProxyMethod | undefined {
+  return ALLOWED_METHODS.has(value as ProxyMethod) ? value as ProxyMethod : undefined
+}
 
 /**
  * Plugin body: register proxy/pending routes and send-time context admission.
@@ -104,12 +108,13 @@ export function apply(ctx: Context): void {
  * @returns the absolute http(s) target URL, or undefined when malformed.
  */
 function targetOf(req: IncomingMessage): string | undefined {
-  let pathname: string
+  let requestUrl: URL
   try {
-    pathname = new URL(req.url ?? '/', 'http://dsh.internal').pathname
+    requestUrl = new URL(req.url ?? '/', 'http://dsh.internal')
   } catch {
     return undefined
   }
+  const { pathname } = requestUrl
   if (!pathname.startsWith(TARGET_PREFIX)) return undefined
   let target: string
   try {
@@ -117,7 +122,12 @@ function targetOf(req: IncomingMessage): string | undefined {
   } catch {
     return undefined
   }
-  return isHttpUrl(target) ? new URL(target).href : undefined
+  if (!isLocalPreviewUrl(target)) return undefined
+  const resolved = new URL(target)
+  // A query-only relative reference resolves against the injected proxy base
+  // as an outer query; promote it back into the encoded target URL.
+  if (requestUrl.search !== '') resolved.search = requestUrl.search
+  return resolved.href
 }
 
 /** Forwarded request headers (existing values only). */
@@ -132,7 +142,8 @@ function forwardHeaders(req: IncomingMessage): Record<string, string> {
 
 /** Route handler: fetch the target and serve the rewritten/pass-through response. */
 async function proxyHandler(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  if (!ALLOWED_METHODS.has(req.method ?? 'GET')) {
+  const method = proxyMethod(req.method ?? 'GET')
+  if (method === undefined) {
     res.writeHead(405, { allow: 'GET, HEAD, POST' })
     res.end()
     return
@@ -143,54 +154,48 @@ async function proxyHandler(req: IncomingMessage, res: ServerResponse): Promise<
     res.end('bad request')
     return
   }
-  let body: string | undefined
-  if (req.method === 'POST') {
+  let body: Buffer | undefined
+  if (method === 'POST') {
     try {
-      body = await readRequestBody(req, MAX_BODY)
+      body = await readRequestBytes(req, MAX_BODY)
     } catch (error) {
       res.writeHead(413)
       res.end(error instanceof Error ? error.message : 'body too large')
       return
     }
   }
+  const clientAbort = new AbortController()
+  const abortClient = (): void => { clientAbort.abort(new Error('proxy client disconnected')) }
+  req.once('aborted', abortClient)
+  res.once('close', abortClient)
   try {
-    const rawMethod = req.method ?? 'GET'
-    const upstream = await fetch(target, {
-      method: rawMethod === 'HEAD' ? 'GET' : rawMethod,
-      redirect: 'follow',
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+    const upstream = await fetchLocalResponse(target, {
+      method,
+      signal: AbortSignal.any([AbortSignal.timeout(TIMEOUT_MS), clientAbort.signal]),
       headers: forwardHeaders(req),
-      ...(body !== undefined ? { body } : {}),
+      ...(body === undefined ? {} : { body: new Uint8Array(body) }),
     })
-    const headers = new Headers(upstream.headers)
-    for (const name of STRIP_HEADERS) headers.delete(name)
-    const contentType = headers.get('content-type') ?? ''
-    const isHtml = contentType.startsWith('text/html')
-    let payload: Buffer
-    try {
-      payload = Buffer.from(await upstream.arrayBuffer())
-    } catch {
-      res.writeHead(502)
-      res.end('upstream read failed')
+    const headers = sanitizedResponseHeaders(upstream.headers)
+    const contentType = upstream.headers.get('content-type') ?? ''
+    const isHtml = isHtmlContentType(contentType)
+    if (method === 'HEAD') {
+      res.writeHead(upstream.status, headers)
+      res.end()
       return
     }
-    if (payload.length > MAX_BODY) {
-      res.writeHead(502)
-      res.end('upstream body exceeds cap')
-      return
-    }
+    const payload = await readResponseBytes(upstream, MAX_BODY)
     res.writeHead(upstream.status, {
-      ...Object.fromEntries(headers.entries()),
+      ...headers,
       ...(isHtml ? { 'content-type': 'text/html; charset=utf-8' } : {}),
     })
-    if (req.method !== 'HEAD') {
-      res.end(isHtml ? rewriteHtml(payload.toString('utf8'), target) : payload)
-    } else {
-      res.end()
-    }
+    res.end(isHtml ? rewriteHtml(decodeHtml(payload, contentType), upstream.url || target) : payload)
   } catch (error) {
+    if (res.destroyed || res.writableEnded) return
     res.writeHead(502)
-    res.end(error instanceof Error ? error.message : 'upstream fetch failed')
+    res.end(error instanceof BodyLimitError ? error.message : 'upstream fetch failed')
+  } finally {
+    req.off('aborted', abortClient)
+    res.off('close', abortClient)
   }
 }
 
@@ -239,17 +244,24 @@ function annotationsHandler(
       res.end('agent unavailable')
       return
     }
-    if (result === 'agent-not-found') {
+    if (result.kind === 'agent-not-found') {
       res.writeHead(404)
       res.end('session not found')
       return
     }
-    if (result === 'context-too-large') {
+    if (result.kind === 'context-too-large') {
       res.writeHead(413)
       res.end('annotation context too large')
       return
     }
-    res.writeHead(204, { 'x-webview-annotation-result': result })
-    res.end()
+    const receipt = 'pending' in result
+      ? { kind: 'ready' as const, snapshotId: result.pending.snapshotId }
+      : { kind: 'empty' as const }
+    res.writeHead(200, {
+      'cache-control': 'no-store',
+      'content-type': 'application/json; charset=utf-8',
+      'x-webview-annotation-result': result.kind,
+    })
+    res.end(JSON.stringify(receipt))
   }
 }

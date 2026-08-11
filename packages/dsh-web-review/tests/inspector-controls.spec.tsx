@@ -4,13 +4,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   BoxModelControl,
   ColorControl,
-  parseColor,
-  parseNumeric,
   ScrubNumber,
   SegmentedControl,
   TextField,
   updateBoxModelLinks,
 } from '../src/client/InspectorControls.tsx'
+import { parseColor, parseNumeric } from '../src/client/inspector-values.ts'
 
 afterEach(cleanup)
 

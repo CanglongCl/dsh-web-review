@@ -38,7 +38,8 @@ try {
   await urlInput.press('Enter')
   const frame = page.frameLocator('iframe[title="Web preview"]')
   await page.waitForFunction(
-    (expected) => document.querySelector('iframe[title="Web preview"]')?.contentDocument?.title?.startsWith(expected) ?? false,
+    (expected) => (document.querySelector('iframe[title="Web preview"]') as HTMLIFrameElement | null)
+      ?.contentDocument?.title.startsWith(expected) ?? false,
     '魔法 UI',
     { timeout: 20_000 },
   ).catch(() => {})

@@ -2,11 +2,11 @@ import { useRef, useState, type ReactNode } from 'react'
 import { IconLinkOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   ColorControl,
-  parseNumeric,
   ScrubNumber,
   TextField,
   ToggleButton,
 } from './InspectorControls.tsx'
+import { parseNumeric } from './inspector-values.ts'
 import {
   expandQuad,
   parseSimpleShadow,

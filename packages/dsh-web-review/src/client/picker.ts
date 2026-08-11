@@ -20,8 +20,7 @@
  * style sheet, numbered markers, and reversible preview declarations requested
  * by the host editor.
  */
-import { cssPath, snapshotOf } from './picker-core.ts'
-import type { ElementSnapshot } from './contract.ts'
+import { snapshotOf } from './picker-core.ts'
 
 /** Style sheet injected into the iframe document (hover marker + echo layer). */
 const PICKER_STYLE = `
@@ -368,19 +367,4 @@ export function ensurePicker(iframe: HTMLIFrameElement): PickerSurface | null {
   return pickerOf(iframe)
 }
 
-/**
- * Build a PickItem from a picked element (caps enforced inside snapshotOf).
- * @param el - the element the picker handed over (untrusted page DOM, read-only).
- * @param id - a stable id for the entry.
- * @param comment - the committed comment text.
- */
-export function pickFromElement(el: Element, id: string, comment: string): {
-  id: string
-  snapshot: ElementSnapshot
-  comment: string
-} {
-  return { id, snapshot: snapshotOf(el), comment }
-}
-
-// Re-export for the panel's use: cssPath is also used to label picks.
-export { cssPath, snapshotOf }
+export { snapshotOf }

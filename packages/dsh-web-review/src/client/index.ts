@@ -24,6 +24,10 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
+import {
+  annotationSyncReceiptOf,
+  type AnnotationSyncReceipt,
+} from '../annotation-contract.ts'
 import { en, zh, type WebviewKey } from './locales.ts'
 import { createWebviewStore } from './stores.ts'
 import { WebviewView, type WebviewViewInjected } from './WebviewView.tsx'
@@ -44,12 +48,21 @@ export const NS = 'webview' as const
 /** Required services (cordis fiber inject — activation waits on them). */
 export const inject = ['slots', 'conversation', 'layout', 'locale', 'sessions']
 
+function isClientSessions(value: unknown): value is ISessions {
+  if (typeof value !== 'object' || value === null) return false
+  try {
+    return typeof Reflect.get(value, 'scope') === 'function'
+  } catch {
+    return false
+  }
+}
+
 /** Resolve the public conversation face through one session scope. */
 function scopedConversation(ctx: ClientContext, sessionId: SessionId): IConversation {
-  // This dual-face package is typechecked in one program, so Cordis' host
-  // `sessions` augmentation also participates; the browser bundle receives
-  // the client ISessions service at runtime.
-  const sessions = ctx.sessions as unknown as ISessions
+  // Harness declares a host SessionStore under the same Cordis service key;
+  // verify the browser service shape before narrowing the merged type.
+  const sessions: unknown = ctx.sessions
+  if (!isClientSessions(sessions)) throw new Error('dsh-web-review: client sessions service unavailable')
   const scope = sessions.scope(sessionId)
   if (scope === undefined) throw new Error(`dsh-web-review: session "${sessionId}" resolved no scope`)
   const conversation = scope.get('conversation')
@@ -64,30 +77,41 @@ function scopedConversation(ctx: ClientContext, sessionId: SessionId): IConversa
  */
 export function makeSyncAnnotations(sessionId: SessionId): WebviewDockInjected['syncAnnotations'] {
   let tail: Promise<void> = Promise.resolve()
-  let lastAcknowledged: string | undefined
+  let lastAcknowledged: { body: string; receipt: AnnotationSyncReceipt } | undefined
   let lastScheduledBody: string | undefined
-  let lastScheduledTask: Promise<void> | undefined
+  let lastScheduledTask: Promise<AnnotationSyncReceipt> | undefined
   return (draft) => {
     const body = JSON.stringify({ sessionId, ...draft })
     const clearing = draft.comments.length === 0
-    if (lastScheduledTask === undefined && body === lastAcknowledged) return Promise.resolve()
+    if (lastScheduledTask === undefined && body === lastAcknowledged?.body) {
+      return Promise.resolve(lastAcknowledged.receipt)
+    }
     if (body === lastScheduledBody && lastScheduledTask !== undefined) return lastScheduledTask
     const task = tail.catch(() => undefined).then(async () => {
-      if (body === lastAcknowledged) return
+      if (body === lastAcknowledged?.body) return lastAcknowledged.receipt
       const response = await fetch('/webview-annotations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body,
       })
-      // Clearing an absent live agent is already satisfied. The host keeps
-      // returning 404 so this route cannot be used as a session-state oracle;
-      // non-empty snapshots still surface the unavailable-agent failure.
-      if (!response.ok && !(clearing && response.status === 404)) {
-        throw new Error(`annotation context sync failed (${response.status})`)
+      if (!response.ok) {
+        // Clearing an absent live agent is already satisfied. The host keeps
+        // returning 404 so this route cannot be used as a session-state oracle;
+        // non-empty snapshots still surface the unavailable-agent failure.
+        if (!(clearing && response.status === 404)) {
+          throw new Error(`annotation context sync failed (${response.status})`)
+        }
+        const receipt = { kind: 'empty' as const }
+        lastAcknowledged = { body, receipt }
+        return receipt
       }
-      lastAcknowledged = body
+      const value: unknown = await response.json()
+      const receipt = annotationSyncReceiptOf(value)
+      if (receipt === undefined) throw new Error('annotation context sync returned an invalid receipt')
+      lastAcknowledged = { body, receipt }
+      return receipt
     })
-    tail = task.catch(() => undefined)
+    tail = task.then(() => undefined, () => undefined)
     lastScheduledBody = body
     lastScheduledTask = task
     task.then(
