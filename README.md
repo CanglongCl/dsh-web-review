@@ -115,6 +115,19 @@ unset NPM_TOKEN
 
 产物位于 `dist/canglongcl-dsh-web-review-<版本>.tgz`。其中只包含自包含的 Node bundle、使用稳定包名注册的浏览器 bundle、隔离 frame bridge bundle、随包 Skill、官方 `cordis.patch.yml` 和 README，不包含源码、本机 `node_modules`、认证配置或开发用 profile 链接。该产物属于保密材料，不得上传到公开 Release 或公共文件服务。
 
+### 发布前从本地 tarball 安装
+
+不必先发布到 registry。`dsh plugin` 会把绝对路径 tarball 交给 profile 内的 pnpm 安装，并按包内的 `dsh.bundle.patch` 自动激活插件层：
+
+```sh
+pnpm package:official
+dsh plugin --profile web add "$PWD/dist/canglongcl-dsh-web-review-0.0.4-rc.3.tgz"
+dsh --profile web --dump-config
+dsh web
+```
+
+这条路径安装的就是将要发布的正式 tarball，可验证包白名单、自包含 Node bundle、官方浏览器 bundle ID、profile 激活和运行时兼容性。它不覆盖 npmjs 的账号鉴权、registry 下载和 `next`/`latest` dist-tag；包公开后再用 `@canglongcl/dsh-web-review@<版本>` 做一次最终 registry 安装验收。
+
 ### 维护者通过 GitHub Actions 发布
 
 `.github/workflows/release-npm.yml` 是唯一正式发布入口：PR 与 `main` 使用固定版本的私有 npm 开发包运行类型检查、构建、单元/组件测试、包白名单和校验和门禁；与 `package.json` 精确匹配的 `v*` Tag 才能进入受保护的 `npm-publish` Environment。发布 Job 只下载前一 Job 的 tarball，不重新构建。浏览器 E2E 仍需显式的 0811 Harness checkout，应在打 Tag 前单独运行。
