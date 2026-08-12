@@ -22,7 +22,6 @@ import type { ClientContext, ISessions, SessionId } from '@deepseek-ai/dsh-clien
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the ui-conversation SlotMap merge (the view/dock entries).
 import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type { CommandServiceContract } from '@deepseek-ai/dsh-client-ui-command/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
 import {
@@ -55,8 +54,28 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 /** Dictionary namespace owned by this plugin. */
 export const NS = 'webview' as const
 
+/** Minimal structural face consumed from Harness 0812's `ctx.commandUi`. */
+interface CommandUiRegistrar {
+  register(contribution: {
+    readonly name: string
+    readonly description: string
+    available(session: { readonly sessionId: SessionId }): boolean
+    readonly ui: {
+      readonly kind: 'popupSelect'
+      options(
+        session: { readonly sessionId: SessionId },
+        signal: AbortSignal,
+      ): Promise<readonly { readonly id: string; readonly label: string; readonly detail?: string }[]>
+      onSelect(
+        option: { readonly id: string; readonly label: string; readonly detail?: string },
+        session: { readonly sessionId: SessionId },
+      ): void | Promise<void>
+    }
+  }): () => void
+}
+
 /** Required services (cordis fiber inject — activation waits on them). */
-export const inject = ['slots', 'conversation', 'layout', 'locale', 'sessions', 'command']
+export const inject = ['slots', 'conversation', 'layout', 'locale', 'sessions', 'commandUi']
 
 const SKILL_DESCRIPTION_KEYS: Record<UiSkillName, WebviewKey> = {
   'better-ui': 'editor.skills.betterUi',
@@ -209,9 +228,9 @@ export function apply(ctx: ClientContext): void {
   // preview tab and the annotation dock share one pick list).
   const webviewStore = createWebviewStore()
 
-  ctx.inject(['command'], (scope: ClientContext) => {
-    const command = scope.get('command') as CommandServiceContract
-    scope.effect(() => command.register({
+  ctx.inject(['commandUi'], (scope: ClientContext) => {
+    const commandUi = scope.get('commandUi') as CommandUiRegistrar
+    scope.effect(() => commandUi.register({
       name: 'skills',
       description: t('command.skills.description'),
       available: () => true,

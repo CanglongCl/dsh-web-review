@@ -1,4 +1,4 @@
-/** Resolve the 0811 Harness built CLI launch vector for this external plugin. */
+/** Resolve the 0812 Harness built CLI launch vector for this external plugin. */
 import { resolveHarnessCli } from './harness-path.ts'
 
 /** One fully resolved child-process launch. */

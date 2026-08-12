@@ -17,11 +17,6 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Locator, Page } from 'playwright'
 import { chromium } from 'playwright'
-import {
-  WELCOME_NOTICE_ACK_FIELD,
-  WELCOME_NOTICE_SETTINGS_NAMESPACE,
-  WELCOME_NOTICE_VERSION,
-} from '@deepseek-ai/dsh-client-ui-settings-general'
 import { harnessWebLaunch } from '../../../scripts/harness-cli.ts'
 import { resolveHarnessRoot } from '../../../scripts/harness-path.ts'
 import { materializeProfilePluginLink } from '../../../scripts/profile-plugin-link.ts'
@@ -110,6 +105,15 @@ async function waitForChildService(
 export async function startServices(): Promise<E2EServices> {
   const webPort = await probeFreePort()
   const demoPort = await probeFreePort()
+  const harness = resolveHarnessRoot()
+  const welcome = await import(join(
+    harness,
+    'packages/client/ui-settings-general/src/onboarding-copy.ts',
+  )) as {
+    WELCOME_NOTICE_ACK_FIELD: string
+    WELCOME_NOTICE_SETTINGS_NAMESPACE: string
+    WELCOME_NOTICE_VERSION: string
+  }
   // Isolated harness home: a fresh GUI must boot into the hero (workspace
   // picker) state instead of inheriting the developer's ~/.dsh sessions.
   const dshHome = await mkdtemp(join(tmpdir(), 'dsh-web-review-e2e-home-'))
@@ -140,8 +144,8 @@ export async function startServices(): Promise<E2EServices> {
     chmodSync(stagedCredentials, 0o600)
   }
   writeFileSync(join(dshHome, 'settings.yaml'), [
-    `${WELCOME_NOTICE_SETTINGS_NAMESPACE}:`,
-    `  ${WELCOME_NOTICE_ACK_FIELD}: ${WELCOME_NOTICE_VERSION}`,
+    `${welcome.WELCOME_NOTICE_SETTINGS_NAMESPACE}:`,
+    `  ${welcome.WELCOME_NOTICE_ACK_FIELD}: ${welcome.WELCOME_NOTICE_VERSION}`,
     '',
   ].join('\n'))
   materializeProfilePluginLink(REPO_ROOT, dshHome)
@@ -169,6 +173,8 @@ export async function startServices(): Promise<E2EServices> {
     '- insert:',
     "    - id: directory-picker-browse",
     "      name: '@deepseek-ai/dsh-host-directory-picker-browse'",
+    "    - id: ui-directory-picker-browse",
+    "      name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'",
     '- id: telemetry-otel',
     '  disabled: true',
     // The blank-state probe message must fail instantly: patch the shipped
@@ -183,7 +189,6 @@ export async function startServices(): Promise<E2EServices> {
     '',
   ].join('\n'))
 
-  const harness = resolveHarnessRoot()
   const launch = harnessWebLaunch(harness, overlayPath, '127.0.0.1', webPort, {
     ...process.env,
     DSH_HOME: dshHome,
@@ -254,8 +259,8 @@ export async function newPage(browser: Browser): Promise<Page> {
 }
 
 /**
- * Connect a fresh workspace through the sidebar's Add-workspace dialog (the
- * harness workspace-management path: with the -browse directory picker
+ * Connect a fresh workspace through the empty hero's Choose-workspace flow
+ * (the Harness 0812 workspace-management path: with the -browse directory picker
  * pinned by {@link startServices}, the click lands directly in the in-app
  * 'Select Workspace Directory' dialog). First-boot overlays are suppressed
  * at the configuration layer (welcome-notice ack + provider key), so no UI
@@ -265,8 +270,14 @@ export async function newPage(browser: Browser): Promise<Page> {
  */
 export async function connectWorkspace(page: Page, root: string, name = 'workspace'): Promise<void> {
   mkdirSync(join(root, name), { recursive: true })
-  await page.getByRole('button', { name: 'Add workspace' }).click()
+  await page.getByRole('button', { name: 'Choose workspace' }).click()
   const dialog = page.getByRole('dialog', { name: 'Select Workspace Directory' })
+  const addWorkspace = page.getByRole('menuitem', { name: /Add workspace/ })
+  await Promise.race([
+    dialog.waitFor({ timeout: 15_000 }),
+    addWorkspace.waitFor({ timeout: 15_000 }),
+  ])
+  if (!await dialog.isVisible()) await addWorkspace.click()
   await dialog.waitFor({ timeout: 15_000 })
   await dialog.getByRole('button', { name: 'Edit path' }).click()
   const pathInput = dialog.getByRole('textbox', { name: 'Edit path' })

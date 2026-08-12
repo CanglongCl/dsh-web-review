@@ -7,7 +7,7 @@
 import { readFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-host-webserver'
+import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-skill'
 import { MAX_ANNOTATION_BODY } from './annotation-contract.ts'
@@ -40,15 +40,24 @@ export { PREVIEW_GUIDANCE } from './preview-guidance.ts'
 /** Plugin identity for diagnostics and the client-modules scan. */
 export const name = 'dsh-web-review'
 /** Services required before the routes register. */
-export const inject = ['httpServer', 'agents', 'systemPrompt', 'skills']
+export const inject = ['webServer', 'agents', 'systemPrompt', 'skills']
 
 /** `/webview-annotations` exact route path (annotation state sync). */
 export const ANNOTATIONS_PREFIX = '/webview-annotations'
 const MAX_PREVIEW_CONTROL_BODY = 16 * 1024
 
+/** Minimal route-registration face consumed from Harness 0812's `ctx.webServer`. */
+interface WebServerRegistrar {
+  register(route: WebRoute): () => void
+}
+
+function webServerOf(ctx: Context): WebServerRegistrar {
+  return (ctx as Context & { readonly webServer: WebServerRegistrar }).webServer
+}
+
 /**
  * Plugin body: register proxy/pending routes and send-time context admission.
- * @param ctx - root context carrying the httpServer and live-agent services.
+ * @param ctx - root context carrying the webServer and live-agent services.
  */
 export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
   const annotations: AnnotationCommitState = new Map()
@@ -67,13 +76,14 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
     text: PREVIEW_GUIDANCE,
   })
   const livePreviewServer = previewServer
-  ctx.effect(() => ctx.httpServer.register({
+  const webServer = webServerOf(ctx)
+  ctx.effect(() => webServer.register({
     kind: 'exact',
     path: PREVIEW_SESSIONS_PATH,
     handler: previewSessionsHandler(livePreviewServer),
   }), 'dsh-web-review: preview-session control route')
   ctx.effect(
-    () => ctx.httpServer.register({
+    () => webServer.register({
       kind: 'exact',
       path: ANNOTATIONS_PREFIX,
       handler: annotationsHandler(ctx, annotations),

@@ -77,7 +77,7 @@ sequenceDiagram
 
 ### Injection contract
 
-- The node face injects `httpServer` and `agents`, resolves the live agent from the
+- The node face injects `webServer` and `agents`, resolves the live agent from the
   branded `SessionId`, and stores one pending rendered context per session.
 - The `agent/pre-step` listener awaits `next()`. On `reject`, it preserves the decision;
   on `enter`, it appends its plugin message after the returned messages and never edits

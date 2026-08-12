@@ -1,5 +1,5 @@
 /**
- * Native-ESM entry test: Harness 0811 resolves the profile-local development
+ * Native-ESM entry test: Harness 0812 resolves the profile-local development
  * alias to this package and imports its package `main`. This subprocess uses
  * plain Node, matching the built app-owned CLI rather than tsx source hooks.
  */
@@ -15,7 +15,7 @@ import { materializeProfilePluginLink } from '../../../scripts/profile-plugin-li
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
 const PKG_DIR = join(REPO_ROOT, 'packages', 'dsh-web-review')
 
-describe('package alias import (0811 Loader resolution path)', () => {
+describe('package alias import (0812 Loader resolution path)', () => {
   it('imports the profile-local source alias under plain Node', async () => {
     if (!existsSync(join(PKG_DIR, 'lib', 'index.js'))) {
       throw new Error('lib/index.js missing — run `pnpm build` before `pnpm test`')
@@ -39,7 +39,7 @@ describe('package alias import (0811 Loader resolution path)', () => {
       hasApply: boolean
     }
     expect(parsed.name).toBe('dsh-web-review')
-    expect(parsed.inject).toEqual(['httpServer', 'agents', 'systemPrompt', 'skills'])
+    expect(parsed.inject).toEqual(['webServer', 'agents', 'systemPrompt', 'skills'])
     expect(parsed.hasApply).toBe(true)
   })
 })
