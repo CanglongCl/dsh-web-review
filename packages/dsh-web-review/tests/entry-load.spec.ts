@@ -1,34 +1,37 @@
 /**
- * Directory-import entry test: the Loader's resolution path for the
- * external package, exercised in a real tsx subprocess (the same hooks
- * `dsh web` runs with). Node/tsx ESM has no directory resolution, so the
- * package root's `index.ts` re-export is what makes
- * `import('<package dir>')` work; this test pins that contract (see
- * AGENTS.md "Loading model"). Requires the built node half (lib/index.js —
- * `pnpm test` builds first).
+ * Native-ESM entry test: Harness 0811 resolves the profile-local development
+ * alias to this package and imports its package `main`. This subprocess uses
+ * plain Node, matching the built app-owned CLI rather than tsx source hooks.
  */
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { materializeProfilePluginLink } from '../../../scripts/profile-plugin-link.ts'
 
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
 const PKG_DIR = join(REPO_ROOT, 'packages', 'dsh-web-review')
 
-describe('package directory import (Loader resolution path)', () => {
-  it('imports the package directory through the root index.ts re-export', () => {
+describe('package alias import (0811 Loader resolution path)', () => {
+  it('imports the profile-local source alias under plain Node', async () => {
     if (!existsSync(join(PKG_DIR, 'lib', 'index.js'))) {
       throw new Error('lib/index.js missing — run `pnpm build` before `pnpm test`')
     }
+    const dshHome = await mkdtemp(join(tmpdir(), 'dsh-web-review-entry-load-'))
+    materializeProfilePluginLink(REPO_ROOT, dshHome)
+    const profile = join(dshHome, 'profiles', 'web')
     const script = [
-      `const m = await import(${JSON.stringify(PKG_DIR)})`,
+      'const m = await import("@dsh-web-review-dev/plugin")',
       'console.log(JSON.stringify({ name: m.name, inject: m.inject, hasApply: typeof m.apply === "function" }))',
     ].join('; ')
-    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', script], {
-      cwd: REPO_ROOT,
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+      cwd: profile,
       encoding: 'utf8',
     })
+    await rm(dshHome, { recursive: true, force: true })
     expect(result.status, result.stderr).toBe(0)
     const parsed = JSON.parse(result.stdout.trim().split('\n').at(-1) ?? '{}') as {
       name: string

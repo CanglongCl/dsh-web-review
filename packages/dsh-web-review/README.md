@@ -180,8 +180,10 @@ capsule visible for retry.
   supported.
 - Only credential-free HTTP(S) URLs are accepted. Schemes such as `file:`,
   `data:`, and `javascript:`, plus `username:password@host` URLs, are rejected.
-- The generated launch entry is machine-specific. Run `pnpm gen-config` after
-  moving the checkout, then restart the web process.
+- Source-checkout launches materialize the development-only
+  `@dsh-web-review-dev/plugin` alias in the active Web profile. Use the repo's
+  launchers so the link follows the current checkout; direct CLI launches do
+  not prepare it.
 - One page is active at a time; an explicit new URL or cross-Origin navigation
   clears its annotations.
 - Rich edits are temporary inline/text previews. Reset, Cancel, remove, clear,

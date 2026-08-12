@@ -1,4 +1,4 @@
-/** Resolve the linked DeepSeek Harness checkout in both a main checkout and a git worktree. */
+/** Resolve the linked DeepSeek Harness checkout and its app-owned CLI artifact. */
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { dirname, isAbsolute, join } from 'node:path'
 
@@ -34,4 +34,17 @@ export function resolveHarnessRoot(repositoryRoot: string): string {
     if (isAbsolute(runtime)) return dirname(dirname(dirname(runtime)))
   }
   throw new Error('dsh-web-review: cannot resolve the harness checkout; set DSH_HARNESS')
+}
+
+/**
+ * Resolve the built 0811 app-owned CLI entry.
+ * @param harnessRoot - Resolved DeepSeek Harness checkout.
+ * @returns absolute path to `apps/cli/lib/bin.js`.
+ */
+export function resolveHarnessCli(harnessRoot: string): string {
+  const cli = join(harnessRoot, 'apps', 'cli', 'lib', 'bin.js')
+  if (!existsSync(cli)) {
+    throw new Error(`dsh-web-review: Harness CLI is not built at ${cli}; run pnpm setup:harness`)
+  }
+  return cli
 }

@@ -1,7 +1,5 @@
 /** Resolve the 0811 Harness built CLI launch vector for this external plugin. */
-import { existsSync } from 'node:fs'
-import { createRequire } from 'node:module'
-import { join } from 'node:path'
+import { resolveHarnessCli } from './harness-path.ts'
 
 /** One fully resolved child-process launch. */
 export interface HarnessCliLaunch {
@@ -13,10 +11,10 @@ export interface HarnessCliLaunch {
 /**
  * Build the Web launch vector while preserving this repository as cwd.
  *
- * The installed-style CLI is the built `apps/cli/lib/bin.js`. This source
- * checkout's absolute directory entry still needs the Harness-owned tsx ESM
- * resolver so Loader can reach its root `index.ts`; a plain Node launch rejects
- * that directory before the manifest scanner can inspect package.json.
+ * The installed-style CLI is the built `apps/cli/lib/bin.js`. The caller
+ * materializes the source package under the profile-local development alias,
+ * so the native-ESM Loader and client manifest scanner both use ordinary bare
+ * package resolution without a tsx hook.
  */
 export function harnessWebLaunch(
   harnessRoot: string,
@@ -25,25 +23,16 @@ export function harnessWebLaunch(
   port: string | number,
   environment: NodeJS.ProcessEnv = process.env,
 ): HarnessCliLaunch {
-  const bin = join(harnessRoot, 'apps', 'cli', 'lib', 'bin.js')
-  if (!existsSync(bin)) {
-    throw new Error(`dsh-web-review: Harness built CLI missing at ${bin}; run pnpm setup:harness`)
-  }
-  const requireFromHarness = createRequire(join(harnessRoot, 'package.json'))
-  const tsxEsm = requireFromHarness.resolve('tsx/esm')
+  const bin = resolveHarnessCli(harnessRoot)
   return {
     command: process.execPath,
     args: [
-      '--import', tsxEsm,
       bin,
       'web',
       '--patch', patchPath,
       '--host', host,
       '--port', String(port),
     ],
-    env: {
-      ...environment,
-      TSX_TSCONFIG_PATH: join(harnessRoot, 'tsconfig.json'),
-    },
+    env: { ...environment },
   }
 }

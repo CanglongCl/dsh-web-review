@@ -133,6 +133,6 @@ problems were instead at boundaries:
 - A worktree-owned isolated diagnostic launch returned HTTP 200 for DSH, the demo, and
   the proxied demo. The user's normal profile was not mutated: it already installs the
   official package, so adding the source overlay there would duplicate the plugin row.
-- `git diff --check` passed; generated absolute-path config, bundles, package staging,
+- `git diff --check` passed; generated launch config, bundles, package staging,
   build metadata, and reports remain ignored and absent from the tracked diff.
 - The resolved Harness checkout has no changes from this work.

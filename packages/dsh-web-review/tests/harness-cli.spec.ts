@@ -7,15 +7,13 @@ import { resolveHarnessRoot } from '../../../scripts/harness-path.ts'
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
 
 describe('0811 Harness Web launch contract', () => {
-  it('uses the built CLI, Harness tsx resolver, and launcher flags before app flags', () => {
+  it('uses the native-ESM built CLI with launcher flags before app flags', () => {
     const harness = resolveHarnessRoot(REPO_ROOT)
     const overlay = join(REPO_ROOT, 'cordis.yml')
     const launch = harnessWebLaunch(harness, overlay, '127.0.0.1', 3090, {})
 
     expect(launch.command).toBe(process.execPath)
-    expect(launch.args[0]).toBe('--import')
-    expect(launch.args[1]).toContain(`${join('node_modules', 'tsx')}`)
-    expect(launch.args.slice(2)).toEqual([
+    expect(launch.args).toEqual([
       join(harness, 'apps', 'cli', 'lib', 'bin.js'),
       'web',
       '--patch', overlay,
@@ -23,6 +21,7 @@ describe('0811 Harness Web launch contract', () => {
       '--port', '3090',
     ])
     expect(launch.args).not.toContain('--dev')
-    expect(launch.env.TSX_TSCONFIG_PATH).toBe(join(harness, 'tsconfig.json'))
+    expect(launch.args).not.toContain('--import')
+    expect(launch.env).toEqual({})
   })
 })

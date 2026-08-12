@@ -16,11 +16,13 @@
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { harnessWebLaunch } from './harness-cli.ts'
 import { materializeHarnessLinks } from './harness-links.ts'
 import { resolveHarnessRoot } from './harness-path.ts'
+import { materializeProfilePluginLink } from './profile-plugin-link.ts'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const harness = resolveHarnessRoot(root)
@@ -29,6 +31,9 @@ const host = process.env.DSH_WEB_HOST ?? '127.0.0.1'
 const setupOnly = process.argv.includes('--setup-only')
 const skipWatch = process.argv.includes('--no-watch')
 const buildStampPath = join(root, '.artifacts', 'harness-build.json')
+const dshHome = process.env.DSH_HOME?.trim() === '' || process.env.DSH_HOME === undefined
+  ? join(homedir(), '.dsh')
+  : process.env.DSH_HOME
 
 /** Exact Harness commit whose generated artifacts must match this checkout. */
 function harnessHead(): string {
@@ -57,7 +62,7 @@ function harnessReady(): boolean {
     && existsSync(join(harness, 'packages/client/modules/lib/index.js'))
 }
 
-// 1. Launch overlay + banner id from this checkout's absolute path (tsx runs the TS script).
+// 1. Generate the profile-local package alias overlay and matching banner id.
 spawnSync(process.execPath, ['--import', 'tsx', join(root, 'scripts/gen-config.ts')], { cwd: root, stdio: 'inherit' })
 
 // 2. Commit-aware harness prep. Clean first so a tag switch cannot reuse
@@ -80,6 +85,8 @@ if (setupOnly) {
   console.log('dev: harness ready.')
   process.exit(0)
 }
+const profileLink = materializeProfilePluginLink(root, dshHome)
+console.log(`dev: source package linked at ${profileLink}`)
 
 // 3. 0811 built CLI with the plugin overlay; cwd = this repo so the session
 // workspace root (and the AI's file tools) defaults to the user's project.

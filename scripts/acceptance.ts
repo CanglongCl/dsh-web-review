@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url'
 import { harnessWebLaunch } from './harness-cli.ts'
 import { resolveHarnessRoot } from './harness-path.ts'
 import { ensureAcceptanceHistory } from './acceptance-history.ts'
+import { materializeProfilePluginLink } from './profile-plugin-link.ts'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const harness = resolveHarnessRoot(root)
@@ -121,6 +122,7 @@ if (!existsSync(join(root, 'packages', 'dsh-web-review', 'lib', 'client.js'))
 }
 
 prepareProfile()
+materializeProfilePluginLink(root, dshHome)
 const entryName = JSON.parse(
   readFileSync(join(root, 'packages', 'dsh-web-review', 'entry-name.json'), 'utf8'),
 ) as { name: string }

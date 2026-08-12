@@ -1,8 +1,16 @@
 {
-  "name": "@dsh-external/dsh-web-review",
+  "name": "@deepseek-ai/dsh-web-review",
   "description": "DSH web review plugin: page preview, element annotation, visual adjustments, and AI-driven workspace source edits",
-  "version": "0.0.3",
+  "version": "0.0.4-rc.1",
   "private": true,
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dsh-external/dsh-web-review.git"
+  },
   "type": "module",
   "main": "lib/index.js",
   "exports": {

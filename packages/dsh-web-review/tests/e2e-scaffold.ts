@@ -24,6 +24,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-settings-general'
 import { harnessWebLaunch } from '../../../scripts/harness-cli.ts'
 import { resolveHarnessRoot } from '../../../scripts/harness-path.ts'
+import { materializeProfilePluginLink } from '../../../scripts/profile-plugin-link.ts'
 
 /** Repo root (dsh-web-review). */
 export const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
@@ -143,6 +144,7 @@ export async function startServices(): Promise<E2EServices> {
     `  ${WELCOME_NOTICE_ACK_FIELD}: ${WELCOME_NOTICE_VERSION}`,
     '',
   ].join('\n'))
+  materializeProfilePluginLink(REPO_ROOT, dshHome)
   const logs: string[] = []
   const capture = (label: string) => (chunk: Buffer) => {
     for (const line of chunk.toString('utf8').split('\n')) {

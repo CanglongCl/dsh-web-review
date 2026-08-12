@@ -66,19 +66,23 @@
 - 支持官方 profile 插件机制的 DeepSeek Harness；已验证基线为 `snapshot-20260811T152241Z-da262ec14c`
 - 已安装 `dsh` 与 pnpm
 
-### 使用官方 bundle 安装
+### 从私有 npm 安装
 
-从 GitHub Release 下载 `dsh-external-dsh-web-review-<版本>.tgz` 和 `SHA256SUMS`。将两个文件放在同一目录，先校验安装包完整性：
+这是保密项目，包只发布为 npmjs 上的私有 restricted 包
+`@deepseek-ai/dsh-web-review`，不得公开发布或分发 tarball。仓库内的
+`.npmrc` 只固定 registry；认证插值必须放在可信的用户级 `~/.npmrc`：
 
-```sh
-sha256sum -c SHA256SUMS       # Linux
-shasum -a 256 -c SHA256SUMS  # macOS
+```ini
+@deepseek-ai:registry=https://registry.npmjs.org/
+//registry.npmjs.org/:_authToken=${NPM_TOKEN}
 ```
 
-然后通过 DSH 官方的 profile 插件命令安装到 `web` profile：
+仅在当前 Shell 导出具备读取权限的短期令牌，然后安装候选版本：
 
 ```sh
-dsh plugin --profile web add ./dsh-external-dsh-web-review-0.0.3.tgz
+export NPM_TOKEN='你的只读令牌'
+dsh plugin --profile web add @deepseek-ai/dsh-web-review@0.0.4-rc.1
+unset NPM_TOKEN
 ```
 
 安装命令会把插件加入 `web` profile 的依赖，并根据包内 `dsh.bundle.patch` 声明自动启用配置层。可先检查最终配置，再启动 DSH：
@@ -88,11 +92,11 @@ dsh --profile web --dump-config
 dsh web
 ```
 
-更新时下载新版本并再次执行 `add`；卸载使用 `remove`：
+稳定版发布后可省略版本；更新和卸载仍由 DSH profile 插件命令管理：
 
 ```sh
-dsh plugin --profile web add ./dsh-external-dsh-web-review-0.0.3.tgz
-dsh plugin --profile web remove @dsh-external/dsh-web-review
+dsh plugin --profile web add @deepseek-ai/dsh-web-review
+dsh plugin --profile web remove @deepseek-ai/dsh-web-review
 ```
 
 ### 从源码生成官方安装包
@@ -108,24 +112,37 @@ pnpm setup:harness
 pnpm package:official
 ```
 
-产物位于 `dist/dsh-external-dsh-web-review-<版本>.tgz`。其中只包含自包含的 Node bundle、使用稳定包名注册的浏览器 bundle、隔离 frame bridge bundle、随包 Skill、官方 `cordis.patch.yml` 和 README，不包含源码、本机 `node_modules` 或开发用绝对路径配置。
+产物位于 `dist/deepseek-ai-dsh-web-review-<版本>.tgz`。其中只包含自包含的 Node bundle、使用稳定包名注册的浏览器 bundle、隔离 frame bridge bundle、随包 Skill、官方 `cordis.patch.yml` 和 README，不包含源码、本机 `node_modules`、认证配置或开发用 profile 链接。该产物属于保密材料，不得上传到公开 Release 或公共文件服务。
 
-### 维护者本地发布 Release
+### 维护者通过 GitHub Actions 发布
 
-正式包在已配置 Harness 的开发机上构建和验证，不依赖 GitHub Runner 访问 Harness 源码。发布前先同步根目录与插件包的版本，然后执行完整本地门禁：
+`.github/workflows/release-npm.yml` 是唯一正式发布入口：PR 与 `main` 在固定 Harness 快照上运行完整构建、E2E、包白名单和校验和门禁；与 `package.json` 精确匹配的 `v*` Tag 才能进入受保护的 `npm-publish` Environment。发布 Job 只下载前一 Job 的 tarball，不重新构建。
+
+私有仓库需要配置：
+
+- Variable `HARNESS_REPOSITORY=dsh2026/test-CanglongCl`。
+- Secret `HARNESS_REPO_TOKEN`：上述 Harness 私有仓库只读权限。
+- Secret `NPM_READ_TOKEN`：私有 `@deepseek-ai` 包只读权限。
+- Environment `npm-publish`：required reviewers，且只允许受保护的 `v*` Tag。
+- Variable `NPM_PUBLISH_MODE`：首次设为 `bootstrap`，完成后设为 `trusted`。
+- Secret `NPM_BOOTSTRAP_TOKEN`：只在首次 bootstrap 存在，必须是短期、最小 scope、Read and write 且允许非交互发布的 granular token。
+
+首次 bootstrap 后，在 npm 包 Settings 中把私有 GitHub 仓库、Workflow 文件名
+`release-npm.yml` 和 Environment `npm-publish` 注册为 Trusted Publisher，并明确允许
+`npm publish`；随后删除 bootstrap token 并改用 `NPM_PUBLISH_MODE=trusted`。常规发布只使用 OIDC。
+
+发布前运行完整本地门禁：
 
 ```sh
-pnpm check
+pnpm check --e2e
 ```
 
-`pnpm check` 会重新生成并验证 `dist/dsh-external-dsh-web-review-<版本>.tgz` 与 `dist/SHA256SUMS`。检查通过后提交版本修改，创建与包版本一致的 Tag 并推送：
+候选版本自动发布到私有 `next` dist-tag，稳定版本发布到私有 `latest`：
 
 ```sh
-git tag -a v0.0.3 -m "dsh-web-review v0.0.3"
-git push origin main v0.0.3
+git tag -a v0.0.4-rc.1 -m "dsh-web-review v0.0.4-rc.1"
+git push origin v0.0.4-rc.1
 ```
-
-最后在 GitHub Releases 中选择该 Tag，上传 `.tgz` 与 `SHA256SUMS`。带预发布后缀的版本（例如 `v0.1.0-rc.1`）应标记为 prerelease。
 
 ## 使用方法
 

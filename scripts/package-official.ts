@@ -13,6 +13,8 @@ const sourceManifest = JSON.parse(readFileSync(join(source, 'package.json'), 'ut
   name: string
   version: string
   description: string
+  publishConfig: { access: string; registry: string }
+  repository: { type: string; url: string }
   dsh: { client: unknown }
 }
 
@@ -25,6 +27,8 @@ const manifest = {
   name: sourceManifest.name,
   version: sourceManifest.version,
   description: sourceManifest.description,
+  publishConfig: sourceManifest.publishConfig,
+  repository: sourceManifest.repository,
   type: 'module',
   main: './lib/index.js',
   exports: {
