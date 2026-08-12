@@ -5,13 +5,7 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
-echo "[pre-commit] tsc -b (typecheck)"
-pnpm exec tsc -b --force
-
-echo "[pre-commit] vitest (unit + entry-load)"
-pnpm vitest run
-
-echo "[pre-commit] config consistency (gen-config idempotence)"
-node --import tsx scripts/gen-config.ts >/dev/null
+echo "[pre-commit] fast repository gate"
+pnpm check --fast
 
 echo "[pre-commit] ok"

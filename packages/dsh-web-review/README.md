@@ -1,13 +1,15 @@
 # @dsh-external/dsh-web-review
 
-External `dsh web` plugin that adds a Preview conversation tab, same-origin
-page proxy, in-frame element picker, and browser-comment context injection.
-Assistant-authored HTTP(S) links open directly in Preview, and the plugin adds
-a short system-prompt capability note so the agent can offer a verified local
-frontend review link when useful.
+External `dsh web` plugin that adds a Preview conversation tab, isolated
+per-session page proxy, in-frame element picker, and browser-comment context
+injection. Any credential-free absolute HTTP(S) URL can open in Preview,
+including assistant-authored public, LAN, and loopback links. Each page runs on
+a random `*.localhost` Origin and talks to the host through a bounded,
+versioned `postMessage` bridge; page JavaScript never shares the DSH host
+Origin.
 The harness checkout is not modified.
 
-See the repository [AGENTS.md](../../AGENTS.md) for loading, proxy, picker,
+See the repository [AGENTS.md](../../AGENTS.md) for loading, isolation, bridge, picker,
 context, and testing contracts. The accepted implementation design lives in
 [docs/webview-ui-plan.md](../../docs/webview-ui-plan.md); the rich editor and
 rollback contract is specified in
@@ -21,19 +23,34 @@ with the researched control grammar in
 pnpm install
 pnpm gen-config      # regenerate machine-specific launch files after moving the repo
 pnpm dev             # dsh web + the external client-bundle watcher
+pnpm dev:acceptance  # persistent isolated profile/history + demo + bundle watcher
 pnpm demo            # optional fixture page on port 5173
 ```
+
+For repeat manual testing, `pnpm dev:acceptance` keeps its dedicated DSH home
+at `.artifacts/acceptance/dsh-home`. It creates or reuses a provider-free,
+settled **网页批注验收** history through the Harness persistence service; open
+that conversation and click its Demo link to enter Preview. Workspace state and
+other conversation history survive later restarts without changing the normal user profile. The first free port pair is
+saved to `.artifacts/acceptance/ports.json`, so Preview URLs remain valid on
+later restarts (`DSH_WEB_PORT` and `DEMO_PORT` can temporarily override it). On first initialization,
+an existing DSH credential file is copied only when no provider environment
+key is available, with mode `0600`; the ignored acceptance directory never
+enters the package or repository history.
 
 Open `http://127.0.0.1:3090`, connect the workspace whose source the agent may
 edit, then:
 
 1. Open the **Web Preview** conversation tab.
-2. Enter a URL and press Enter. The page loads through `/webview-proxy` so the
-   picker can access its document.
+2. Enter an absolute HTTP(S) URL and press Enter. The node face creates a
+   short-lived session on a random Preview Origin, and the iframe loads only
+   that Origin. Public, LAN, and loopback targets use the same isolated path.
 3. Toggle **Add page comments** and click a page element. The solid-white host
    editor accepts a comment; **Select** opens the DOM hierarchy and **Adjust** expands text, fill, typography,
    dimensions, layout, spacing, border, and effects controls. Changes preview
    live on the page, and each changed row can restore its original value.
+   Numeric fields that also accept CSS keywords keep free-form entry and expose
+   common values such as `auto`, `normal`, and `none` from a trailing menu.
    The hierarchy toolbar moves to the first child, parent, previous sibling, or
    next sibling. Each compact label includes a small shortcut keycap. The
    focused preview canvas uses Enter, Backslash, Shift+Tab, and Tab for the same
@@ -59,9 +76,9 @@ the prepared browser comments. With no draft, it sends the fixed localized
 request “Please apply the page comments to the frontend implementation.” because
 the stock input machine deliberately treats an empty draft as a no-op.
 
-The agent may also provide a Markdown link to a running frontend page. An
-ordinary click on that assistant link activates Preview and loads the target;
-modifier clicks retain the browser's normal external-link behavior.
+The agent may also provide a Markdown link to any HTTP(S) page. An ordinary
+click on that assistant link activates Preview and loads the target. Modifier
+clicks and links outside assistant rows retain normal browser behavior.
 
 ## Context model
 
@@ -129,37 +146,56 @@ Consequently the external plugin cannot make annotation commit and an
 arbitrary simultaneous Send click one client-side atomic operation. The plugin
 uses `agent/pre-step` only to preserve downstream rejection or append one
 separately sourced message after downstream entry; it never rewrites claimed
-message content. Treat the inject-on-send check as the ready boundary. After a durable human message appears, the consumed
-annotation capsule clears automatically. Sending while preparation is still in
-flight leaves the capsule visible for retry.
+message content. Treat the inject-on-send check as the ready boundary. The
+capsule clears only when the durable plugin Context record carries the exact
+node-issued snapshot id; unrelated or older user/context records cannot clear
+a newer snapshot. Sending while preparation is still in flight leaves the
+capsule visible for retry.
 
-## Known limitations
+## Isolation and known limitations
 
-- **Same-origin trust boundary:** proxied page JavaScript currently executes on
-  the host origin because the picker uses direct frame references. Structured
-  validation prevents a page from supplying preformatted context, but it does
-  not isolate arbitrary scripts from host routes. A complete fix requires a
-  dedicated proxy origin and validated `postMessage` bridge. Only preview
-  trusted development pages until that architecture lands.
-- Absolute URLs embedded in page JavaScript and WebSocket endpoints are not
-  rewritten. Relative and root-relative resources work through the injected
-  `<base>`; dev-server HMR WebSockets do not.
-- Server-side proxy fetches carry no browser cookies, so login-gated pages
-  cannot be annotated.
+- **Dedicated Preview Origin:** every top-level target receives a random,
+  short-lived `*.localhost` Origin that is distinct from the DSH host and from
+  every other preview session. The parent accepts bridge traffic only from the
+  exact iframe window, expected Origin, protocol version, and channel. The
+  bridge accepts only bounded commands and serializable results; the host never
+  reads `contentDocument` or keeps remote DOM references.
+- **Origin-bound fetches:** a session is bound to one target Origin. Its first
+  DNS resolution is pinned for the session to prevent a hostname from rebinding
+  to another network address. Same-Origin redirects stay in the session;
+  cross-Origin links and redirects receive a new random Preview Origin.
+- Page URL/title, selectors, DOM snapshots, and framework anchors remain
+  explicitly untrusted page evidence. The bridge isolates DSH capabilities; it
+  does not turn page-authored metadata into authenticated facts.
+- The server-side proxy carries no browser cookies. Login-gated pages and sites
+  that require their original browser Origin, client certificates, or anti-bot
+  challenges may not render completely.
+- Root-relative and plain-relative script requests use the isolated proxy.
+  Absolute URLs embedded inside page JavaScript and WebSocket endpoints are not
+  rewritten; dev-server HMR WebSockets do not survive the proxy.
+- Rewritten static links and server redirects perform a controlled Origin
+  handoff. Dynamically created links or programmatic navigation that assigns a
+  cross-Origin `location` directly can leave the bridge, after which Preview
+  reports that annotation is unavailable. Cross-Origin POST forms are not
+  supported.
+- Only credential-free HTTP(S) URLs are accepted. Schemes such as `file:`,
+  `data:`, and `javascript:`, plus `username:password@host` URLs, are rejected.
 - The generated launch entry is machine-specific. Run `pnpm gen-config` after
   moving the checkout, then restart the web process.
-- One page is active at a time; navigating clears its annotations.
+- One page is active at a time; an explicit new URL or cross-Origin navigation
+  clears its annotations.
 - Rich edits are temporary inline/text previews. Reset, Cancel, remove, clear,
   successful send, navigation, and unmount restore the original DOM. Text is
   editable only for an element with one safe direct text node.
 - Preview refresh after workspace edits is manual.
-- HTML attribute rewriting is intentionally narrow and regex-based; exotic
-  markup may degrade to pass-through behavior for affected attributes.
+- HTML rewriting uses a parser and intentionally touches only the documented
+  URL-bearing attributes. Cross-Origin subresources retain browser-native CORS
+  behavior rather than being promoted into the Preview Origin.
 
 ## Verification
 
 ```bash
 pnpm check          # typecheck, unit/composition tests, config contracts, build
-pnpm test:e2e       # real GUI/proxy/picker/context ordering acceptance
+pnpm test:e2e       # real GUI/isolated Origin/bridge/context ordering acceptance
 pnpm check --e2e    # both ladders
 ```

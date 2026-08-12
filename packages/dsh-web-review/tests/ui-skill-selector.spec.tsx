@@ -17,7 +17,7 @@ afterEach(cleanup)
 describe('UiSkillSelector', () => {
   it('expands like an Inspector section and opens the Skill choices from a field', () => {
     render(<UiSkillSelector selected={['better-ui', 'better-writing']} t={t} onToggle={vi.fn()} />)
-    const sectionTrigger = screen.getByRole('button', { name: '内置 Skill', exact: true })
+    const sectionTrigger = screen.getByRole('button', { name: '内置 Skill' })
     expect(sectionTrigger.getAttribute('aria-expanded')).toBe('false')
     expect(sectionTrigger.querySelector('svg')).toBeTruthy()
     expect(sectionTrigger.textContent).not.toContain('✦')
@@ -40,7 +40,7 @@ describe('UiSkillSelector', () => {
   it('reports the exact checked Skill', () => {
     const onToggle = vi.fn()
     render(<UiSkillSelector selected={[]} t={t} onToggle={onToggle} />)
-    fireEvent.click(screen.getByRole('button', { name: '内置 Skill', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: '内置 Skill' }))
     fireEvent.click(screen.getByRole('button', { name: zh['editor.skills.field'] }))
     fireEvent.click(screen.getByRole('checkbox', { name: /better-layout/u }))
     expect(onToggle).toHaveBeenCalledWith('better-layout')
@@ -48,7 +48,7 @@ describe('UiSkillSelector', () => {
 
   it('dismisses the floating panel on outside pointer input or Escape', () => {
     render(<UiSkillSelector selected={[]} t={t} onToggle={vi.fn()} />)
-    const sectionTrigger = screen.getByRole('button', { name: '内置 Skill', exact: true })
+    const sectionTrigger = screen.getByRole('button', { name: '内置 Skill' })
 
     fireEvent.click(sectionTrigger)
     const field = screen.getByRole('button', { name: zh['editor.skills.field'] })

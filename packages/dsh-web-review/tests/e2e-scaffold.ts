@@ -9,11 +9,11 @@
  * gitignored `.artifacts/`.
  */
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { homedir, tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Locator, Page } from 'playwright'
 import { chromium } from 'playwright'
@@ -67,6 +67,39 @@ export async function waitFor(check: () => Promise<boolean> | boolean, timeoutMs
   throw new Error(`waitFor(${label}) timed out after ${timeoutMs}ms${lastError === undefined ? '' : `: ${String(lastError)}`}`)
 }
 
+/** Poll a service while also failing immediately when its child cannot start. */
+async function waitForChildService(
+  child: ChildProcess,
+  check: () => Promise<boolean> | boolean,
+  timeoutMs: number,
+  label: string,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const cleanup = (): void => {
+      child.off('error', onError)
+      child.off('exit', onExit)
+    }
+    const settle = (callback: () => void): void => {
+      cleanup()
+      callback()
+    }
+    const onError = (error: Error): void => {
+      settle(() => { reject(new Error(`${label} failed to start`, { cause: error })) })
+    }
+    const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
+      settle(() => {
+        reject(new Error(`${label} exited before readiness (${signal ?? `status ${String(code)}`})`))
+      })
+    }
+    child.once('error', onError)
+    child.once('exit', onExit)
+    void waitFor(check, timeoutMs, label).then(
+      () => { settle(resolve) },
+      (error: unknown) => { settle(() => { reject(error) }) },
+    )
+  })
+}
+
 /**
  * Start the dev instance (`dsh web --dev --patch ./cordis.yml`, no bundle
  * watch — the e2e asserts the built bundle) and the demo page server on
@@ -78,23 +111,32 @@ export async function startServices(): Promise<E2EServices> {
   // Isolated harness home: a fresh GUI must boot into the hero (workspace
   // picker) state instead of inheriting the developer's ~/.dsh sessions.
   const dshHome = await mkdtemp(join(tmpdir(), 'dsh-web-review-e2e-home-'))
-  // Configuration-level overlay dismissal, mirroring the harness: resolve
-  // the provider key through the same chain the product uses (repo .env,
-  // then the current user's harness home .env) so the model onboarding
-  // closes itself (deepSeekReadiness → 'configured'); pre-write the
+  // Configuration-level overlay dismissal, mirroring the harness: preserve
+  // the product's provider chain (inherited key, repo/home .env, then the
+  // default DSH credentials file) so model onboarding closes itself
+  // (deepSeekReadiness → 'configured'); pre-write the
   // welcome-notice acknowledgement into $DSH_HOME/settings.yaml (exact
-  // version match) so the first-boot notice never renders. With a real key
-  // the blank-state probe message succeeds and the session stays
+  // version match) so the first-boot notice never renders. With a configured
+  // credential the blank-state probe succeeds and the session stays
   // non-blank; without one it fails instantly against a dead endpoint.
-  for (const candidate of [join(REPO_ROOT, '.env'), join(homedir(), '.dsh', '.env')]) {
-    try {
-      process.loadEnvFile(candidate)
-      break
-    } catch {
-      // Candidate absent — try the next.
+  if (process.env.DEEPSEEK_API_KEY === undefined) {
+    for (const candidate of [join(REPO_ROOT, '.env'), join(homedir(), '.dsh', '.env')]) {
+      try {
+        process.loadEnvFile(candidate)
+        if (process.env.DEEPSEEK_API_KEY !== undefined) break
+      } catch {
+        // Candidate absent — try the next.
+      }
     }
   }
   const apiKey = process.env.DEEPSEEK_API_KEY
+  const defaultCredentials = join(homedir(), '.dsh', '.credentials.yaml')
+  const hasStoredCredentials = apiKey === undefined && existsSync(defaultCredentials)
+  if (hasStoredCredentials) {
+    const stagedCredentials = join(dshHome, '.credentials.yaml')
+    copyFileSync(defaultCredentials, stagedCredentials)
+    chmodSync(stagedCredentials, 0o600)
+  }
   writeFileSync(join(dshHome, 'settings.yaml'), [
     `${WELCOME_NOTICE_SETTINGS_NAMESPACE}:`,
     `  ${WELCOME_NOTICE_ACK_FIELD}: ${WELCOME_NOTICE_VERSION}`,
@@ -152,11 +194,13 @@ export async function startServices(): Promise<E2EServices> {
     env: {
       ...process.env,
       DSH_HOME: dshHome,
-      DEEPSEEK_API_KEY: apiKey,
-      // With a real key the probe message hits the real provider; without
-      // one, point it at a dead loopback so the failure settles instantly
-      // (a hung turn would churn the session header).
-      ...(apiKey === undefined ? { DEEPSEEK_BASE_URL: 'http://127.0.0.1:9' } : {}),
+      ...(apiKey === undefined ? {} : { DEEPSEEK_API_KEY: apiKey }),
+      // With either supported credential source the probe message hits the
+      // configured provider; only a truly credential-free run uses a dead
+      // loopback so failure settles instantly (a hung turn churns the header).
+      ...(apiKey === undefined && !hasStoredCredentials
+        ? { DEEPSEEK_BASE_URL: 'http://127.0.0.1:9' }
+        : {}),
     },
   })
   web.stdout?.on('data', capture('web'))
@@ -173,12 +217,13 @@ export async function startServices(): Promise<E2EServices> {
   const webUrl = `http://127.0.0.1:${webPort}`
   const demoUrl = `http://127.0.0.1:${demoPort}`
   try {
-    await waitFor(async () => (await fetch(webUrl)).ok, 90_000, 'web ready')
-    await waitFor(async () => (await fetch(demoUrl)).ok, 30_000, 'demo ready')
+    await waitForChildService(web, async () => (await fetch(webUrl)).ok, 90_000, 'web ready')
+    await waitForChildService(demo, async () => (await fetch(demoUrl)).ok, 30_000, 'demo ready')
   } catch (error) {
     console.error(logs.join('\n'))
     web.kill('SIGTERM')
     demo.kill('SIGTERM')
+    await rm(dshHome, { recursive: true, force: true }).catch(() => {})
     throw error
   }
 
@@ -196,6 +241,17 @@ export async function startServices(): Promise<E2EServices> {
 /** Open the standard browser page with the English locale pinned (deterministic locators). */
 export async function newPage(browser: Browser): Promise<Page> {
   const page = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: 'en-US' })
+  page.on('pageerror', (error) => {
+    console.error(`[browser pageerror] ${error.stack ?? error.message}`)
+  })
+  page.on('console', (message) => {
+    if (message.type() === 'error') console.error(`[browser console] ${message.text()}`)
+  })
+  page.on('requestfailed', (request) => {
+    if (request.url().includes('.dsh-web-review/')) {
+      console.error(`[browser requestfailed] ${request.url()}: ${request.failure()?.errorText ?? 'unknown error'}`)
+    }
+  })
   await page.addInitScript(() => { localStorage.setItem('dsh.locale', 'en') })
   return page
 }

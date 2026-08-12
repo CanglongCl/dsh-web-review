@@ -11,14 +11,14 @@ describe('/skills draft selection', () => {
         : undefined,
     }
     const sessions = { scope: () => scope } as unknown as ISessions
-    setUiSkillDraft({ sessions } as Pick<ClientContext, 'sessions'>, 'session-1' as SessionId, 'better-layout')
+    setUiSkillDraft({ sessions } as unknown as Pick<ClientContext, 'sessions'>, 'session-1' as SessionId, 'better-layout')
     expect(setDraft).toHaveBeenCalledWith('/better-layout')
   })
 
   it('rejects names outside the packaged allowlist', () => {
     const sessions = { scope: vi.fn() } as unknown as ISessions
     expect(() => setUiSkillDraft(
-      { sessions } as Pick<ClientContext, 'sessions'>,
+      { sessions } as unknown as Pick<ClientContext, 'sessions'>,
       'session-1' as SessionId,
       'not-a-skill',
     )).toThrow('unknown UI optimization Skill')

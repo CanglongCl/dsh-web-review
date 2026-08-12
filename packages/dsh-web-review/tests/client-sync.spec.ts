@@ -6,22 +6,28 @@ import { makeSyncAnnotations } from '../src/client/index.ts'
 
 function draft(comment: string): AnnotationDraft {
   return {
-    page: { url: 'https://example.com/', title: 'Example Domain' },
+    page: { url: 'http://localhost:5173/', title: 'Example Domain' },
+    selectedSkills: [],
     comments: [{
       id: 'p1', comment, tagName: 'h1', role: 'heading', label: 'Example Domain',
       cssPath: 'h1', fullPath: 'html > body > h1', stableClasses: [], anchor: null,
+      changes: [], textChange: null, viewport: { width: 1280, height: 720 },
     }],
   }
 }
 
 function emptyDraft(): AnnotationDraft {
-  return { page: { url: '', title: '' }, comments: [] }
+  return { page: { url: '', title: '' }, selectedSkills: [], comments: [] }
 }
 
-function deferredResponse(): { promise: Promise<Response>; resolve: () => void } {
+function response(snapshotId: string): Response {
+  return Response.json({ kind: 'ready', snapshotId })
+}
+
+function deferredResponse(snapshotId: string): { promise: Promise<Response>; resolve: () => void } {
   let resolve!: () => void
   const promise = new Promise<Response>((done) => {
-    resolve = () => { done(new Response(null, { status: 204 })) }
+    resolve = () => { done(response(snapshotId)) }
   })
   return { promise, resolve }
 }
@@ -30,8 +36,8 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('makeSyncAnnotations', () => {
   it('serializes changes, includes the bound session and waits for each response', async () => {
-    const first = deferredResponse()
-    const second = deferredResponse()
+    const first = deferredResponse('snapshot-1')
+    const second = deferredResponse('snapshot-2')
     const fetchMock = vi.fn()
       .mockImplementationOnce(() => first.promise)
       .mockImplementationOnce(() => second.promise)
@@ -53,7 +59,7 @@ describe('makeSyncAnnotations', () => {
   })
 
   it('deduplicates queued and acknowledged snapshots', async () => {
-    const pending = deferredResponse()
+    const pending = deferredResponse('snapshot-same')
     const fetchMock = vi.fn(() => pending.promise)
     vi.stubGlobal('fetch', fetchMock)
     const sync = makeSyncAnnotations('session-1' as SessionId)
@@ -67,7 +73,7 @@ describe('makeSyncAnnotations', () => {
   })
 
   it('preserves a reverted A → B → A sequence instead of deduplicating the final A early', async () => {
-    const responses = [deferredResponse(), deferredResponse(), deferredResponse()]
+    const responses = [deferredResponse('snapshot-a1'), deferredResponse('snapshot-b'), deferredResponse('snapshot-a2')]
     const fetchMock = vi.fn()
     for (const response of responses) fetchMock.mockImplementationOnce(() => response.promise)
     vi.stubGlobal('fetch', fetchMock)
@@ -92,11 +98,11 @@ describe('makeSyncAnnotations', () => {
   it('rejects non-2xx responses and allows an explicit retry', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(null, { status: 404 }))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(response('snapshot-retry'))
     vi.stubGlobal('fetch', fetchMock)
     const sync = makeSyncAnnotations('session-1' as SessionId)
     await expect(sync(draft('retry'))).rejects.toThrow('annotation context sync failed (404)')
-    await expect(sync(draft('retry'))).resolves.toBeUndefined()
+    await expect(sync(draft('retry'))).resolves.toMatchObject({ kind: 'ready', snapshotId: 'snapshot-retry' })
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
@@ -104,8 +110,19 @@ describe('makeSyncAnnotations', () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 404 }))
     vi.stubGlobal('fetch', fetchMock)
     const sync = makeSyncAnnotations('historical-session' as SessionId)
-    await expect(sync(emptyDraft())).resolves.toBeUndefined()
-    await sync(emptyDraft())
+    await expect(sync(emptyDraft())).resolves.toEqual({ kind: 'empty' })
+    await expect(sync(emptyDraft())).resolves.toEqual({ kind: 'empty' })
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    null,
+    { kind: 'ready', snapshotId: '' },
+    { kind: 'ready', snapshotId: 'ok', extra: true },
+    { kind: 'empty', snapshotId: 'unexpected' },
+  ])('rejects malformed acknowledgement %j', async (receipt) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(receipt)))
+    const sync = makeSyncAnnotations('session-1' as SessionId)
+    await expect(sync(draft('invalid receipt'))).rejects.toThrow('invalid receipt')
   })
 })

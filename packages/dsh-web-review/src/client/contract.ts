@@ -44,10 +44,10 @@ export interface PickItem {
   id: string
   snapshot: ElementSnapshot
   comment: string
-  /** User-requested visual edits; omitted only by legacy/test fixtures. */
-  changes?: import('../annotation-contract.ts').AnnotationStyleChange[]
-  /** Safe direct-text-node edit, or null/absent when no text edit was made. */
-  textChange?: import('../annotation-contract.ts').AnnotationTextChange | null
+  /** User-requested visual edits. */
+  changes: import('../annotation-contract.ts').AnnotationStyleChange[]
+  /** Safe direct-text-node edit, or null when no text edit was made. */
+  textChange: import('../annotation-contract.ts').AnnotationTextChange | null
   /** Iframe viewport at edit time. */
-  viewport?: import('../annotation-contract.ts').AnnotationViewport
+  viewport: import('../annotation-contract.ts').AnnotationViewport
 }

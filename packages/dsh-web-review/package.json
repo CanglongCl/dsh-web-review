@@ -5,17 +5,9 @@
   "private": true,
   "type": "module",
   "main": "lib/index.js",
-  "types": "lib/types/index.d.ts",
   "exports": {
-    ".": {
-      "types": "./lib/types/index.d.ts",
-      "default": "./lib/index.js"
-    },
-    "./client": {
-      "types": "./lib/types/client/index.d.ts",
-      "default": "./lib/client.js"
-    },
-    "./src/*": "./src/*",
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -63,6 +55,7 @@
     "@deepseek-ai/dsh-client-ui-settings-general": "link:/Users/canglong/Program/deepseek-harness/packages/client/ui-settings-general"
   },
   "dependencies": {
-    "css-selector-generator": "^3.9.2"
+    "css-selector-generator": "^3.9.2",
+    "parse5": "^7.3.0"
   }
 }

@@ -1,7 +1,7 @@
 /**
  * WebviewView: the "网页预览" conversation view tab. Renders browse chrome or
  * the annotation toolbar above a
- * full-height proxied iframe with the in-iframe element picker and annotation
+ * full-height isolated iframe with the bridge-owned picker and annotation
  * echo layer (hover outline and numbered marker circles).
  *
  * Interaction model: the pick button (icon-only, far right of the URL row)
@@ -36,9 +36,14 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import { ANNOTATION_LIMITS, MAX_ANNOTATIONS } from '../annotation-contract.ts'
-import { proxyUrl } from '../rewrite.ts'
-import { ensurePicker, isSameOrigin, pickerOf, snapshotOf, type MarkerEntry, type PickerSurface } from './picker.ts'
-import type { ElementSnapshot } from './contract.ts'
+import type {
+  PreviewElementHandle,
+  PreviewElementNavigationAction,
+  PreviewElementTarget,
+  PreviewSessionDescriptor,
+  PreviewSessionId,
+  PreviewTreeNode,
+} from '../preview-contract.ts'
 import type { PickItem } from './contract.ts'
 import {
   AnnotationEditor,
@@ -46,15 +51,14 @@ import {
   type AnnotationEditorValue,
   type ElementNavigationFeedback,
 } from './AnnotationEditor.tsx'
-import {
-  applyCommitted,
-  createLivePatch,
-  restoreAll,
-  type LiveElementPatch,
-} from './live-patch.ts'
 import { normalizePreviewUrl } from './navigation-url.ts'
-import { sameElement, type ElementNavigationAction } from './element-navigation.ts'
 import type { WebviewStore } from './stores.ts'
+import type { FloatingEditorPosition, FloatingEditorSize } from './floating-position.ts'
+import { readEditorSize, writeEditorSize } from './editor-size-memory.ts'
+import {
+  PreviewBridgeClient,
+  type PreviewReadyState,
+} from './preview-bridge.ts'
 import css from './WebviewView.module.css'
 
 /** Full composed props: runtime + store + locale shares. */
@@ -67,19 +71,37 @@ export type WebviewSlotProps =
 /** Session-bound actions supplied by the registration. */
 export interface WebviewViewInjected {
   sendAnnotationsWithoutDraft: () => Promise<void>
+  createPreviewSession: (target: string) => Promise<PreviewSessionDescriptor>
+  releasePreviewSessions: (sessionIds: readonly PreviewSessionId[]) => Promise<void>
 }
 
 interface EditorSession {
   id: string
-  element: Element
-  snapshot: ElementSnapshot
+  target: PreviewElementTarget
   existing: PickItem | null
-  patch: LiveElementPatch
-  /** Original committed target retained until a re-anchor is confirmed. */
-  original: { element: Element; patch: LiveElementPatch } | null
+  originalHandle: PreviewElementHandle | null
+  tree: PreviewTreeNode | null
   comment: string
   mode: AnnotationEditorMode
   navigationFeedback: ElementNavigationFeedback | null
+  position: FloatingEditorPosition | null
+  size: FloatingEditorSize | null
+}
+
+function loadPreferredEditorSize(): FloatingEditorSize | null {
+  try {
+    return typeof window === 'undefined' ? null : readEditorSize(window.localStorage)
+  } catch {
+    return null
+  }
+}
+
+function persistPreferredEditorSize(size: FloatingEditorSize): void {
+  try {
+    writeEditorSize(window.localStorage, size)
+  } catch {
+    // Access to profile storage can be disabled; in-memory memory still works.
+  }
 }
 
 /** Stable pick id without depending on crypto.randomUUID availability. */
@@ -88,33 +110,13 @@ function pickId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
-/** Read the iframe document title; cross-origin frames yield ''. */
-function titleOf(frame: HTMLIFrameElement | null): string {
-  if (frame === null) return ''
-  try {
-    return (frame.contentDocument?.title ?? '').slice(0, ANNOTATION_LIMITS.pageTitle)
-  } catch {
-    return ''
-  }
-}
-
-/** Compact fallback element identity for the dock detail card. */
-export function elementLabel(s: ElementSnapshot): string {
-  const id = s.id !== '' ? `#${s.id}` : ''
-  const classes = s.className !== ''
-    ? `.${s.className.trim().split(/\s+/).filter(Boolean).join('.')}`
-    : ''
-  return `${s.tagName}${id}${classes}`
-}
-
 /** The preview tab view (see module doc). */
 export function WebviewView({
-  useStore, useSession, useInput, inputActions, actions, sendAnnotationsWithoutDraft, t,
+  useStore, useSession, useInput, inputActions, actions, sendAnnotationsWithoutDraft,
+  createPreviewSession, releasePreviewSessions, t,
 }: WebviewSlotProps) {
   const state = useStore((s) => s)
   const input = useInput(s => s)
-  const latestHumanMessageSeq = useSession(session =>
-    session.nodes.findLast(node => node.kind === 'user')?.seq ?? -1)
   const promptError = useSession(session => session.promptError)
   // Effect/event callbacks read the freshest state and props through refs.
   const stateRef = useRef(state)
@@ -122,250 +124,273 @@ export function WebviewView({
   const actionsRef = useRef(actions)
   actionsRef.current = actions
   const frameRef = useRef<HTMLIFrameElement | null>(null)
-  /** Live element references for each pick (echo markers + comment anchors). */
-  const pickRefs = useRef(new Map<string, Element>())
+  const bridgeRef = useRef<PreviewBridgeClient | null>(null)
+  const [descriptor, setDescriptor] = useState<PreviewSessionDescriptor | null>(null)
+  const [previewRequestRevision, setPreviewRequestRevision] = useState(0)
+  const sessionRequest = useRef(0)
+  const loadedPageUrl = useRef<string | null>(null)
+  const mounted = useRef(true)
   /** Host-owned annotation editor transaction. */
   const [editor, setEditor] = useState<EditorSession | null>(null)
   const editorRef = useRef(editor)
   editorRef.current = editor
   const navigationSequence = useRef(0)
-  /** Exact inline/text rollback ledgers; DOM references never enter the store. */
-  const patchRefs = useRef(new Map<string, LiveElementPatch>())
-  /** Whether the current frame content is same-origin (picker-capable). */
+  const preferredEditorSize = useRef<FloatingEditorSize | null>(loadPreferredEditorSize())
+  const handledPickResetRevision = useRef(state.pickResetRevision)
+  /** The isolated bridge has completed its exact-Origin handshake. */
   const [pickerReady, setPickerReady] = useState(false)
-  /** Browser Navigation API state, sampled after each iframe document load. */
   const [historyState, setHistoryState] = useState({ canGoBack: false, canGoForward: false })
   /** Dedicated annotation submission state; the stock composer stays untouched. */
   const [sendingAnnotations, setSendingAnnotations] = useState(false)
-  /** Non-empty drafts submit through the stock machine and acknowledge by durable user seq. */
-  const draftSendBoundary = useRef<number | null>(null)
   const promptErrorAtSend = useRef(promptError)
+  const onPickRef = useRef<(target: PreviewElementTarget) => void>(() => undefined)
+  const onMarkClickRef = useRef<(id: string) => void>(() => undefined)
+  const onShortcutRef = useRef<(action: PreviewElementNavigationAction) => void>(() => undefined)
 
-  /** Reconcile the iframe marker circles with the current picks. The store
-   * order is authoritative (pickRefs may briefly hold stale entries between
-   * a navigation and the next frame load). */
-  const syncMarkers = (): void => {
-    const picker = pickerOf(frameRef.current)
-    if (picker === null) return
-    const entries: MarkerEntry[] = []
-    stateRef.current.picks.forEach((pick, index) => {
-      const el = pickRefs.current.get(pick.id)
-      if (el !== undefined) entries.push({ id: pick.id, index: index + 1, element: el })
-    })
-    picker.syncMarkers(entries)
-  }
-
-  // Keep the echo markers in step with the pick list (add/remove/clear).
-  useEffect(() => { syncMarkers() }, [state.picks])
-
-  /** Re-anchor pick elements after a navigation (cssPath requery). */
-  const refreshPickRefs = (): void => {
-    const frame = frameRef.current
-    const doc = frame?.contentDocument
-    if (frame === null || doc === undefined || doc === null) return
-    for (const pick of stateRef.current.picks) {
-      const found = doc.querySelector(pick.snapshot.cssPath)
-      if (found !== null && found.nodeType === 1) {
-        pickRefs.current.set(pick.id, found)
-        const previous = patchRefs.current.get(pick.id)
-        if (previous !== undefined && previous.element !== found) restoreAll(previous)
-        const patch = createLivePatch(found)
-        applyCommitted(patch, pick.changes ?? [], pick.textChange)
-        patchRefs.current.set(pick.id, patch)
-      } else {
-        pickRefs.current.delete(pick.id)
-      }
-    }
-    syncMarkers()
-  }
-
-  const restoreEditorBaseline = (session: EditorSession): void => {
-    restoreAll(session.patch)
-    if (session.original !== null && sameElement(session.original.element, session.element) && session.existing !== null) {
-      applyCommitted(session.original.patch, session.existing.changes ?? [], session.existing.textChange)
-    }
+  const release = (ids: readonly PreviewSessionId[]): void => {
+    if (ids.length === 0) return
+    void releasePreviewSessions(ids).catch(() => undefined)
   }
 
   const closeEditor = (restore: boolean): void => {
-    const current = editorRef.current
-    if (current !== null && restore) restoreEditorBaseline(current)
-    pickerOf(frameRef.current)?.clearSelection()
+    if (editorRef.current !== null && restore) bridgeRef.current?.cancelEdit()
+    else bridgeRef.current?.clearSelection()
     setEditor(null)
   }
 
-  const openEditor = (id: string, element: Element, existing: PickItem | null): void => {
-    const current = editorRef.current
-    if (current !== null && current.id !== id) restoreEditorBaseline(current)
-    let patch: LiveElementPatch
-    if (existing === null) {
-      patch = createLivePatch(element)
-    } else {
-      patch = patchRefs.current.get(id) ?? createLivePatch(element)
-      if (patch.element !== element) patch = createLivePatch(element)
-      applyCommitted(patch, existing.changes ?? [], existing.textChange)
-      patchRefs.current.set(id, patch)
-    }
-    pickerOf(frameRef.current)?.select(element)
-    setEditor({
-      id, element, snapshot: existing?.snapshot ?? snapshotOf(element), existing, patch,
-      original: existing === null ? null : { element, patch },
-      comment: existing?.comment ?? '', mode: 'collapsed', navigationFeedback: null,
-    })
+  const loadTree = (id: string, handle: PreviewElementHandle): void => {
+    const bridge = bridgeRef.current
+    if (bridge === null) return
+    void bridge.readTree(handle).then((tree) => {
+      setEditor(current => current === null || current.id !== id || current.target.handle !== handle
+        ? current
+        : { ...current, tree })
+    }).catch(() => undefined)
   }
 
-  /** Change the current edit transaction's target without carrying element diffs. */
-  const selectEditorElement = (
-    element: Element,
+  const openEditor = (id: string, target: PreviewElementTarget, existing: PickItem | null): void => {
+    const current = editorRef.current
+    if (current !== null && current.id !== id) bridgeRef.current?.cancelEdit()
+    setEditor({
+      id,
+      target,
+      existing,
+      originalHandle: existing === null ? null : target.handle,
+      tree: null,
+      comment: existing?.comment ?? '',
+      mode: 'collapsed',
+      navigationFeedback: null,
+      position: null,
+      size: preferredEditorSize.current,
+    })
+    loadTree(id, target.handle)
+  }
+
+  const selectEditorTarget = (
+    target: PreviewElementTarget,
     comment: string,
     mode: AnnotationEditorMode,
-    action?: ElementNavigationAction,
+    action?: PreviewElementNavigationAction,
   ): void => {
     const current = editorRef.current
-    if (current === null || sameElement(current.element, element)) return
-    restoreEditorBaseline(current)
-    const original = current.original
-    const returningToOriginal = original !== null && sameElement(original.element, element)
-    const patch = returningToOriginal && original !== null
-      ? original.patch
-      : createLivePatch(element)
-    pickerOf(frameRef.current)?.select(element)
+    if (current === null || current.target.handle === target.handle) return
     if (action !== undefined) navigationSequence.current += 1
     setEditor({
       ...current,
-      element,
-      snapshot: returningToOriginal && current.existing !== null
-        ? current.existing.snapshot
-        : snapshotOf(element),
-      patch,
+      target,
+      tree: null,
       comment,
       mode,
       navigationFeedback: mode !== 'select' && action !== undefined
         ? { action, sequence: navigationSequence.current }
         : null,
     })
+    loadTree(current.id, target.handle)
   }
 
-  /** Re-open the host editor (marker-circle click or dock focus signal). */
+  const navigateEditorTarget = (
+    action: PreviewElementNavigationAction,
+    comment: string,
+    mode: AnnotationEditorMode,
+  ): void => {
+    const current = editorRef.current
+    const bridge = bridgeRef.current
+    if (current === null || bridge === null) return
+    const sequence = ++navigationSequence.current
+    void bridge.navigateElement(current.target.handle, action).then((target) => {
+      if (target === null || sequence !== navigationSequence.current) return
+      selectEditorTarget(target, comment, mode, action)
+    }).catch(() => undefined)
+  }
+
+  const selectTreeTarget = (
+    handle: PreviewElementHandle,
+    comment: string,
+    mode: AnnotationEditorMode,
+  ): void => {
+    const current = editorRef.current
+    const bridge = bridgeRef.current
+    if (current === null || bridge === null) return
+    const sequence = ++navigationSequence.current
+    void bridge.selectElement(handle).then((target) => {
+      if (target === null || sequence !== navigationSequence.current) return
+      selectEditorTarget(target, comment, mode)
+    }).catch(() => undefined)
+  }
+
   const onMarkClick = (id: string): void => {
     const pick = stateRef.current.picks.find((p) => p.id === id)
-    const el = pickRefs.current.get(id)
-    if (pick !== undefined && el !== undefined) openEditor(id, el, pick)
+    const bridge = bridgeRef.current
+    if (pick === undefined || bridge === null) return
+    void bridge.openPick(id, pick.snapshot.cssPath).then((target) => {
+      if (target !== null) openEditor(id, target, pick)
+    }).catch(() => undefined)
   }
 
-  /** Wire the handoff callbacks on a (re-)injected picker surface. */
-  const wireHandoff = (picker: PickerSurface): void => {
-    picker.onPick = (el) => {
-      if (stateRef.current.picks.length >= MAX_ANNOTATIONS) {
-        actionsRef.current.setError(t('panel.pick.limit', { count: String(MAX_ANNOTATIONS) }))
-        return
-      }
-      const id = pickId()
-      openEditor(id, el, null)
-    }
-    picker.onCancel = () => {
-      if (stateRef.current.pickMode) actionsRef.current.togglePickMode()
-    }
-    picker.onMarkClick = (id) => { onMarkClick(id) }
-  }
-
-  // After a frame load: detect same-origin, (re-)inject the picker, wire the
-  // handoff, rebuild the echo markers, and honor an armed pick mode.
-  const onFrameLoad = (): void => {
-    const frame = frameRef.current
-    if (frame === null) return
-    if (!isSameOrigin(frame)) {
-      setPickerReady(false)
-      actionsRef.current.setTitle('')
+  onPickRef.current = (target) => {
+    if (stateRef.current.picks.length >= MAX_ANNOTATIONS) {
+      actionsRef.current.setError(t('panel.pick.limit', { count: String(MAX_ANNOTATIONS) }))
+      bridgeRef.current?.cancelEdit()
       return
     }
-    const navigation = (frame.contentWindow as (Window & {
-      navigation?: { canGoBack: boolean; canGoForward: boolean }
-    }) | null)?.navigation
-    setHistoryState({
-      canGoBack: navigation?.canGoBack ?? false,
-      canGoForward: navigation?.canGoForward ?? false,
-    })
-    actionsRef.current.setTitle(titleOf(frame))
-    if (editorRef.current !== null) closeEditor(true)
-    const picker = ensurePicker(frame)
-    setPickerReady(picker !== null)
-    if (picker !== null) {
-      wireHandoff(picker)
-      refreshPickRefs()
-      if (stateRef.current.pickMode && !picker.isActive()) picker.activate()
-    }
+    openEditor(pickId(), target, null)
+  }
+  onMarkClickRef.current = onMarkClick
+  onShortcutRef.current = (action) => {
+    const current = editorRef.current
+    if (current !== null) navigateEditorTarget(action, current.comment, current.mode)
   }
 
-  // Pick-mode lifecycle: activate/deactivate the injected picker and cancel
-  // an uncommitted host-editor transaction when picking ends.
+  // A store URL that came from the bridge already belongs to the current
+  // session. Address-bar/assistant URL changes create a fresh isolated Origin.
+  useEffect(() => {
+    if (state.url === loadedPageUrl.current) return
+    sessionRequest.current += 1
+    const request = sessionRequest.current
+    setPickerReady(false)
+    setHistoryState({ canGoBack: false, canGoForward: false })
+    setDescriptor(null)
+    if (state.url === '') {
+      loadedPageUrl.current = null
+      setDescriptor(null)
+      return
+    }
+    loadedPageUrl.current = state.url
+    void createPreviewSession(state.url).then((next) => {
+      if (!mounted.current || request !== sessionRequest.current) {
+        release([next.sessionId])
+        return
+      }
+      setDescriptor(next)
+    }).catch(() => {
+      if (mounted.current && request === sessionRequest.current) {
+        loadedPageUrl.current = null
+        actionsRef.current.setError(t('panel.previewUnavailable'))
+      }
+    })
+  }, [state.url, previewRequestRevision, createPreviewSession, t])
+
   useEffect(() => {
     const frame = frameRef.current
-    if (frame === null) return
-    const picker = pickerOf(frame)
-    if (picker === null) return
-    if (state.pickMode && !picker.isActive()) picker.activate()
+    if (descriptor === null || frame === null) return
+    const bridge = new PreviewBridgeClient(frame, descriptor, {
+      onReady: (ready: PreviewReadyState) => {
+        setPickerReady(true)
+        setHistoryState({ canGoBack: ready.canGoBack, canGoForward: ready.canGoForward })
+        actionsRef.current.setError(null)
+        actionsRef.current.setTitle(ready.title)
+        loadedPageUrl.current = ready.pageUrl
+        if (stateRef.current.url !== ready.pageUrl) actionsRef.current.setUrl(ready.pageUrl)
+        if (editorRef.current !== null) setEditor(null)
+        bridge.syncMarkers(stateRef.current.picks)
+        if (stateRef.current.pickMode) bridge.activate()
+      },
+      onPick: target => { onPickRef.current(target) },
+      onCancelPick: () => {
+        if (stateRef.current.pickMode) actionsRef.current.togglePickMode()
+      },
+      onMarkClick: id => { onMarkClickRef.current(id) },
+      onTargetGeometry: (handle, rect, viewport) => {
+        setEditor(current => current === null || current.target.handle !== handle
+          ? current
+          : { ...current, target: { ...current.target, rect, viewport } })
+      },
+      onShortcut: action => { onShortcutRef.current(action) },
+      onHandoff: () => {
+        setPickerReady(false)
+        setHistoryState({ canGoBack: false, canGoForward: false })
+        actionsRef.current.setTitle('')
+        actionsRef.current.clearPicks()
+        setEditor(null)
+      },
+      onUnavailable: () => {
+        setPickerReady(false)
+        actionsRef.current.setError(t('panel.previewUnavailable'))
+      },
+    })
+    bridgeRef.current = bridge
+    // Arm the exact-source/exact-Origin listener before starting navigation.
+    // This is essential for an initial response that immediately crosses
+    // target Origins: its short-lived handoff document must not post before
+    // the parent knows the server-issued next descriptor.
+    frame.src = descriptor.frameUrl
+    return () => {
+      if (bridgeRef.current === bridge) bridgeRef.current = null
+      release(bridge.dispose())
+    }
+  }, [descriptor, releasePreviewSessions, t])
+
+  useEffect(() => () => {
+    mounted.current = false
+    sessionRequest.current += 1
+  }, [])
+
+  const onFrameLoad = (): void => { bridgeRef.current?.frameLoaded() }
+
+  useEffect(() => {
+    const bridge = bridgeRef.current
+    if (bridge === null) return
+    if (state.pickMode) bridge.activate()
     if (!state.pickMode) {
-      if (picker.isActive()) picker.deactivate()
+      bridge.deactivate()
       if (editorRef.current !== null) closeEditor(true)
     }
   }, [state.pickMode])
 
-  // Annotation removal/clear/send consumes its temporary page mutation too.
   useEffect(() => {
     const ids = new Set(state.picks.map(pick => pick.id))
-    for (const [id, patch] of patchRefs.current) {
-      if (ids.has(id) || editorRef.current?.id === id) continue
-      restoreAll(patch)
-      patchRefs.current.delete(id)
-      pickRefs.current.delete(id)
+    const reset = handledPickResetRevision.current !== state.pickResetRevision
+    handledPickResetRevision.current = state.pickResetRevision
+    const current = editorRef.current
+    if (current !== null && (reset || (current.existing !== null && !ids.has(current.id)))) {
+      bridgeRef.current?.cancelEdit()
+      setEditor(null)
     }
-  }, [state.picks])
+    bridgeRef.current?.syncMarkers(state.picks)
+  }, [state.pickResetRevision, state.picks])
 
-  // HMR/unmount must not strand temporary inline declarations in the page.
-  useEffect(() => () => {
-    for (const patch of patchRefs.current.values()) restoreAll(patch)
-    patchRefs.current.clear()
-  }, [])
-
-  // Focus signal: a dock detail row clicked this pick id — locate the element in
-  // the frame (live ref, else re-anchor by cssPath) and re-open its comment.
-  // The signal is one-shot: consumed here, so a later re-click re-triggers.
   useEffect(() => {
     const id = state.focusPickId
     if (id === null) return
-    const pick = stateRef.current.picks.find((p) => p.id === id)
-    let el = pickRefs.current.get(id)
-    if (el === undefined && pick !== undefined) {
-      const doc = frameRef.current?.contentDocument
-      if (doc !== null && doc !== undefined) {
-        const found = doc.querySelector(pick.snapshot.cssPath)
-        // Realm-safe element check: the frame document is a separate realm,
-        // so `found instanceof Element` is false there (and in jsdom).
-        if (found !== null && found.nodeType === 1) el = found
-      }
-    }
-    if (pick !== undefined && el !== undefined) openEditor(id, el, pick)
+    onMarkClick(id)
     actionsRef.current.setFocusPickId(null)
   }, [state.focusPickId])
 
-  // A non-empty draft submission is asynchronous behind the input machine's
-  // void action. Its durable user node is the supported success boundary.
+  // The dock consumes only a matching durable plugin-context id and then
+  // clears the picks. That exact store transition is this view's success edge.
   useEffect(() => {
-    const boundary = draftSendBoundary.current
-    if (boundary === null || latestHumanMessageSeq <= boundary) return
-    draftSendBoundary.current = null
+    if (!sendingAnnotations || state.picks.length !== 0) return
     setSendingAnnotations(false)
     if (stateRef.current.pickMode) actionsRef.current.togglePickMode()
-  }, [latestHumanMessageSeq])
+  }, [sendingAnnotations, state.picks.length])
 
   // Prompt failures stay on the stock session surface; mirror a concise
   // Preview error and keep the annotation state retryable.
   useEffect(() => {
-    if (draftSendBoundary.current === null || promptError === null || promptError === promptErrorAtSend.current) return
-    draftSendBoundary.current = null
+    if (!sendingAnnotations || promptError === null || promptError === promptErrorAtSend.current) return
     setSendingAnnotations(false)
     actionsRef.current.setError(t('panel.pick.sendError'))
-  }, [promptError, t])
+  }, [promptError, sendingAnnotations, t])
 
   /** Navigate the iframe to `url`; a new page invalidates the previous picks. */
   const navigate = (url: string): void => {
@@ -375,25 +400,32 @@ export function WebviewView({
       return
     }
     actions.setError(null)
+    loadedPageUrl.current = null
+    setPreviewRequestRevision(value => value + 1)
     setHistoryState({ canGoBack: false, canGoForward: false })
     actions.setUrl(normalized)
     actions.setTitle('')
     actions.clearPicks()
   }
 
-  const frameSrc = state.url !== '' ? proxyUrl(state.url) : undefined
+  const frameSrc = descriptor?.frameUrl
   const pickDisabled = !pickerReady || state.url === ''
-  const visibleError = state.annotationSyncError ?? state.error
+  const visibleError = state.annotationSync.status === 'error' ? state.annotationSync.message : state.error
+  const inputBusy = input.phase === 'adjudicating' || input.phase === 'submitting'
   const canSendAnnotations = state.picks.length > 0
-    && state.annotationSync === 'synced'
+    && state.annotationSync.status === 'ready'
     && !sendingAnnotations
+    && !inputBusy
 
   const submitAnnotations = async (): Promise<void> => {
     if (!canSendAnnotations) return
+    if (input.draft.trim().startsWith('/')) {
+      actions.setError(t('panel.pick.slashDraft'))
+      return
+    }
     setSendingAnnotations(true)
     actions.setError(null)
     if (input.draft.trim() !== '') {
-      draftSendBoundary.current = latestHumanMessageSeq
       promptErrorAtSend.current = promptError
       inputActions.submit()
       return
@@ -411,22 +443,24 @@ export function WebviewView({
   const confirmEditor = (value: AnnotationEditorValue): void => {
     const current = editorRef.current
     if (current === null) return
+    if (current.existing !== null && !stateRef.current.picks.some(pick => pick.id === current.id)) {
+      bridgeRef.current?.cancelEdit()
+      setEditor(null)
+      return
+    }
     const pick: PickItem = {
       id: current.id,
-      snapshot: current.snapshot,
+      snapshot: current.originalHandle === current.target.handle && current.existing !== null
+        ? current.existing.snapshot
+        : current.target.snapshot,
       comment: value.comment,
       changes: value.changes,
       textChange: value.textChange,
       viewport: value.viewport,
     }
-    if (current.existing !== null && current.original !== null && !sameElement(current.original.element, current.element)) {
-      restoreAll(current.original.patch)
-    }
-    patchRefs.current.set(current.id, current.patch)
-    pickRefs.current.set(current.id, current.element)
+    bridgeRef.current?.commitEdit(current.id, current.target.handle, value.changes, value.textChange)
     if (current.existing === null) actions.addPick(pick)
     else actions.updatePick(current.id, pick)
-    pickerOf(frameRef.current)?.clearSelection()
     setEditor(null)
   }
 
@@ -478,7 +512,7 @@ export function WebviewView({
               aria-label={t('panel.back')}
               title={t('panel.back')}
               disabled={!historyState.canGoBack}
-              onClick={() => { frameRef.current?.contentWindow?.history.back() }}
+              onClick={() => { bridgeRef.current?.historyBack() }}
             >
               <IconChevronLeftOutline14 size={16} />
             </button>
@@ -488,7 +522,7 @@ export function WebviewView({
               aria-label={t('panel.forward')}
               title={t('panel.forward')}
               disabled={!historyState.canGoForward}
-              onClick={() => { frameRef.current?.contentWindow?.history.forward() }}
+              onClick={() => { bridgeRef.current?.historyForward() }}
             >
               <IconChevronRightOutline14 size={16} />
             </button>
@@ -498,7 +532,7 @@ export function WebviewView({
               aria-label={t('panel.refresh')}
               title={t('panel.refresh')}
               disabled={state.url === ''}
-              onClick={() => { frameRef.current?.contentWindow?.location.reload() }}
+              onClick={() => { bridgeRef.current?.reload() }}
             >
               <IconRefreshOutline16 size={16} />
             </button>
@@ -552,29 +586,60 @@ export function WebviewView({
               <iframe
                 ref={frameRef}
                 className={css.frame}
-                src={frameSrc}
+                src="about:blank"
                 title={t('panel.frame')}
+                sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads allow-pointer-lock allow-presentation"
+                referrerPolicy="no-referrer"
                 onLoad={onFrameLoad}
               />
             )
-            : <div className={css.frameOverlay}>{t('panel.noUrl')}</div>}
+            : <div className={css.frameOverlay}>{state.url === '' ? t('panel.noUrl') : t('panel.loading')}</div>}
           {editor !== null && frameRef.current !== null && (
             <AnnotationEditor
-              key={`${editor.id}:${editor.snapshot.cssPath}`}
+              key={`${editor.id}:${editor.target.handle}`}
               id={editor.id}
-              patch={editor.patch}
+              target={editor.target}
+              tree={editor.tree}
               frame={frameRef.current}
               comment={editor.comment}
-              changes={editor.original !== null && sameElement(editor.original.element, editor.element) ? editor.existing?.changes ?? [] : []}
-              textChange={editor.original !== null && sameElement(editor.original.element, editor.element) ? editor.existing?.textChange : null}
+              changes={editor.originalHandle === editor.target.handle ? editor.existing?.changes ?? [] : []}
+              textChange={editor.originalHandle === editor.target.handle ? editor.existing?.textChange ?? null : null}
               initialMode={editor.mode}
               navigationFeedback={editor.navigationFeedback}
               selectedSkills={state.selectedSkills}
+              position={editor.position}
+              size={editor.size}
               t={t}
-              onCancel={() => { closeEditor(false) }}
+              onCommentChange={(comment) => {
+                setEditor(current => current === null ? null : { ...current, comment })
+              }}
+              onCancel={() => { closeEditor(true) }}
               onConfirm={confirmEditor}
-              onSelectElement={selectEditorElement}
               onToggleSkill={actions.toggleSelectedSkill}
+              onNavigateTarget={navigateEditorTarget}
+              onSelectTarget={selectTreeTarget}
+              onPreviewStyle={(property, value) => {
+                bridgeRef.current?.previewStyle(editor.target.handle, property, value)
+              }}
+              onRestoreStyle={(property) => {
+                bridgeRef.current?.restoreStyle(editor.target.handle, property)
+              }}
+              onPreviewText={(value) => {
+                bridgeRef.current?.previewText(editor.target.handle, value)
+              }}
+              onRestoreText={() => {
+                bridgeRef.current?.restoreText(editor.target.handle)
+              }}
+              onPositionChange={(position) => {
+                setEditor(current => current === null ? null : { ...current, position })
+              }}
+              onSizeChange={(size) => {
+                setEditor(current => current === null ? null : { ...current, size })
+              }}
+              onSizeCommit={(size) => {
+                preferredEditorSize.current = size
+                persistPreferredEditorSize(size)
+              }}
             />
           )}
         </div>

@@ -1,6 +1,6 @@
 /**
- * dsh-web-review browser half: the "网页预览" conversation view tab (proxied iframe +
- * in-iframe element picker + annotation echo layer) and the "注释" dock above
+ * dsh-web-review browser half: the "网页预览" conversation view tab (isolated
+ * Preview frame + message bridge) and the "注释" dock above
  * the composer, sharing one webview store instance. Structured annotation
  * snapshots commit immediately to the node half's `/webview-annotations`
  * route as pending state, then become separately logged plugin context only
@@ -25,6 +25,18 @@ import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/clie
 import type { CommandServiceContract } from '@deepseek-ai/dsh-client-ui-command/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
+import {
+  annotationSyncReceiptOf,
+  type AnnotationSyncReceipt,
+} from '../annotation-contract.ts'
+import {
+  PREVIEW_CLIENT_HEADER,
+  PREVIEW_CLIENT_HEADER_VALUE,
+  PREVIEW_SESSIONS_PATH,
+  previewSessionDescriptorOf,
+  type PreviewSessionDescriptor,
+  type PreviewSessionId,
+} from '../preview-contract.ts'
 import { en, zh, type WebviewKey } from './locales.ts'
 import { createWebviewStore } from './stores.ts'
 import { WebviewView, type WebviewViewInjected } from './WebviewView.tsx'
@@ -57,12 +69,21 @@ const SKILL_DESCRIPTION_KEYS: Record<UiSkillName, WebviewKey> = {
   'interface-review': 'editor.skills.interfaceReview',
 }
 
+function isClientSessions(value: unknown): value is ISessions {
+  if (typeof value !== 'object' || value === null) return false
+  try {
+    return typeof Reflect.get(value, 'scope') === 'function'
+  } catch {
+    return false
+  }
+}
+
 /** Resolve the public conversation face through one session scope. */
 function scopedConversation(ctx: ClientContext, sessionId: SessionId): IConversation {
-  // This dual-face package is typechecked in one program, so Cordis' host
-  // `sessions` augmentation also participates; the browser bundle receives
-  // the client ISessions service at runtime.
-  const sessions = ctx.sessions as unknown as ISessions
+  // Harness declares a host SessionStore under the same Cordis service key;
+  // verify the browser service shape before narrowing the merged type.
+  const sessions: unknown = ctx.sessions
+  if (!isClientSessions(sessions)) throw new Error('dsh-web-review: client sessions service unavailable')
   const scope = sessions.scope(sessionId)
   if (scope === undefined) throw new Error(`dsh-web-review: session "${sessionId}" resolved no scope`)
   const conversation = scope.get('conversation')
@@ -88,30 +109,41 @@ export function setUiSkillDraft(ctx: Pick<ClientContext, 'sessions'>, sessionId:
  */
 export function makeSyncAnnotations(sessionId: SessionId): WebviewDockInjected['syncAnnotations'] {
   let tail: Promise<void> = Promise.resolve()
-  let lastAcknowledged: string | undefined
+  let lastAcknowledged: { body: string; receipt: AnnotationSyncReceipt } | undefined
   let lastScheduledBody: string | undefined
-  let lastScheduledTask: Promise<void> | undefined
+  let lastScheduledTask: Promise<AnnotationSyncReceipt> | undefined
   return (draft) => {
     const body = JSON.stringify({ sessionId, ...draft })
     const clearing = draft.comments.length === 0
-    if (lastScheduledTask === undefined && body === lastAcknowledged) return Promise.resolve()
+    if (lastScheduledTask === undefined && body === lastAcknowledged?.body) {
+      return Promise.resolve(lastAcknowledged.receipt)
+    }
     if (body === lastScheduledBody && lastScheduledTask !== undefined) return lastScheduledTask
     const task = tail.catch(() => undefined).then(async () => {
-      if (body === lastAcknowledged) return
+      if (body === lastAcknowledged?.body) return lastAcknowledged.receipt
       const response = await fetch('/webview-annotations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body,
       })
-      // Clearing an absent live agent is already satisfied. The host keeps
-      // returning 404 so this route cannot be used as a session-state oracle;
-      // non-empty snapshots still surface the unavailable-agent failure.
-      if (!response.ok && !(clearing && response.status === 404)) {
-        throw new Error(`annotation context sync failed (${response.status})`)
+      if (!response.ok) {
+        // Clearing an absent live agent is already satisfied. The host keeps
+        // returning 404 so this route cannot be used as a session-state oracle;
+        // non-empty snapshots still surface the unavailable-agent failure.
+        if (!(clearing && response.status === 404)) {
+          throw new Error(`annotation context sync failed (${response.status})`)
+        }
+        const receipt = { kind: 'empty' as const }
+        lastAcknowledged = { body, receipt }
+        return receipt
       }
-      lastAcknowledged = body
+      const value: unknown = await response.json()
+      const receipt = annotationSyncReceiptOf(value)
+      if (receipt === undefined) throw new Error('annotation context sync returned an invalid receipt')
+      lastAcknowledged = { body, receipt }
+      return receipt
     })
-    tail = task.catch(() => undefined)
+    tail = task.then(() => undefined, () => undefined)
     lastScheduledBody = body
     lastScheduledTask = task
     task.then(
@@ -130,6 +162,37 @@ export function makeSyncAnnotations(sessionId: SessionId): WebviewDockInjected['
     )
     return task
   }
+}
+
+/** Create one node-owned isolated Origin for a requested page. */
+export async function createPreviewSession(target: string): Promise<PreviewSessionDescriptor> {
+  const response = await fetch(PREVIEW_SESSIONS_PATH, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      [PREVIEW_CLIENT_HEADER]: PREVIEW_CLIENT_HEADER_VALUE,
+    },
+    body: JSON.stringify({ target }),
+  })
+  if (!response.ok) throw new Error(`preview session creation failed (${String(response.status)})`)
+  const descriptor = previewSessionDescriptorOf(await response.json() as unknown)
+  if (descriptor === undefined) throw new Error('preview session creation returned an invalid descriptor')
+  return descriptor
+}
+
+/** Release every Origin minted during one iframe's navigation chain. */
+export async function releasePreviewSessions(sessionIds: readonly PreviewSessionId[]): Promise<void> {
+  if (sessionIds.length === 0) return
+  const response = await fetch(PREVIEW_SESSIONS_PATH, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+      [PREVIEW_CLIENT_HEADER]: PREVIEW_CLIENT_HEADER_VALUE,
+    },
+    body: JSON.stringify({ sessionIds }),
+    keepalive: true,
+  })
+  if (!response.ok) throw new Error(`preview session release failed (${String(response.status)})`)
 }
 
 /** The plugin body: dictionaries and the two shared-store registrations. */
@@ -175,6 +238,8 @@ export function apply(ctx: ClientContext): void {
     store: webviewStore,
     inject: (sessionId: SessionId): WebviewViewInjected => ({
       sendAnnotationsWithoutDraft: () => scopedConversation(ctx, sessionId).send(t('panel.pick.defaultPrompt')),
+      createPreviewSession,
+      releasePreviewSessions,
     }),
   }, WebviewView))
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({

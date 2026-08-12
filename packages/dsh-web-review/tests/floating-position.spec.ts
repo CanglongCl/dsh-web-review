@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { placeFloatingEditor, type FloatingRect } from '../src/client/floating-position.ts'
+import {
+  clampFloatingEditorPosition,
+  placeFloatingEditor,
+  resizeFloatingEditor,
+  type FloatingRect,
+} from '../src/client/floating-position.ts'
 
 const target = (top: number, left: number, width = 60, height = 30): FloatingRect => ({
   top,
@@ -8,6 +13,57 @@ const target = (top: number, left: number, width = 60, height = 30): FloatingRec
   height,
   right: left + width,
   bottom: top + height,
+})
+
+describe('resizeFloatingEditor', () => {
+  it('resizes from a corner while keeping the opposite corner fixed', () => {
+    expect(resizeFloatingEditor({
+      edge: 'nw',
+      position: { left: 100, top: 80 },
+      size: { width: 400, height: 320 },
+      deltaX: 40,
+      deltaY: 30,
+      surfaceWidth: 800,
+      surfaceHeight: 600,
+      minWidth: 320,
+      minHeight: 300,
+    })).toEqual({
+      position: { left: 140, top: 100 },
+      size: { width: 360, height: 300 },
+    })
+  })
+
+  it('enforces minimum dimensions and the eight-pixel surface margin', () => {
+    expect(resizeFloatingEditor({
+      edge: 'se',
+      position: { left: 100, top: 80 },
+      size: { width: 400, height: 320 },
+      deltaX: 900,
+      deltaY: 900,
+      surfaceWidth: 800,
+      surfaceHeight: 600,
+      minWidth: 320,
+      minHeight: 300,
+    })).toEqual({
+      position: { left: 100, top: 80 },
+      size: { width: 692, height: 512 },
+    })
+
+    expect(resizeFloatingEditor({
+      edge: 'nw',
+      position: { left: 100, top: 80 },
+      size: { width: 400, height: 320 },
+      deltaX: 900,
+      deltaY: 900,
+      surfaceWidth: 800,
+      surfaceHeight: 600,
+      minWidth: 320,
+      minHeight: 300,
+    })).toEqual({
+      position: { left: 180, top: 100 },
+      size: { width: 320, height: 300 },
+    })
+  })
 })
 
 describe('placeFloatingEditor', () => {
@@ -55,5 +111,27 @@ describe('placeFloatingEditor', () => {
     expect(placement.left).toBeGreaterThanOrEqual(8)
     expect(placement.top).toBeGreaterThanOrEqual(8)
     expect(placement.top + placement.maxHeight).toBeLessThanOrEqual(552)
+  })
+})
+
+describe('clampFloatingEditorPosition', () => {
+  it('keeps a manually moved editor inside the eight-pixel surface margin', () => {
+    expect(clampFloatingEditorPosition({
+      position: { left: -40, top: 900 },
+      surfaceWidth: 500,
+      surfaceHeight: 600,
+      editorWidth: 300,
+      editorHeight: 240,
+    })).toEqual({ left: 8, top: 352 })
+  })
+
+  it('keeps the toolbar origin reachable when the editor is larger than the surface', () => {
+    expect(clampFloatingEditorPosition({
+      position: { left: 100, top: 100 },
+      surfaceWidth: 280,
+      surfaceHeight: 200,
+      editorWidth: 320,
+      editorHeight: 240,
+    })).toEqual({ left: 8, top: 8 })
   })
 })

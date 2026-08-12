@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "rootDir": "src",
+    "outDir": "lib/types/bridge"
+  },
+  "include": [
+    "src/bridge",
+    "src/annotation-contract.ts",
+    "src/annotation-properties.ts",
+    "src/preview-contract.ts",
+    "src/proxy-url.ts",
+    "src/client/contract.ts",
+    "src/client/element-navigation.ts",
+    "src/client/live-patch.ts",
+    "src/client/picker-core.ts",
+    "src/client/source-anchor.ts",
+    "src/ui-skills.ts"
+  ]
+}

@@ -18,6 +18,7 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { materializeHarnessLinks } from './harness-links.ts'
 import { resolveHarnessRoot } from './harness-path.ts'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -49,6 +50,8 @@ if (!harnessReady()) {
     }
   }
 }
+const links = materializeHarnessLinks(root, harness)
+console.log(`dev: Harness links ready (${links.verified} verified, ${links.changed} updated)`)
 if (setupOnly) {
   console.log('dev: harness ready.')
   process.exit(0)
@@ -75,6 +78,27 @@ if (!skipWatch) {
 }
 
 const children: ChildProcess[] = watch === undefined ? [web] : [web, watch]
-const stop = () => { for (const child of children) { if (!child.killed) child.kill('SIGTERM') } }
+let stopping = false
+const stop = () => {
+  stopping = true
+  for (const child of children) { if (!child.killed) child.kill('SIGTERM') }
+}
+for (const [label, child] of [
+  ['dsh web', web],
+  ...(watch === undefined ? [] : [['client bundle watch', watch] as const]),
+] as const) {
+  child.once('error', (error) => {
+    if (stopping) return
+    console.error(`dev: ${label} failed to start: ${String(error)}`)
+    stop()
+    process.exitCode = 1
+  })
+  child.once('exit', (code, signal) => {
+    if (stopping) return
+    console.error(`dev: ${label} exited unexpectedly (${signal ?? `status ${code ?? 'unknown'}`})`)
+    stop()
+    process.exitCode = code === null || code === 0 ? 1 : code
+  })
+}
 process.on('SIGINT', () => { stop(); process.exit(130) })
 process.on('SIGTERM', () => { stop(); process.exit(0) })

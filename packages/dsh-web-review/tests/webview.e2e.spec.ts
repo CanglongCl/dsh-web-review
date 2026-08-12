@@ -1,5 +1,5 @@
 /**
- * Real GUI + proxy + picker + send-time pre-step context acceptance.
+ * Real GUI + isolated preview bridge + picker + send-time context acceptance.
  * Fixed sleeps are deliberately absent: the composer capsule's ready state
  * is the browser-visible host acknowledgement boundary.
  */
@@ -14,6 +14,7 @@ import {
   startServices,
   type E2EServices,
 } from './e2e-scaffold.ts'
+import { en } from '../src/client/locales.ts'
 
 let services: E2EServices
 let browser: Browser
@@ -37,17 +38,17 @@ async function bootWithPanel(page: Page, name: string): Promise<void> {
     async () => previewTab.getAttribute('aria-selected'),
     { timeout: 10_000, message: 'Preview should be the active conversation view' },
   ).toBe('true')
-  await page.getByPlaceholder('Enter a URL and press Enter (e.g. http://localhost:5173)').waitFor({ timeout: 15_000 })
+  await page.getByPlaceholder(en['panel.urlPlaceholder']).waitFor({ timeout: 15_000 })
 }
 
 async function loadDemoPage(page: Page): Promise<FrameLocator> {
-  const input = page.getByPlaceholder('Enter a URL and press Enter (e.g. http://localhost:5173)')
+  const input = page.getByPlaceholder(en['panel.urlPlaceholder'])
   await input.fill(services.demoUrl)
   await input.press('Enter')
   const frame = page.frameLocator('iframe[title="Web preview"]')
   await expect.poll(
     async () => frame.locator('h1').textContent(),
-    { timeout: 20_000, message: 'proxied demo page should render' },
+    { timeout: 20_000, message: 'isolated demo page should render' },
   ).toBe('魔法 UI 演示页')
   return frame
 }
@@ -125,18 +126,42 @@ describe('dsh-web-review e2e', () => {
     ).toBe('true')
     await expect.poll(
       async () => page.frameLocator('iframe[title="Web preview"]').locator('h1').textContent(),
-      { timeout: 20_000, message: 'assistant link target should render through the proxy' },
+      { timeout: 20_000, message: 'assistant link target should render in Preview' },
     ).toBe('魔法 UI 演示页')
     await page.close()
   })
 
-  it('opens Preview and renders the same-origin proxy iframe', async () => {
+  it('renders Preview on a random Origin isolated from the DSH host', async () => {
     const page = await newPage(browser)
     onTestFailed(() => saveFailureShot(page, 'proxy-navigation'))
     await bootWithPanel(page, 'proxy-nav')
     await loadDemoPage(page)
-    expect(await page.locator('iframe[title="Web preview"]').getAttribute('src'))
-      .toContain('/webview-proxy/http%3A//127.0.0.1%3A')
+    const frameUrl = new URL((await page.locator('iframe[title="Web preview"]').getAttribute('src')) ?? '')
+    expect(frameUrl.hostname).toMatch(/^[a-f\d]{32}\.localhost$/u)
+    expect(frameUrl.origin).not.toBe(new URL(services.webUrl).origin)
+    expect(frameUrl.pathname).toContain('/.dsh-web-review/entry/http%3A//127.0.0.1%3A')
+    await page.close()
+  })
+
+  it('rebuilds the bridge after a cross-target-Origin redirect', async () => {
+    const page = await newPage(browser)
+    onTestFailed(() => saveFailureShot(page, 'cross-origin-handoff'))
+    await bootWithPanel(page, 'cross-origin-handoff')
+    const input = page.getByPlaceholder(en['panel.urlPlaceholder'])
+    await input.fill(`${services.demoUrl}/cross-origin-redirect`)
+    await input.press('Enter')
+    const frame = page.frameLocator('iframe[title="Web preview"]')
+    await expect.poll(
+      async () => frame.locator('h1').textContent(),
+      { timeout: 20_000, message: 'cross-Origin handoff target should render' },
+    ).toBe('魔法 UI 演示页')
+    await expect.poll(async () => input.inputValue()).toBe(
+      new URL(services.demoUrl.replace('127.0.0.1', 'localhost')).href,
+    )
+    await expect.poll(
+      async () => page.getByRole('button', { name: 'Add page comments' }).isEnabled(),
+      { timeout: 15_000 },
+    ).toBe(true)
     await page.close()
   })
 
@@ -238,7 +263,7 @@ describe('dsh-web-review e2e', () => {
     await page.close()
   })
 
-  it('scopes canvas shortcuts away from the page and gives the tree standard keyboard behavior', async () => {
+  it('scopes canvas shortcuts away from the page and keeps the tree pointer-only', async () => {
     const page = await newPage(browser)
     onTestFailed(() => saveFailureShot(page, 'element-keyboard-ownership'))
     await bootWithPanel(page, 'element-keyboard-ownership')
@@ -254,6 +279,7 @@ describe('dsh-web-review e2e', () => {
     let editor = page.locator('[data-webview-annotation-editor]')
     await editor.waitFor({ timeout: 10_000 })
     await expect.poll(async () => editor.evaluate(element => element.ownerDocument.activeElement === element)).toBe(true)
+    expect(await frame.locator('button.btn-primary').evaluate(element => element.ownerDocument.activeElement !== element)).toBe(true)
     const feedback = page.locator('[data-webview-navigation-feedback]')
     await feedback.waitFor()
     expect(await feedback.textContent()).toContain('Selected button')
@@ -275,11 +301,22 @@ describe('dsh-web-review e2e', () => {
     expect(selectionStyle.borderColor).toBe('rgb(103, 158, 254)')
     expect(selectionStyle.borderRadius).toBe('6px')
     expect(selectionStyle.transitionDuration).toContain('0.18s')
+    const editorSurfaceStyle = await editor.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { boxShadow: style.boxShadow, clipPath: style.clipPath, overflow: style.overflow }
+    })
+    expect(editorSurfaceStyle.boxShadow).not.toBe('none')
+    expect(editorSurfaceStyle.boxShadow.split(/,\s+(?=rgba?\()/u).length).toBeGreaterThanOrEqual(3)
+    expect(editorSurfaceStyle.clipPath).toBe('none')
+    expect(editorSurfaceStyle.overflow).toBe('hidden')
     expect(await frame.locator('button.btn-primary').evaluate(element => getComputedStyle(element).backgroundColor))
       .toBe('rgba(65, 118, 230, 0.1)')
     const buttonBox = await selectionBox.boundingBox()
     await editor.press('Backslash')
-    expect(await selectionBox.evaluate(element => element.getAnimations().length)).toBeGreaterThan(0)
+    await expect.poll(
+      async () => selectionBox.evaluate(element => element.getAnimations().length),
+      { timeout: 500, interval: 10 },
+    ).toBeGreaterThan(0)
     await expect.poll(async () => frame.locator('.card').first().getAttribute('data-dsh-wv-selected')).not.toBeNull()
     expect(await feedback.getAttribute('data-action')).toBe('parent')
     expect(await feedback.textContent()).toContain('Selected div')
@@ -290,6 +327,7 @@ describe('dsh-web-review e2e', () => {
     editor = page.locator('[data-webview-annotation-editor]')
     await editor.press('Tab')
     await expect.poll(async () => frame.locator('.card').nth(1).getAttribute('data-dsh-wv-selected')).not.toBeNull()
+    expect(await editor.evaluate(element => getComputedStyle(element).outlineStyle)).toBe('none')
     expect(await page.locator('[data-webview-navigation-feedback]').getAttribute('data-action')).toBe('next-sibling')
     editor = page.locator('[data-webview-annotation-editor]')
     await editor.press('Shift+Tab')
@@ -300,19 +338,23 @@ describe('dsh-web-review e2e', () => {
     await editor.getByRole('button', { name: 'Select', exact: true }).click()
     const tree = editor.getByRole('tree', { name: 'Element tree' })
     const selected = tree.locator('[role="treeitem"][aria-selected="true"]')
-    await expect.poll(async () => selected.evaluate(element => element.ownerDocument.activeElement === element)).toBe(true)
-    await selected.press('Tab')
+    const firstCardTreeKey = await selected.getAttribute('data-tree-key')
+    expect(await selected.getAttribute('tabindex')).toBe('-1')
+    expect(await tree.locator('[role="treeitem"]:focus').count()).toBe(0)
+    await editor.press('Tab')
     expect(await tree.locator('[role="treeitem"][aria-selected="true"]').count()).toBe(1)
     await expect.poll(async () => frame.locator('.card').nth(1).getAttribute('data-dsh-wv-selected')).not.toBeNull()
+    expect(await editor.evaluate(element => getComputedStyle(element).outlineStyle)).toBe('none')
     expect(await page.locator('[data-webview-navigation-feedback]').count()).toBe(0)
-    await tree.locator('[role="treeitem"][aria-selected="true"]').press('Shift+Tab')
+    await editor.press('Shift+Tab')
     await expect.poll(async () => frame.locator('.card').first().getAttribute('data-dsh-wv-selected')).not.toBeNull()
+    await expect.poll(
+      async () => tree.locator('[role="treeitem"][aria-selected="true"]').getAttribute('data-tree-key'),
+    ).toBe(firstCardTreeKey)
 
-    const restored = tree.locator('[role="treeitem"][aria-selected="true"]')
-    await restored.press('ArrowRight')
-    const focusedTreeItem = tree.locator('[role="treeitem"]:focus')
-    expect(await focusedTreeItem.locator(':scope > [data-webview-element-row]').textContent()).toContain('h3')
-    await restored.press('Enter')
+    await editor.press('ArrowRight')
+    expect(await tree.locator('[role="treeitem"]:focus').count()).toBe(0)
+    await editor.press('Enter')
     await expect.poll(async () => frame.locator('.card').first().locator('h3').getAttribute('data-dsh-wv-selected')).not.toBeNull()
     expect(await frame.locator('body').evaluate(() => (window as unknown as { __reviewObservedKeys: string[] }).__reviewObservedKeys)).toEqual([])
     await page.close()
@@ -377,6 +419,8 @@ describe('dsh-web-review e2e', () => {
     const original = await heading.evaluate(element => ({
       color: getComputedStyle(element).color,
       fontSize: getComputedStyle(element).fontSize,
+      width: getComputedStyle(element).width,
+      inlineWidth: (element as HTMLElement).style.width,
       text: element.textContent,
     }))
 
@@ -389,6 +433,87 @@ describe('dsh-web-review e2e', () => {
     expect(await editor.locator('[data-webview-text-content]').count()).toBe(1)
     expect(await editor.locator('[data-webview-target-title]').count()).toBe(0)
     await editor.getByRole('button', { name: 'Bold' }).waitFor()
+    const editorMoveHandle = editor.getByRole('button', { name: 'Move editor' })
+    // Regression: the first resize must commit while the editor is still in
+    // automatic placement mode; a second gesture must build on that size.
+    for (const delta of [-24, 24]) {
+      const beforeInitialResize = await editor.boundingBox()
+      const initialResizeHandle = await editor.locator('[data-resize-edge="se"]').boundingBox()
+      if (beforeInitialResize === null || initialResizeHandle === null) {
+        throw new Error('Initial resize surfaces must have layout boxes')
+      }
+      await page.mouse.move(
+        initialResizeHandle.x + initialResizeHandle.width / 2,
+        initialResizeHandle.y + initialResizeHandle.height / 2,
+      )
+      await page.mouse.down()
+      await page.mouse.move(
+        initialResizeHandle.x + initialResizeHandle.width / 2 + delta,
+        initialResizeHandle.y + initialResizeHandle.height / 2 + delta,
+        { steps: 3 },
+      )
+      await page.mouse.up()
+      const afterInitialResize = await editor.boundingBox()
+      if (afterInitialResize === null) throw new Error('Initially resized editor must retain a layout box')
+      if (delta < 0) {
+        expect(afterInitialResize.width).toBeLessThan(beforeInitialResize.width)
+        expect(afterInitialResize.height).toBeLessThan(beforeInitialResize.height)
+      } else {
+        expect(afterInitialResize.width).toBeGreaterThan(beforeInitialResize.width)
+        expect(afterInitialResize.height).toBeGreaterThan(beforeInitialResize.height)
+      }
+    }
+    const editorBeforeMove = await editor.boundingBox()
+    const editorMoveBox = await editorMoveHandle.boundingBox()
+    const previewBox = await page.locator('[data-webview-preview-body]').boundingBox()
+    if (editorBeforeMove === null || editorMoveBox === null || previewBox === null) {
+      throw new Error('Expanded editor drag surfaces must have layout boxes')
+    }
+    const moveX = editorBeforeMove.x - previewBox.x > 80 ? -48 : 48
+    const moveY = editorBeforeMove.y - previewBox.y > 80 ? -32 : 32
+    await page.mouse.move(editorMoveBox.x + editorMoveBox.width / 2, editorMoveBox.y + editorMoveBox.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(
+      editorMoveBox.x + editorMoveBox.width / 2 + moveX,
+      editorMoveBox.y + editorMoveBox.height / 2 + moveY,
+      { steps: 3 },
+    )
+    await expect.poll(async () => editor.getAttribute('data-editor-dragging')).not.toBeNull()
+    await page.mouse.up()
+    await expect.poll(async () => editor.getAttribute('data-editor-dragging')).toBeNull()
+    const editorAfterMove = await editor.boundingBox()
+    if (editorAfterMove === null) throw new Error('Moved editor must retain a layout box')
+    expect({ x: Math.round(editorAfterMove.x), y: Math.round(editorAfterMove.y) })
+      .not.toEqual({ x: Math.round(editorBeforeMove.x), y: Math.round(editorBeforeMove.y) })
+    expect(editorAfterMove.x).toBeGreaterThanOrEqual(previewBox.x + 8)
+    expect(editorAfterMove.y).toBeGreaterThanOrEqual(previewBox.y + 8)
+    expect(editorAfterMove.x + editorAfterMove.width).toBeLessThanOrEqual(previewBox.x + previewBox.width - 8)
+    expect(editorAfterMove.y + editorAfterMove.height).toBeLessThanOrEqual(previewBox.y + previewBox.height - 8)
+    const southeastResize = editor.locator('[data-resize-edge="se"]')
+    const resizeBox = await southeastResize.boundingBox()
+    if (resizeBox === null) throw new Error('Expanded editor resize corner must have a layout box')
+    await page.mouse.move(resizeBox.x + resizeBox.width / 2, resizeBox.y + resizeBox.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(resizeBox.x + resizeBox.width / 2 - 40, resizeBox.y + resizeBox.height / 2 - 36, { steps: 3 })
+    await expect.poll(async () => editor.getAttribute('data-editor-resizing')).not.toBeNull()
+    await page.mouse.up()
+    await expect.poll(async () => editor.getAttribute('data-editor-resizing')).toBeNull()
+    const editorAfterResize = await editor.boundingBox()
+    if (editorAfterResize === null) throw new Error('Resized editor must retain a layout box')
+    expect(Math.round(editorAfterResize.width)).toBeLessThan(Math.round(editorAfterMove.width))
+    expect(Math.round(editorAfterResize.height)).toBeLessThan(Math.round(editorAfterMove.height))
+    expect(editorAfterResize.width).toBeGreaterThanOrEqual(320)
+    expect(editorAfterResize.height).toBeGreaterThanOrEqual(300)
+    expect(editorAfterResize.x + editorAfterResize.width).toBeLessThanOrEqual(previewBox.x + previewBox.width - 8)
+    expect(editorAfterResize.y + editorAfterResize.height).toBeLessThanOrEqual(previewBox.y + previewBox.height - 8)
+    const rememberedSize = await page.evaluate(() => {
+      const raw = localStorage.getItem('dsh-web-review.editor-size.v1')
+      return raw === null ? null : JSON.parse(raw) as { width: number; height: number }
+    })
+    expect(rememberedSize).toEqual({
+      width: Math.round(editorAfterResize.width),
+      height: Math.round(editorAfterResize.height),
+    })
     const fontSizeField = editor.getByRole('spinbutton', { name: 'Font size', exact: true })
     expect(await fontSizeField.evaluate(element => element.getBoundingClientRect().width))
       .toBeGreaterThan(120)
@@ -412,7 +537,7 @@ describe('dsh-web-review e2e', () => {
       const footer = element.querySelector('[data-webview-editor-footer]')
       const inactiveRow = element.querySelector('[data-inspector-row]:not([data-scrub-active])')
       const section = active?.closest('section')
-      if (!(active instanceof HTMLElement) || inspector === null || compose === null || footer === null || inactiveRow === null || section === null) return null
+      if (!(active instanceof HTMLElement) || inspector === null || compose == null || footer === null || inactiveRow === null || section == null) return null
       return {
         activeVisibility: getComputedStyle(active).visibility,
         activePointerEvents: getComputedStyle(active).pointerEvents,
@@ -477,14 +602,18 @@ describe('dsh-web-review e2e', () => {
     await editor.getByLabel('Text color', { exact: true }).click()
     await page.getByLabel('Text color · Hex').fill('#613838')
     await fontSizeField.fill('24px')
+    await editor.getByRole('button', { name: 'Width · Choose preset', exact: true }).click()
+    await page.getByRole('menuitem', { name: 'auto' }).click()
 
     await expect.poll(async () => heading.evaluate(element => ({
       color: getComputedStyle(element).color,
       fontSize: getComputedStyle(element).fontSize,
+      inlineWidth: (element as HTMLElement).style.width,
       text: element.textContent,
     })), { timeout: 10_000 }).toEqual({
       color: 'rgb(97, 56, 56)',
       fontSize: '24px',
+      inlineWidth: 'auto',
       text: 'Reviewed magic UI',
     })
 
@@ -508,6 +637,11 @@ describe('dsh-web-review e2e', () => {
       opacity: getComputedStyle(element).opacity,
       visibility: getComputedStyle(element).visibility,
     }))).toEqual({ hidden: false, opacity: '1', visibility: 'visible' })
+    const editorAfterRestore = await editor.boundingBox()
+    expect(editorAfterRestore === null ? null : {
+      x: Math.round(editorAfterRestore.x),
+      y: Math.round(editorAfterRestore.y),
+    }).toEqual({ x: Math.round(editorAfterMove.x), y: Math.round(editorAfterMove.y) })
     expect(await editor.getByPlaceholder('Describe these changes…').inputValue()).toBe('Use the reviewed heading treatment.')
     expect(await fontSizeField.inputValue()).toBe('24px')
     await editor.getByRole('button', { name: 'Restore original value · Font size' }).click()
@@ -522,6 +656,8 @@ describe('dsh-web-review e2e', () => {
     await expect.poll(async () => heading.evaluate(element => ({
       color: getComputedStyle(element).color,
       fontSize: getComputedStyle(element).fontSize,
+      width: getComputedStyle(element).width,
+      inlineWidth: (element as HTMLElement).style.width,
       text: element.textContent,
     })), { timeout: 30_000, message: 'successful send should remove every temporary preview mutation' })
       .toEqual(original)
@@ -531,6 +667,7 @@ describe('dsh-web-review e2e', () => {
     expect(contextText).toContain('Browser annotation:')
     expect(contextText).toContain('Visible viewport at edit time:')
     expect(contextText).toContain('- color: rgb(255, 255, 255) -> #613838')
+    expect(contextText).toContain(`- width: ${original.width} -> auto`)
     expect(contextText).toContain('- text: "魔法 UI 演示页" -> "Reviewed magic UI"')
     expect(contextText).not.toContain('- font-size:')
     await page.close()

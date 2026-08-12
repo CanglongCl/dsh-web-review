@@ -8,6 +8,7 @@ import {
   type MenuEntry,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import clsx from 'clsx'
+import { cssColor, formatNumeric, hexOf, parseColor, parseNumeric } from './inspector-values.ts'
 import css from './InspectorControls.module.css'
 
 export function InspectorSection({ label, children, defaultOpen = true, onOpenChange }: {
@@ -171,9 +172,10 @@ export function TextField({ label, value, onChange, invalid = false }: {
   )
 }
 
-export function TextAreaField({ label, value, onChange }: {
+export function TextAreaField({ label, value, maxLength, onChange }: {
   label: string
   value: string
+  maxLength?: number
   onChange: (value: string) => void
 }) {
   const focusValue = useRef(value)
@@ -184,6 +186,7 @@ export function TextAreaField({ label, value, onChange }: {
       aria-label={label}
       value={value}
       rows={2}
+      {...(maxLength === undefined ? {} : { maxLength })}
       onFocus={() => { focusValue.current = value }}
       onChange={event => { onChange(event.target.value) }}
       onKeyDown={(event) => {
@@ -201,21 +204,7 @@ export function StyleGlyph({ kind }: { kind: 'bold' | 'italic' | 'underline' }) 
   return <span className={kind === 'italic' ? css.italicGlyph : kind === 'underline' ? css.underlineGlyph : undefined}>{kind === 'bold' ? 'B' : kind === 'italic' ? 'I' : 'U'}</span>
 }
 
-const NUMBER = /^\s*(-?(?:\d+\.?\d*|\.\d+))\s*([a-z%]*)\s*$/iu
-
-export function parseNumeric(value: string): { number: number; unit: string } | null {
-  const match = NUMBER.exec(value)
-  if (match?.[1] === undefined) return null
-  const number = Number(match[1])
-  return Number.isFinite(number) ? { number, unit: match[2] ?? '' } : null
-}
-
-function formatted(number: number, unit: string): string {
-  const rounded = Math.round(number * 1000) / 1000
-  return `${String(Object.is(rounded, -0) ? 0 : rounded)}${unit}`
-}
-
-export function ScrubNumber({ label, value, onChange, onScrubChange, step = 1, min, max, glyph = '↔', fallbackValue, invalid = false }: {
+export function ScrubNumber({ label, value, onChange, onScrubChange, step = 1, min, max, glyph = '↔', fallbackValue, invalid = false, options = [], presetLabel }: {
   label: string
   value: string
   onChange: (value: string) => void
@@ -226,31 +215,57 @@ export function ScrubNumber({ label, value, onChange, onScrubChange, step = 1, m
   glyph?: ReactNode
   fallbackValue?: string
   invalid?: boolean
+  options?: readonly string[]
+  presetLabel?: string
 }) {
   const drag = useRef<{ x: number; value: number; unit: string; started: boolean } | null>(null)
   const scrubChangeRef = useRef(onScrubChange)
   scrubChangeRef.current = onScrubChange
+  const lastNumericValue = useRef(parseNumeric(value) ?? (fallbackValue === undefined ? null : parseNumeric(fallbackValue)))
+  const parsedValue = parseNumeric(value)
+  if (parsedValue !== null) lastNumericValue.current = parsedValue
   const focusValue = useRef(value)
+  const presetRef = useRef<HTMLButtonElement>(null)
+  const [presetOpen, setPresetOpen] = useState(false)
+  const hasOptions = options.length > 0
+  const presetItems: MenuEntry[] = options.map(option => ({ id: option, label: option }))
+  const closePresets = () => {
+    setPresetOpen(false)
+    queueMicrotask(() => { presetRef.current?.focus() })
+  }
   const clamp = (number: number) => Math.min(max ?? Number.POSITIVE_INFINITY, Math.max(min ?? Number.NEGATIVE_INFINITY, number))
-  const numericValue = () => parseNumeric(value) ?? (fallbackValue === undefined ? null : parseNumeric(fallbackValue))
+  const numericValue = () => parseNumeric(value)
+    ?? lastNumericValue.current
+    ?? (fallbackValue === undefined ? null : parseNumeric(fallbackValue))
   const canScrub = numericValue() !== null
   const increment = (delta: number) => {
     const parsed = numericValue()
     if (parsed === null) return
-    onChange(formatted(clamp(parsed.number + delta), parsed.unit))
+    onChange(formatNumeric(clamp(parsed.number + delta), parsed.unit))
   }
   const finishDrag = (restore: boolean): void => {
     const current = drag.current
     if (current === null) return
-    if (restore && current.started) onChange(formatted(current.value, current.unit))
+    if (restore && current.started) onChange(formatNumeric(current.value, current.unit))
     if (current.started) scrubChangeRef.current?.(false)
     drag.current = null
   }
   useEffect(() => () => {
     if (drag.current?.started === true) scrubChangeRef.current?.(false)
   }, [])
+  useEffect(() => {
+    if (!presetOpen) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      closePresets()
+    }
+    document.addEventListener('keydown', closeOnEscape, true)
+    return () => { document.removeEventListener('keydown', closeOnEscape, true) }
+  }, [presetOpen])
   return (
-    <span className={css.numberWrap} data-webview-scrub-control="">
+    <span className={clsx(css.numberWrap, hasOptions && css.numberWrapWithOptions)} data-webview-scrub-control="">
       <button
         type="button"
         className={css.numberHandle}
@@ -273,7 +288,7 @@ export function ScrubNumber({ label, value, onChange, onScrubChange, step = 1, m
             current.started = true
             scrubChangeRef.current?.(true)
           }
-          onChange(formatted(clamp(current.value + delta * step), current.unit))
+          onChange(formatNumeric(clamp(current.value + delta * step), current.unit))
         }}
         onPointerUp={() => { finishDrag(false) }}
         onPointerCancel={() => { finishDrag(true) }}
@@ -305,31 +320,35 @@ export function ScrubNumber({ label, value, onChange, onScrubChange, step = 1, m
           increment((event.key === 'ArrowUp' ? step : -step) * factor)
         }}
       />
+      {hasOptions && (
+        <span className={css.numberPreset}>
+          <Menu
+            open={presetOpen}
+            compact
+            portal
+            align="end"
+            items={presetItems}
+            selectedId={options.includes(value) ? value : undefined}
+            onSelect={(next) => { onChange(next); closePresets() }}
+            onClose={closePresets}
+            anchor={(
+              <button
+                ref={presetRef}
+                type="button"
+                className={css.numberPresetTrigger}
+                aria-label={`${label} · ${presetLabel ?? ''}`.trim()}
+                aria-haspopup="menu"
+                aria-expanded={presetOpen}
+                onClick={() => { setPresetOpen(open => !open) }}
+              >
+                <IconChevronDownOutline14 className={clsx(css.numberPresetChevron, presetOpen && css.numberPresetChevronOpen)} />
+              </button>
+            )}
+          />
+        </span>
+      )}
     </span>
   )
-}
-
-interface Rgba { r: number; g: number; b: number; a: number }
-
-export function parseColor(value: string): Rgba | null {
-  const hex = /^#([\da-f]{6})([\da-f]{2})?$/iu.exec(value.trim())
-  if (hex?.[1] !== undefined) {
-    return { r: parseInt(hex[1].slice(0, 2), 16), g: parseInt(hex[1].slice(2, 4), 16), b: parseInt(hex[1].slice(4, 6), 16), a: hex[2] === undefined ? 1 : parseInt(hex[2], 16) / 255 }
-  }
-  const rgb = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*[,/]\s*(\d*\.?\d+)(%)?)?\s*\)$/iu.exec(value.trim())
-  if (rgb === null) return null
-  const [r, g, b] = [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])]
-  const a = rgb[4] === undefined ? 1 : Number(rgb[4]) / (rgb[5] === '%' ? 100 : 1)
-  if ([r, g, b, a].some(part => !Number.isFinite(part)) || r > 255 || g > 255 || b > 255 || a > 1) return null
-  return { r, g, b, a }
-}
-
-function hexOf(color: Rgba): string {
-  return `#${[color.r, color.g, color.b].map(part => Math.max(0, Math.min(255, part)).toString(16).padStart(2, '0')).join('')}`
-}
-
-function cssColor(color: Rgba): string {
-  return color.a >= 0.999 ? hexOf(color) : `rgba(${color.r}, ${color.g}, ${color.b}, ${Math.round(color.a * 1000) / 1000})`
 }
 
 export function ColorControl({ label, value, onChange, onScrubChange }: { label: string; value: string; onChange: (value: string) => void; onScrubChange?: ((active: boolean) => void) | undefined }) {
@@ -431,12 +450,14 @@ export function updateBoxModelLinks(links: BoxModelLinks, axis: keyof BoxModelLi
   return { ...links, [axis]: linked, all: false }
 }
 
-export function BoxModelControl({ label, sideLabels, values, links, min, linkLabel, unlinkLabel, linkAllLabel, unlinkAllLabel, onLinkChange, onChange, onScrubChange }: {
+export function BoxModelControl({ label, sideLabels, values, links, min, options = [], presetLabel, linkLabel, unlinkLabel, linkAllLabel, unlinkAllLabel, onLinkChange, onChange, onScrubChange }: {
   label: string
   sideLabels: readonly [string, string, string, string]
   values: readonly [string, string, string, string]
   links: BoxModelLinks
   min?: number
+  options?: readonly string[]
+  presetLabel?: string
   linkLabel: string
   unlinkLabel: string
   linkAllLabel: string
@@ -462,6 +483,8 @@ export function BoxModelControl({ label, sideLabels, values, links, min, linkLab
     value={values[index] ?? ''}
     glyph={glyphs[index] ?? '↔'}
     {...(min === undefined ? {} : { min })}
+    options={options}
+    {...(presetLabel === undefined ? {} : { presetLabel })}
     onScrubChange={onScrubChange}
     onChange={next => { update(index, next) }}
   />

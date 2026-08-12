@@ -36,7 +36,50 @@ export const ANNOTATION_LIMITS = {
   styleValue: 500,
   textValue: 2_000,
   viewportDimension: 100_000,
+  snapshotId: 64,
 } as const
+
+declare const annotationSnapshotIdBrand: unique symbol
+
+/** Opaque identity assigned by the node face to one acknowledged full snapshot. */
+export type AnnotationSnapshotId = string & { readonly [annotationSnapshotIdBrand]: true }
+
+/** Narrow a node-generated value to the cross-face snapshot identity. */
+export function AnnotationSnapshotId(value: string): AnnotationSnapshotId {
+  return value as AnnotationSnapshotId
+}
+
+/** Browser-visible acknowledgement returned only after node pending state is durable. */
+export type AnnotationSyncReceipt =
+  | { kind: 'ready'; snapshotId: AnnotationSnapshotId }
+  | { kind: 'empty' }
+
+/** Strictly decode the node acknowledgement at the browser trust boundary. */
+export function annotationSyncReceiptOf(value: unknown): AnnotationSyncReceipt | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
+  const record = value as Record<string, unknown>
+  const keys = Object.keys(record)
+  if (record.kind === 'empty') return keys.length === 1 && keys[0] === 'kind' ? { kind: 'empty' } : undefined
+  if (
+    record.kind !== 'ready' || keys.length !== 2 || !keys.includes('kind') || !keys.includes('snapshotId')
+    || typeof record.snapshotId !== 'string' || record.snapshotId.length < 1
+    || record.snapshotId.length > ANNOTATION_LIMITS.snapshotId
+  ) return undefined
+  return { kind: 'ready', snapshotId: AnnotationSnapshotId(record.snapshotId) }
+}
+
+/** Read this plugin's durable snapshot identity from an opaque message source. */
+export function annotationSnapshotIdOfSource(source: unknown): AnnotationSnapshotId | undefined {
+  if (typeof source !== 'object' || source === null || Array.isArray(source)) return undefined
+  const record = source as Record<string, unknown>
+  const snapshotId = record.snapshotId
+  if (
+    record.kind !== 'plugin' || record.plugin !== 'dsh-web-review'
+    || typeof snapshotId !== 'string' || snapshotId.length < 1
+    || snapshotId.length > ANNOTATION_LIMITS.snapshotId
+  ) return undefined
+  return AnnotationSnapshotId(snapshotId)
+}
 
 export interface AnnotationStyleChange {
   property: import('./annotation-properties.ts').EditableStyleProperty

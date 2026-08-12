@@ -7,11 +7,6 @@ const NON_REVIEWABLE_TAGS = new Set([
 /** Hierarchy movement supported by the selector toolbar and keyboard. */
 export type ElementNavigationAction = 'child' | 'parent' | 'previous-sibling' | 'next-sibling'
 
-/** Realm-safe identity for elements reached through same-origin iframe wrappers. */
-export function sameElement(left: Element, right: Element): boolean {
-  return left === right || left.isSameNode(right)
-}
-
 /** True when an element belongs in the reviewable page hierarchy. */
 export function isReviewableElement(element: Element): boolean {
   if (NON_REVIEWABLE_TAGS.has(element.tagName)) return false
@@ -65,6 +60,67 @@ export function reviewableAncestors(element: Element): Element[] {
     current = reviewableParent(current)
   }
   return result.reverse()
+}
+
+/** One DOM-only hierarchy node before bridge handles and labels are added. */
+export interface BoundedReviewableTreeNode {
+  element: Element
+  children: BoundedReviewableTreeNode[]
+}
+
+/**
+ * Serialize a bounded reviewable hierarchy while reserving enough budget for
+ * the selected element's ancestor path. Large earlier subtrees can therefore
+ * never crowd the current target out of the bridge response.
+ */
+export function boundedReviewableTree(
+  current: Element,
+  maxNodes: number,
+  maxDepth: number,
+): BoundedReviewableTreeNode {
+  const nodeLimit = Math.max(1, Math.floor(maxNodes))
+  const depthLimit = Math.max(0, Math.floor(maxDepth))
+  const ancestors = reviewableAncestors(current)
+  const path = ancestors.slice(-Math.min(nodeLimit, depthLimit + 1))
+  const pathIndex = new Map(path.map((element, index) => [element, index]))
+  let remaining = nodeLimit
+
+  const visitOptional = (
+    element: Element,
+    reserve: number,
+    depth: number,
+  ): BoundedReviewableTreeNode => {
+    remaining -= 1
+    const children: BoundedReviewableTreeNode[] = []
+    if (depth < depthLimit) {
+      for (const child of reviewableChildren(element)) {
+        if (remaining <= reserve) break
+        children.push(visitOptional(child, reserve, depth + 1))
+      }
+    }
+    return { element, children }
+  }
+  const visitPath = (element: Element, depth: number): BoundedReviewableTreeNode => {
+    remaining -= 1
+    const index = pathIndex.get(element) ?? path.length - 1
+    const pathChild = path[index + 1]
+    const mandatoryRemaining = path.length - index - 1
+    const children: BoundedReviewableTreeNode[] = []
+    let passedPathChild = false
+    if (depth < depthLimit) {
+      for (const child of reviewableChildren(element)) {
+        if (child === pathChild) {
+          children.push(visitPath(child, depth + 1))
+          passedPathChild = true
+          continue
+        }
+        const reserve = passedPathChild ? 0 : mandatoryRemaining
+        if (remaining > reserve) children.push(visitOptional(child, reserve, depth + 1))
+      }
+    }
+    return { element, children }
+  }
+  return visitPath(path[0] ?? current, 0)
 }
 
 /** Locale-neutral data used to render one compact tree-row detail. */
