@@ -10,9 +10,8 @@
  *   pnpm dev                 — full dev loop (web + watch)
  *   pnpm dev -- --setup-only — harness prep only (install + build)
  *   pnpm dev -- --no-watch   — web only, no bundle watch
- * Env: DSH_HARNESS (explicit checkout override), DSH_WEB_PORT (default 3090),
- *      DSH_WEB_HOST (default 127.0.0.1). Without an override, the linked
- *      runtime package identifies the harness checkout.
+ * Env: DSH_HARNESS (required absolute checkout), DSH_WEB_PORT (default 3090),
+ *      DSH_WEB_HOST (default 127.0.0.1).
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -20,12 +19,11 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { harnessWebLaunch } from './harness-cli.ts'
-import { materializeHarnessLinks } from './harness-links.ts'
 import { resolveHarnessRoot } from './harness-path.ts'
 import { materializeProfilePluginLink } from './profile-plugin-link.ts'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
-const harness = resolveHarnessRoot(root)
+const harness = resolveHarnessRoot()
 const port = process.env.DSH_WEB_PORT ?? '3090'
 const host = process.env.DSH_WEB_HOST ?? '127.0.0.1'
 const setupOnly = process.argv.includes('--setup-only')
@@ -79,8 +77,6 @@ if (!harnessReady()) {
   mkdirSync(dirname(buildStampPath), { recursive: true })
   writeFileSync(buildStampPath, `${JSON.stringify({ harness, head }, null, 2)}\n`)
 }
-const links = materializeHarnessLinks(root, harness)
-console.log(`dev: Harness links ready (${links.verified} verified, ${links.changed} updated)`)
 if (setupOnly) {
   console.log('dev: harness ready.')
   process.exit(0)

@@ -183,7 +183,7 @@ export async function startServices(): Promise<E2EServices> {
     '',
   ].join('\n'))
 
-  const harness = resolveHarnessRoot(REPO_ROOT)
+  const harness = resolveHarnessRoot()
   const launch = harnessWebLaunch(harness, overlayPath, '127.0.0.1', webPort, {
     ...process.env,
     DSH_HOME: dshHome,

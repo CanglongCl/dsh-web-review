@@ -1,7 +1,7 @@
 /**
  * Quality gate (`pnpm check`): the strict verification surface for this repo.
  * Runs after `pnpm install`; generated/build artifacts may be absent:
- *  1. bootstrap — repair worktree-local Harness links and generate config;
+ *  1. bootstrap — generate deterministic development configuration;
  *  2. typecheck — source/scripts solution plus every unit/component/E2E test;
  *  3. build — tsdown produces the node half plus both client channels;
  *  4. unit suite — vitest, including the real directory-entry load;
@@ -27,6 +27,27 @@ const OFFICIAL = join(DIST, 'package')
 const EXPECTED_PACKAGE_NAME = '@deepseek-ai/dsh-web-review'
 const EXPECTED_REGISTRY = 'https://registry.npmjs.org/'
 const EXPECTED_REPOSITORY = 'git+https://github.com/dsh-external/dsh-web-review.git'
+const LOCKFILE = readFileSync(join(ROOT, 'pnpm-lock.yaml'), 'utf8')
+const EXPECTED_PRIVATE_DEVELOPMENT_VERSIONS: Record<string, string> = {
+  '@deepseek-ai/cordis': '4.0.1-rc.1',
+  '@deepseek-ai/cordis-plugin-include': '1.0.5-rc.1',
+  '@deepseek-ai/cordis-plugin-loader': '1.0.1-rc.1',
+  '@deepseek-ai/dsh-agent': '0.0.1-rc.1',
+  '@deepseek-ai/dsh-client-locale': '0.0.1-rc.1',
+  '@deepseek-ai/dsh-client-runtime': '0.0.1-rc.1',
+  '@deepseek-ai/dsh-client-ui-command': '0.0.1-rc.1',
+  '@deepseek-ai/dsh-client-ui-conversation': '0.0.1-rc.1',
+  '@deepseek-ai/dsh-client-ui-layout': '0.0.1-rc.1',
+  '@deepseek-ai/dsh-client-ui-primitives': '0.0.1-rc.1',
+  '@deepseek-ai/dsh-client-ui-settings-general': '0.0.1-rc.1',
+  '@deepseek-ai/dsh-client-ui-slots': '0.0.1-rc.1',
+  '@deepseek-ai/dsh-host-webserver': '0.0.1-rc.1',
+  '@deepseek-ai/dsh-llm': '0.0.1-rc.1',
+  '@deepseek-ai/dsh-session': '0.0.1-rc.1',
+  '@deepseek-ai/dsh-skill': '0.0.1-rc.1',
+  '@deepseek-ai/dsh-system-prompt': '0.0.1-rc.1',
+  '@deepseek-ai/schemastery': '3.18.1-rc.1',
+}
 const runE2e = process.argv.includes('--e2e')
 const fast = process.argv.includes('--fast')
 
@@ -90,11 +111,7 @@ function tarballName(name: string, version: string): string {
 }
 
 // Bootstrap is deliberately part of the gate: a clean git worktree carries
-// neither generated launch config nor built bundles, and pnpm's
-// checkout-relative link targets need rematerializing in secondary worktrees.
-run('Harness dependency links', process.execPath, [
-  '--import', 'tsx', join(ROOT, 'scripts/link-harness-deps.ts'),
-])
+// neither generated launch config nor built bundles.
 run('gen-config initial generation', process.execPath, [
   '--import', 'tsx', join(ROOT, 'scripts/gen-config.ts'),
 ])
@@ -190,15 +207,22 @@ assert(
   'source package uses the 0811 scoped Cordis runtime',
   () => {
     const dependencies = packageManifest.devDependencies ?? {}
-    return dependencies['@deepseek-ai/cordis']?.endsWith('/vendor/cordis') === true
-      && dependencies['@deepseek-ai/cordis-plugin-loader']?.endsWith('/vendor/loader') === true
-      && dependencies['@deepseek-ai/cordis-plugin-include']?.endsWith('/vendor/include') === true
+    const privateDependencies = Object.entries(dependencies)
+      .filter(([name]) => name.startsWith('@deepseek-ai/'))
+    return privateDependencies.length === Object.keys(EXPECTED_PRIVATE_DEVELOPMENT_VERSIONS).length
+      && privateDependencies.every(([name, specifier]) =>
+        EXPECTED_PRIVATE_DEVELOPMENT_VERSIONS[name] === specifier)
       && dependencies.cordis === undefined
       && dependencies['@cordisjs/plugin-loader'] === undefined
       && dependencies['@cordisjs/plugin-include'] === undefined
       && readFileSync(join(PKG, 'tsdown.config.ts'), 'utf8').includes("'@deepseek-ai/cordis'")
   },
-  () => 'package links and browser platform externals must use the 0811 @deepseek-ai Cordis package names',
+  () => 'private npm dependencies and browser platform externals must use the exact pinned 0811 @deepseek-ai package line',
+)
+assert(
+  'lockfile is registry-backed and machine-independent',
+  () => !LOCKFILE.includes('link:') && !LOCKFILE.includes('/Users/') && !LOCKFILE.includes('C:\\Users\\'),
+  () => 'pnpm-lock.yaml must not contain link: dependencies or machine-local user paths',
 )
 assert(
   'launchers use the 0811 app-owned CLI',

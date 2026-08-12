@@ -19,7 +19,7 @@ import { ensureAcceptanceHistory } from './acceptance-history.ts'
 import { materializeProfilePluginLink } from './profile-plugin-link.ts'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
-const harness = resolveHarnessRoot(root)
+const harness = resolveHarnessRoot()
 const stateRoot = join(root, '.artifacts', 'acceptance')
 const dshHome = join(stateRoot, 'dsh-home')
 const overlayPath = join(stateRoot, 'acceptance.cordis.yml')

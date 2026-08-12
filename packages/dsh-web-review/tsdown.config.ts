@@ -137,10 +137,11 @@ export default [
     dts: false,
     clean: false,
     deps: {
-      // The Loader artifact intentionally inlines its small DSH helpers and
-      // parser graph; the post-build gate rejects any surviving bare import.
-      alwaysBundle: ['parse5', 'entities'],
-      onlyBundle: ['parse5', 'entities'],
+      // The Loader artifact is intentionally self-contained. Registry-backed
+      // DSH helpers and their dependency graph are all inlined; the post-build
+      // gate rejects any surviving bare import.
+      alwaysBundle: () => true,
+      onlyBundle: false,
     },
   },
   {

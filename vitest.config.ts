@@ -1,26 +1,21 @@
 import { defineConfig } from 'vitest/config'
 import { fileURLToPath } from 'node:url'
-import { resolveHarnessRoot } from './scripts/harness-path.ts'
 
 const ROOT = fileURLToPath(new URL('.', import.meta.url))
-const HARNESS = resolveHarnessRoot(ROOT)
 
 /**
  * Test config: node env by default; component specs opt into jsdom via a
  * `// @vitest-environment jsdom` pragma (upstream convention). Value imports
- * of the platform packages resolve against the harness SOURCE tree (the
- * built lib/client.js artifacts are browser bundles and cannot be imported
- * from node); type-only imports resolve through the node_modules symlinks.
+ * The runtime client entry is a browser module-loader artifact, so unit tests
+ * use a small contract-faithful store engine. Other value imports resolve from
+ * the pinned private npm packages through Vite.
  */
 export default defineConfig({
   resolve: {
     dedupe: ['react', 'react-dom'],
     alias: {
-      '@deepseek-ai/dsh-client-runtime/client': `${HARNESS}/packages/client/runtime/src/client/index.ts`,
-      '@deepseek-ai/dsh-client-locale/client': `${HARNESS}/packages/client/locale/src/client/index.ts`,
-      '@deepseek-ai/dsh-client-ui-slots': `${HARNESS}/packages/client/ui-slots/src/index.ts`,
-      '@deepseek-ai/dsh-client-ui-conversation/client': `${HARNESS}/packages/client/ui-conversation/src/client/index.ts`,
-      '@deepseek-ai/dsh-client-ui-primitives': `${HARNESS}/packages/client/ui-primitives/src/index.ts`,
+      '@deepseek-ai/dsh-client-runtime/client': `${ROOT}packages/dsh-web-review/tests/support/runtime-client.ts`,
+      '@deepseek-ai/dsh-client-ui-primitives': `${ROOT}packages/dsh-web-review/tests/support/ui-primitives.tsx`,
     },
   },
   test: {

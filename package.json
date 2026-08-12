@@ -7,7 +7,6 @@
   "description": "dsh-web-review plugin repo: webui right-side page preview + element annotation + AI-driven source edits",
   "scripts": {
     "gen-config": "tsx scripts/gen-config.ts",
-    "setup:links": "tsx scripts/link-harness-deps.ts",
     "setup:harness": "tsx scripts/dev.ts --setup-only",
     "build": "pnpm gen-config && pnpm --filter ./packages/dsh-web-review build",
     "package:official": "pnpm build && tsx scripts/package-official.ts",

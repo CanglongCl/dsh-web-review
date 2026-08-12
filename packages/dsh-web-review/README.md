@@ -198,6 +198,6 @@ capsule visible for retry.
 
 ```bash
 pnpm check          # typecheck, unit/composition tests, config contracts, build
-pnpm test:e2e       # real GUI/isolated Origin/bridge/context ordering acceptance
-pnpm check --e2e    # both ladders
+DSH_HARNESS=/absolute/path/deepseek-harness pnpm test:e2e
+DSH_HARNESS=/absolute/path/deepseek-harness pnpm check --e2e
 ```

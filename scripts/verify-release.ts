@@ -64,15 +64,22 @@ for (const required of [
   'environment: npm-publish',
   'id-token: write',
   'secrets.NPM_READ_TOKEN',
-  'secrets.HARNESS_REPO_TOKEN',
-  'HARNESS_REPOSITORY: ${{ vars.HARNESS_REPOSITORY }}',
   'secrets.NPM_BOOTSTRAP_TOKEN',
   'vars.NPM_PUBLISH_MODE',
-  'HARNESS_COMMIT: c0c02980f5fae2ade5a551bc4875765ed6cecda2',
   "NPM_VERSION: '11.19.0'",
-  'node scripts/relocate-harness-declarations.ts',
+  'run: pnpm check',
 ]) {
   if (!workflow.includes(required)) fail(`release workflow is missing ${required}`)
+}
+
+for (const forbidden of [
+  'HARNESS_REPOSITORY',
+  'HARNESS_REPO_TOKEN',
+  'DSH_HARNESS',
+  'relocate-harness-declarations',
+  'pnpm check --e2e',
+]) {
+  if (workflow.includes(forbidden)) fail(`release workflow must not contain ${forbidden}`)
 }
 if (workflow.includes('pull_request_target')) fail('release workflow must never use pull_request_target')
 if (workflow.includes('secrets.NPM_TOKEN')) fail('release workflow must use distinct read/bootstrap token names')
