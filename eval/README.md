@@ -39,7 +39,7 @@ DSH_HARNESS=<abs harness root> pnpm eval:run [-- --task landing-01 --concurrency
 pnpm eval:report
 ```
 
-Model defaults: `deepseek` / `deepseek-v4-flash` / reasoning `high`;
+Model defaults: `deepseek-official` / `deepseek-v4-flash` / reasoning `high`;
 override with `EVAL_PROVIDER`, `EVAL_MODEL`, `EVAL_REASONING` or the
 `--provider/--model/--reasoning` flags. Credentials resolve through the
 product chain (environment → repo `.env` → `~/.dsh/.env` → staged

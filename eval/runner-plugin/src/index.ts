@@ -21,10 +21,10 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import type { ModelSelectionRef } from '@deepseek-ai/dsh-agent'
+import type { ModelSelectionRef, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent'
-import { createUserMessage } from '@deepseek-ai/dsh-llm/message'
+import { createUserMessage, type UserMessage } from '@deepseek-ai/dsh-llm/message'
 import type { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { renderSkillContent, type SkillDefinition } from '@deepseek-ai/dsh-skill'
 import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session/types'
@@ -148,39 +148,51 @@ async function run(ctx: Context, config: Config, io: RunnerIo): Promise<void> {
   const contextText = formatAnnotationContext(snapshot)
 
   const current: ModelSelectionRef['current'] = {
-    provider: config.provider ?? 'deepseek',
+    provider: config.provider ?? 'deepseek-official',
     model: config.model ?? 'deepseek-v4-flash',
     ...(config.reasoningEffort === undefined
       ? {}
       : { reasoningEffort: config.reasoningEffort as ReasoningEffortId }),
   }
   const selection: ModelSelectionRef = { current, assembled: undefined }
+  // Skill injections first, then the Browser comments context — the exact
+  // order the real web pre-step appends them after the claimed user message.
+  const injections: UserMessage[] = []
+  for (const skillName of snapshot.selectedSkills) {
+    if (!isUiSkillName(skillName)) {
+      fail(io, `task ${payload.taskId}: unknown selected skill "${skillName}"`)
+      return
+    }
+    injections.push(createUserMessage({
+      source: { kind: 'skill-invocation', name: skillName, form: 'instructions' },
+      content: [{ type: 'text', text: renderSkillContent(loadSkill(skillName, config.skillRoot)) }],
+    }))
+  }
+  injections.push(createUserMessage({
+    source: { kind: 'plugin', plugin: 'dsh-web-review', snapshotId: randomUUID() },
+    content: [{ type: 'text', text: contextText }],
+  }))
   const { agent } = await agents.create({
     sessionId: SessionId(`session-${randomUUID()}`),
     meta: { cwd: process.cwd() },
     agentOptions: { provider: current.provider, model: current.model },
     setup: (agentCtx) => {
       installModelSelection(agentCtx, selection)
+      // The same mechanism as the plugin's node half: append the context
+      // messages to the enter decision of the pre-step waterfall, after the
+      // claimed ordinary message (the task instruction). Like the real flow
+      // (pending snapshot consumed by admission), the injections enter once.
+      let appended = false
+      agentCtx.on('agent/pre-step', async (_payload, next) => {
+        const decision: PreStepDecision = await next()
+        if (decision.kind !== 'enter' || appended) return decision
+        appended = true
+        return { kind: 'enter', messages: [...decision.messages, ...injections] }
+      })
     },
   })
   await agent.whenIdle()
 
-  // Skill injections first, then the Browser comments context — the exact
-  // order the real web pre-step appends them after the claimed user message.
-  for (const skillName of snapshot.selectedSkills) {
-    if (!isUiSkillName(skillName)) {
-      fail(io, `task ${payload.taskId}: unknown selected skill "${skillName}"`)
-      return
-    }
-    agent.inject(createUserMessage({
-      source: { kind: 'skill-invocation', name: skillName, form: 'instructions' },
-      content: [{ type: 'text', text: renderSkillContent(loadSkill(skillName, config.skillRoot)) }],
-    }))
-  }
-  agent.inject(createUserMessage({
-    source: { kind: 'plugin', plugin: 'dsh-web-review', snapshotId: randomUUID() },
-    content: [{ type: 'text', text: contextText }],
-  }))
   // The instruction is the ordinary claimed message of this one turn.
   const firstSeq = agent.session.seq
   agent.followup(createUserMessage({

@@ -35,7 +35,7 @@ function parseFlags(argv: string[]): Flags {
   const flags: Flags = {
     taskIds: [],
     concurrency: 4,
-    provider: process.env.EVAL_PROVIDER ?? 'deepseek',
+    provider: process.env.EVAL_PROVIDER ?? 'deepseek-official',
     model: process.env.EVAL_MODEL ?? 'deepseek-v4-flash',
     ...(process.env.EVAL_REASONING === undefined ? {} : { reasoningEffort: process.env.EVAL_REASONING }),
     timeoutMs: 300_000,

@@ -44,6 +44,8 @@ export function analyzeSession(sessionPath: string, tracePath: string): ProcessS
   const toolCalls: Record<string, number> = {}
   const filesRead = new Set<string>()
   const perStepTokens: ProcessStats['perStepTokens'] = []
+  const stepChunkUsage = new Map<number, { input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number }>()
+  const stepMessageUsage = new Set<number>()
   let turns = 0
   let steps = 0
   let errorResults = 0
@@ -79,6 +81,20 @@ export function analyzeSession(sessionPath: string, tracePath: string): ProcessS
     }
     const data = event.data ?? {}
     switch (event.type) {
+      case 'assistant/chunk': {
+        const chunk = (data as { chunk?: { type?: string; usage?: { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number; reasoningTokens?: number } } }).chunk
+        if (chunk?.type === 'usage' && chunk.usage !== undefined) {
+          const step = Number(data.step ?? currentStep)
+          const current = stepChunkUsage.get(step) ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 }
+          current.input += chunk.usage.inputTokens ?? 0
+          current.output += chunk.usage.outputTokens ?? 0
+          current.cacheRead += chunk.usage.cacheReadTokens ?? 0
+          current.cacheWrite += chunk.usage.cacheWriteTokens ?? 0
+          current.reasoning += chunk.usage.reasoningTokens ?? 0
+          stepChunkUsage.set(step, current)
+        }
+        break
+      }
       case 'turn/start': {
         turns += 1
         currentTurn = Number(data.turn ?? turns)
@@ -114,6 +130,7 @@ export function analyzeSession(sessionPath: string, tracePath: string): ProcessS
         const message = data.message as { content?: unknown } | undefined
         const usage = stepUsageShape(data.usage)
         if (usage !== undefined) {
+          stepMessageUsage.add(currentStep)
           tokens.stepsWithUsage += 1
           tokens.input += usage.input
           tokens.output += usage.output
@@ -175,6 +192,21 @@ export function analyzeSession(sessionPath: string, tracePath: string): ProcessS
       }
       default:
         break
+    }
+  }
+
+  // Older session logs report usage as terminal `usage` chunks instead of
+  // the assistant/message field: fold them into the same ledger.
+  for (const [step, usage] of stepChunkUsage) {
+    if (!stepMessageUsage.has(step)) {
+      tokens.stepsWithUsage += 1
+      tokens.input += usage.input
+      tokens.output += usage.output
+      tokens.cacheRead += usage.cacheRead
+      tokens.cacheWrite += usage.cacheWrite
+      tokens.reasoning += usage.reasoning
+      perStepTokens.push({ step, ...usage })
+      perStepTokens.sort((a, b) => a.step - b.step)
     }
   }
 

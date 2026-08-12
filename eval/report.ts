@@ -40,9 +40,13 @@ function main(): void {
     console.error(`no results at ${resultsFile}; run pnpm eval:run first`)
     process.exit(2)
   }
-  const records = readFileSync(resultsFile, 'utf8').split('\n')
+  // Keep only the latest record per task (repeat runs accumulate).
+  const parsed = readFileSync(resultsFile, 'utf8').split('\n')
     .filter(line => line.trim() !== '')
     .map(line => JSON.parse(line) as RunRecord)
+  const latestByTask = new Map<string, RunRecord>()
+  for (const record of parsed) latestByTask.set(record.taskId, record)
+  const records = [...latestByTask.values()].sort((a, b) => a.taskId.localeCompare(b.taskId))
   const details = records.map(record => runDetails(record))
   const summaryFile = join(RESULTS_PATH, 'run-summary.json')
   const summary = existsSync(summaryFile)

@@ -172,9 +172,6 @@ export function writeOverlay(
     `    root: ${join(runDir, 'sessions')}`,
     '    packChunks: false',
     '    compression: none',
-    '- id: approval',
-    '  config:',
-    '    policy: never',
     '- id: telemetry-otel',
     '  disabled: true',
     '',
@@ -201,11 +198,16 @@ export async function launchHeadless(
 ): Promise<LaunchResult> {
   const bin = resolveHarnessCli(options.harnessRoot)
   resolveCredentials(dshHome)
+  // Headless has no UI to answer approval prompts; the harness-sanctioned
+  // (sandbox: danger-full-access, approval: never) preset keeps the composed
+  // knobs valid and the run interactive-free. The workspace is a disposable
+  // copy staged per task.
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     DSH_HOME: dshHome,
     DSH_TOOLS_MODE: 'native',
     DSH_TELEMETRY_DISABLED: '1',
+    DSH_PERMISSION_MODE: 'danger-full-access',
   }
   const child = spawn(process.execPath, [
     bin,
