@@ -1,4 +1,4 @@
-/** Materialize the 0811 source-checkout package under its development alias. */
+/** Materialize the 0812 source-checkout package under its development alias. */
 import {
   existsSync,
   lstatSync,

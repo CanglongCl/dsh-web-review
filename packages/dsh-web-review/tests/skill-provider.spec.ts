@@ -1,5 +1,5 @@
 import { Context } from '@deepseek-ai/cordis'
-import SkillService from '@deepseek-ai/dsh-skill'
+import SkillRegistry from '@deepseek-ai/dsh-skill'
 import { describe, expect, it } from 'vitest'
 import { registerUiSkillProvider, skillBody } from '../src/skill-provider.ts'
 import { DEFAULT_AUTO_LOAD_SKILLS, UI_SKILL_NAMES } from '../src/ui-skills.ts'
@@ -7,7 +7,7 @@ import { DEFAULT_AUTO_LOAD_SKILLS, UI_SKILL_NAMES } from '../src/ui-skills.ts'
 describe('bundled UI optimization Skill provider', () => {
   it('publishes all eight as user-invocable and only the Cordis selection as model-visible', async () => {
     const ctx = new Context()
-    await ctx.plugin(SkillService)
+    await ctx.plugin(SkillRegistry)
     registerUiSkillProvider(ctx, { autoLoadSkills: [...DEFAULT_AUTO_LOAD_SKILLS] })
 
     const candidates = await ctx.skills.list()
@@ -25,7 +25,7 @@ describe('bundled UI optimization Skill provider', () => {
 
   it('honors a dynamically supplied selection and rejects duplicates', async () => {
     const ctx = new Context()
-    await ctx.plugin(SkillService)
+    await ctx.plugin(SkillRegistry)
     registerUiSkillProvider(ctx, { autoLoadSkills: ['better-colors'] })
     expect((await ctx.skills.list()).filter(candidate => candidate.invocation.modelInvocable).map(candidate => candidate.name))
       .toEqual(['better-colors'])

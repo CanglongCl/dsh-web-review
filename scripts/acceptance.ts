@@ -135,6 +135,8 @@ writeFileSync(overlayPath, [
   '- insert:',
   "    - id: directory-picker-browse",
   "      name: '@deepseek-ai/dsh-host-directory-picker-browse'",
+  "    - id: ui-directory-picker-browse",
+  "      name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'",
   '- id: telemetry-otel',
   '  disabled: true',
   '- id: llm-deepseek',

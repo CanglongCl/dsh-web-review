@@ -10,8 +10,9 @@ import { createUserMessage, type UserMessage } from '@deepseek-ai/dsh-llm/messag
 import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session/types'
 import {
   renderSkillContent,
+  type SkillDefinition,
   type SkillInvocationSource,
-  type SkillService,
+  type SkillViewOptions,
 } from '@deepseek-ai/dsh-skill'
 import {
   ANNOTATION_LIMITS,
@@ -49,6 +50,11 @@ export type AnnotationCommitResult =
   | { kind: 'cleared' | 'initial-empty' | 'agent-not-found' | 'context-too-large' }
 
 type UnknownRecord = Record<string, unknown>
+
+/** Minimal registry read face shared by the published and 0812 Harness Skill implementations. */
+interface SkillLookup {
+  get(name: string, options: SkillViewOptions): Promise<SkillDefinition | undefined>
+}
 
 function recordOf(value: unknown): UnknownRecord | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -410,7 +416,7 @@ export function formatLoadedSkillReminder(names: readonly UiSkillName[]): string
 export async function attachPendingAnnotationContext(
   state: AnnotationCommitState,
   agent: Pick<Agent, 'id' | 'session'>,
-  skills: Pick<SkillService, 'get'>,
+  skills: SkillLookup,
   signal: AbortSignal,
   claimedMessages: readonly UserMessage[],
   next: () => Promise<PreStepDecision>,

@@ -117,7 +117,7 @@ problems were instead at boundaries:
 
 ## Verification evidence
 
-- With `DSH_HARNESS` pinned to the reviewed 0811 checkout, `pnpm check --e2e`
+- With `DSH_HARNESS` pinned to the reviewed 0812 checkout, `pnpm check --e2e`
   passed the strict source/test typechecks, all 198 Vitest tests,
   deterministic config generation, both bundles, real directory loading, real Loader
   composition, self-contained node/bridge artifacts, the official package

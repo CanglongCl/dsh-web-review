@@ -15,7 +15,7 @@ export function resolveHarnessRoot(): string {
 }
 
 /**
- * Resolve the built 0811 app-owned CLI entry.
+ * Resolve the built 0812 app-owned CLI entry.
  * @param harnessRoot - Resolved DeepSeek Harness checkout.
  * @returns absolute path to `apps/cli/lib/bin.js`.
  */
