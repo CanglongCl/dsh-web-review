@@ -1,0 +1,12 @@
+diff --git a/src/App.vue b/src/App.vue
+index a7ffcec..c9a7160 100644
+--- a/src/App.vue
++++ b/src/App.vue
+@@ -1,6 +1,6 @@
+ <template>
+   <div class="page">
+-    <h1 class="title">My Blog</h1>
++    <h1 class="title">Daily Notes</h1>
+     <p class="subtitle">前端开发笔记</p>
+     <ul class="posts">
+       <li>第一篇：搭建本地评测</li>

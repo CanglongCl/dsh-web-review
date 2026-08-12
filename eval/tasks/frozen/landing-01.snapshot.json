@@ -1,0 +1,37 @@
+{
+  "sessionId": "session-843e7bd4-704c-4738-a649-485828552341",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:64325/",
+    "title": "魔法 UI 演示页"
+  },
+  "comments": [
+    {
+      "id": "1533a54e-e13c-488c-ab9c-dbdc90c84bee",
+      "comment": "把首页主按钮的背景颜色改深一点，改成 #224466",
+      "tagName": "button",
+      "role": "button",
+      "label": "提交",
+      "cssPath": ".btn-primary",
+      "fullPath": "html > body > main.cards > div.card > button.btn-primary",
+      "stableClasses": [
+        "btn-primary"
+      ],
+      "textContent": "提交",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [
+        {
+          "property": "background-color",
+          "before": "rgba(65, 118, 230, 0.1)",
+          "after": "#224466"
+        }
+      ],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 760
+      }
+    }
+  ]
+}

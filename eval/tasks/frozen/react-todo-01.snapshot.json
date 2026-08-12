@@ -1,0 +1,36 @@
+{
+  "sessionId": "session-68cc374e-f1e5-49c0-86b8-359c7a967f6c",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:63740/",
+    "title": "待办清单"
+  },
+  "comments": [
+    {
+      "id": "babc69f5-9237-433f-ae15-f22d44c08cac",
+      "comment": "让侧边栏列表项在鼠标悬停时背景高亮为 #eef2ff",
+      "tagName": "li",
+      "role": "",
+      "label": "收件箱",
+      "cssPath": "li:nth-of-type(1).nav-item",
+      "fullPath": "html > body > div#root > div.layout > nav.sidebar > ul.nav-list > li.nav-item",
+      "stableClasses": [
+        "nav-item"
+      ],
+      "textContent": "收件箱",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App › NavItem",
+        "file": "src/App.tsx",
+        "line": 23
+      },
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 760
+      }
+    }
+  ]
+}

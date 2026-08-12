@@ -20,9 +20,13 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "prepare:hooks": "git config core.hooksPath scripts/git-hooks",
     "prepare": "pnpm prepare:hooks",
-    "typecheck": "tsc -b --force && tsc -p tsconfig.tests.json",
+    "typecheck": "tsc -b --force && tsc -p tsconfig.tests.json && tsc -p eval/runner-plugin/tsconfig.json",
     "check": "tsx scripts/check.ts",
-    "check:e2e": "tsx scripts/check.ts --e2e"
+    "check:e2e": "tsx scripts/check.ts --e2e",
+    "eval:capture": "tsx eval/capture/capture.ts",
+    "eval:smoke": "tsx eval/smoke.ts",
+    "eval:run": "tsx eval/runner/batch.ts",
+    "eval:report": "tsx eval/report.ts"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.0.0",

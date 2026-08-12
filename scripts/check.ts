@@ -144,6 +144,10 @@ run('source + scripts typecheck (tsc -b --force)', process.execPath, [
   join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc'),
   '-b', '--force',
 ])
+run('eval runner typecheck (tsc -p)', process.execPath, [
+  join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc'),
+  '-p', join(ROOT, 'eval', 'runner-plugin', 'tsconfig.json'),
+])
 run('test typecheck (unit + component + E2E)', process.execPath, [
   join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc'),
   '-p', join(ROOT, 'tsconfig.tests.json'),

@@ -1,0 +1,35 @@
+{
+  "sessionId": "session-4c8ff59f-ab74-486b-9aaf-627444c266ca",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:63802/",
+    "title": "博客"
+  },
+  "comments": [
+    {
+      "id": "ec72b83d-e2ea-42c4-ae70-667584871061",
+      "comment": "把博客主标题 My Blog 改成 Daily Notes",
+      "tagName": "h1",
+      "role": "heading",
+      "label": "My Blog",
+      "cssPath": ".title",
+      "fullPath": "html > body > div#app > div.page > h1.title",
+      "stableClasses": [
+        "title"
+      ],
+      "textContent": "My Blog",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "vue",
+        "component": "Unknown",
+        "file": "src/App.vue"
+      },
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 760
+      }
+    }
+  ]
+}
