@@ -4,7 +4,7 @@
   "version": "0.0.4-rc.3",
   "private": true,
   "publishConfig": {
-    "access": "restricted",
+    "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
   "repository": {

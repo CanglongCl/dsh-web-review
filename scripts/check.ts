@@ -188,14 +188,14 @@ const packageManifest = JSON.parse(readFileSync(join(PKG, 'package.json'), 'utf8
   exports?: Record<string, unknown>
 }
 assert(
-  'source package keeps the private publication boundary',
+  'source package keeps the public publication boundary',
   () => packageManifest.name === EXPECTED_PACKAGE_NAME
     && packageManifest.private === true
-    && packageManifest.publishConfig?.access === 'restricted'
+    && packageManifest.publishConfig?.access === 'public'
     && packageManifest.publishConfig.registry === EXPECTED_REGISTRY
     && packageManifest.repository?.type === 'git'
     && packageManifest.repository.url === EXPECTED_REPOSITORY,
-  () => `source manifest must be private ${EXPECTED_PACKAGE_NAME} with the reviewed registry and repository metadata`,
+  () => `source manifest must guard direct workspace publication while staging public ${EXPECTED_PACKAGE_NAME}`,
 )
 assert(
   'source package exposes only runtime entrypoints',
@@ -327,7 +327,7 @@ if (!fast) {
         && manifest.version === repositoryManifest.version
         && manifest.version === packageManifest.version
         && manifest.private === undefined
-        && manifest.publishConfig?.access === 'restricted'
+        && manifest.publishConfig?.access === 'public'
         && manifest.publishConfig.registry === EXPECTED_REGISTRY
         && manifest.repository?.type === 'git'
         && manifest.repository.url === EXPECTED_REPOSITORY
@@ -340,7 +340,7 @@ if (!fast) {
         && existsSync(join(OFFICIAL, manifest.exports['./client']))
         && existsSync(join(OFFICIAL, manifest.dsh.bundle.patch))
     },
-    () => 'staged package.json must be publishable only as a restricted package and declare valid dsh.bundle/dsh.client entries',
+    () => 'staged package.json must publish the public package and declare valid dsh.bundle/dsh.client entries',
   )
   assert(
     'official package text contains no credentials or machine paths',
