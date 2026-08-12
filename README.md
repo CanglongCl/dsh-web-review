@@ -69,19 +69,20 @@
 ### 从私有 npm 安装
 
 这是保密项目，包只发布为 npmjs 上的私有 restricted 包
-`@deepseek-ai/dsh-web-review`，不得公开发布或分发 tarball。仓库内的
+`@canglongcl/dsh-web-review`，不得公开发布或分发 tarball。仓库内的
 `.npmrc` 只固定 registry；认证插值必须放在可信的用户级 `~/.npmrc`：
 
 ```ini
 @deepseek-ai:registry=https://registry.npmjs.org/
+@canglongcl:registry=https://registry.npmjs.org/
 //registry.npmjs.org/:_authToken=${NPM_TOKEN}
 ```
 
-仅在当前 Shell 导出具备读取权限的短期令牌，然后安装候选版本：
+仅在当前 Shell 导出具备读取 `@canglongcl` 私有包权限的短期令牌，然后安装候选版本：
 
 ```sh
 export NPM_TOKEN='你的只读令牌'
-dsh plugin --profile web add @deepseek-ai/dsh-web-review@0.0.4-rc.2
+dsh plugin --profile web add @canglongcl/dsh-web-review@0.0.4-rc.3
 unset NPM_TOKEN
 ```
 
@@ -95,13 +96,13 @@ dsh web
 稳定版发布后可省略版本；更新和卸载仍由 DSH profile 插件命令管理：
 
 ```sh
-dsh plugin --profile web add @deepseek-ai/dsh-web-review
-dsh plugin --profile web remove @deepseek-ai/dsh-web-review
+dsh plugin --profile web add @canglongcl/dsh-web-review
+dsh plugin --profile web remove @canglongcl/dsh-web-review
 ```
 
 ### 从源码生成官方安装包
 
-如果没有现成的 Release 包，可从源码构建同样的 bundle tarball：
+如果没有现成的 Release 包，可使用具备 `@deepseek-ai/*` 私有依赖读取权限的令牌，从源码构建同样的 bundle tarball：
 
 ```sh
 git clone https://github.com/dsh-external/dsh-web-review.git
@@ -112,7 +113,7 @@ pnpm package:official
 unset NPM_TOKEN
 ```
 
-产物位于 `dist/deepseek-ai-dsh-web-review-<版本>.tgz`。其中只包含自包含的 Node bundle、使用稳定包名注册的浏览器 bundle、隔离 frame bridge bundle、随包 Skill、官方 `cordis.patch.yml` 和 README，不包含源码、本机 `node_modules`、认证配置或开发用 profile 链接。该产物属于保密材料，不得上传到公开 Release 或公共文件服务。
+产物位于 `dist/canglongcl-dsh-web-review-<版本>.tgz`。其中只包含自包含的 Node bundle、使用稳定包名注册的浏览器 bundle、隔离 frame bridge bundle、随包 Skill、官方 `cordis.patch.yml` 和 README，不包含源码、本机 `node_modules`、认证配置或开发用 profile 链接。该产物属于保密材料，不得上传到公开 Release 或公共文件服务。
 
 ### 维护者通过 GitHub Actions 发布
 
@@ -123,7 +124,7 @@ unset NPM_TOKEN
 - Secret `NPM_READ_TOKEN`：私有 `@deepseek-ai` 包只读权限。
 - Environment `npm-publish`：required reviewers，且只允许受保护的 `v*` Tag。
 - Variable `NPM_PUBLISH_MODE`：首次设为 `bootstrap`，完成后设为 `trusted`。
-- Secret `NPM_BOOTSTRAP_TOKEN`：只在首次 bootstrap 存在，必须是短期、最小 scope、Read and write 且允许非交互发布的 granular token。
+- Secret `NPM_BOOTSTRAP_TOKEN`：只在首次 bootstrap 存在，必须是 `@canglongcl` scope 的短期、最小权限、Read and write 且允许非交互发布的 granular token。
 
 首次 bootstrap 后，在 npm 包 Settings 中把私有 GitHub 仓库、Workflow 文件名
 `release-npm.yml` 和 Environment `npm-publish` 注册为 Trusted Publisher，并明确允许
@@ -138,8 +139,8 @@ DSH_HARNESS=/绝对路径/deepseek-harness pnpm check --e2e
 候选版本自动发布到私有 `next` dist-tag，稳定版本发布到私有 `latest`：
 
 ```sh
-git tag -a v0.0.4-rc.2 -m "dsh-web-review v0.0.4-rc.2"
-git push origin v0.0.4-rc.2
+git tag -a v0.0.4-rc.3 -m "dsh-web-review v0.0.4-rc.3"
+git push origin v0.0.4-rc.3
 ```
 
 ## 使用方法

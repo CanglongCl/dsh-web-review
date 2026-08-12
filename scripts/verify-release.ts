@@ -19,13 +19,14 @@ const packageManifest = JSON.parse(readFileSync(
   repository?: { type?: unknown; url?: unknown }
 }
 
-const EXPECTED_NAME = '@deepseek-ai/dsh-web-review'
+const EXPECTED_NAME = '@canglongcl/dsh-web-review'
 const EXPECTED_REGISTRY = 'https://registry.npmjs.org/'
 const EXPECTED_REPOSITORY = 'git+https://github.com/dsh-external/dsh-web-review.git'
 const EXPECTED_GITHUB_REPOSITORY = 'dsh-external/dsh-web-review'
 const EXPECTED_PACKAGE_MANAGER = 'pnpm@11.20.0'
 const NPMRC = [
   '@deepseek-ai:registry=https://registry.npmjs.org/',
+  '@canglongcl:registry=https://registry.npmjs.org/',
   '',
 ].join('\n')
 
@@ -68,6 +69,9 @@ for (const required of [
   'vars.NPM_PUBLISH_MODE',
   "NPM_VERSION: '11.19.0'",
   'run: pnpm check',
+  'manifest.name !== "@canglongcl/dsh-web-review"',
+  'npm publish "${{ steps.artifact.outputs.tarball }}"',
+  '--access restricted',
 ]) {
   if (!workflow.includes(required)) fail(`release workflow is missing ${required}`)
 }
@@ -78,6 +82,9 @@ for (const forbidden of [
   'DSH_HARNESS',
   'relocate-harness-declarations',
   'pnpm check --e2e',
+  '@deepseek-ai/dsh-web-review',
+  'steps.registry.outputs',
+  'npm view "$PACKAGE_IDENTITY"',
 ]) {
   if (workflow.includes(forbidden)) fail(`release workflow must not contain ${forbidden}`)
 }

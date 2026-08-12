@@ -143,55 +143,21 @@ jobs:
           PACKAGE_FILE="$package_file" node -e '
             const fs = require("node:fs");
             const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-            if (manifest.name !== "@deepseek-ai/dsh-web-review") throw new Error(`unexpected package ${manifest.name}`);
+            if (manifest.name !== "@canglongcl/dsh-web-review") throw new Error(`unexpected package ${manifest.name}`);
             if (manifest.publishConfig?.access !== "restricted") throw new Error("package is not restricted");
             if (`refs/tags/v${manifest.version}` !== process.env.GITHUB_REF) throw new Error("tag/version mismatch");
             const tag = String(manifest.version).includes("-") ? "next" : "latest";
-            const crypto = require("node:crypto");
             const tarball = `${process.env.GITHUB_WORKSPACE}/release/${process.env.PACKAGE_FILE}`;
-            const integrity = `sha512-${crypto.createHash("sha512").update(fs.readFileSync(tarball)).digest("base64")}`;
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `tarball=${tarball}\ntag=${tag}\nidentity=${manifest.name}@${manifest.version}\nintegrity=${integrity}\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `tarball=${tarball}\ntag=${tag}\n`);
           ' "$RUNNER_TEMP/dsh-web-review-package.json"
-
-      - name: Check npm registry state
-        id: registry
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_READ_TOKEN }}
-          PACKAGE_IDENTITY: ${{ steps.artifact.outputs.identity }}
-          LOCAL_INTEGRITY: ${{ steps.artifact.outputs.integrity }}
-        run: |
-          set -euo pipefail
-          set +e
-          remote=$(npm view "$PACKAGE_IDENTITY" dist.integrity 2>&1)
-          status=$?
-          set -e
-          if test "$status" = 0; then
-            test "$remote" = "$LOCAL_INTEGRITY" || {
-              echo "Registry version exists with different integrity" >&2
-              exit 1
-            }
-            echo 'action=skip' >> "$GITHUB_OUTPUT"
-          elif printf '%s' "$remote" | grep -Eq 'E404|404 Not Found'; then
-            echo 'action=publish' >> "$GITHUB_OUTPUT"
-          else
-            printf '%s\n' "$remote" >&2
-            exit "$status"
-          fi
 
       # No registry credential is present: npm exchanges the GitHub OIDC token
       # under the package's exact Trusted Publisher configuration.
       - name: Publish with npm Trusted Publishing
-        if: steps.registry.outputs.action == 'publish'
         run: >-
           npm publish "${{ steps.artifact.outputs.tarball }}"
           --access restricted
           --tag "${{ steps.artifact.outputs.tag }}"
-
-      - name: Report idempotent rerun
-        if: steps.registry.outputs.action == 'skip'
-        env:
-          PACKAGE_IDENTITY: ${{ steps.artifact.outputs.identity }}
-        run: echo "$PACKAGE_IDENTITY is already published with identical integrity."
 
   bootstrap_publish:
     name: Bootstrap first npm publication
@@ -238,46 +204,18 @@ jobs:
           PACKAGE_FILE="$package_file" node -e '
             const fs = require("node:fs");
             const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-            if (manifest.name !== "@deepseek-ai/dsh-web-review") throw new Error(`unexpected package ${manifest.name}`);
+            if (manifest.name !== "@canglongcl/dsh-web-review") throw new Error(`unexpected package ${manifest.name}`);
             if (manifest.publishConfig?.access !== "restricted") throw new Error("package is not restricted");
             if (`refs/tags/v${manifest.version}` !== process.env.GITHUB_REF) throw new Error("tag/version mismatch");
             const tag = String(manifest.version).includes("-") ? "next" : "latest";
-            const crypto = require("node:crypto");
             const tarball = `${process.env.GITHUB_WORKSPACE}/release/${process.env.PACKAGE_FILE}`;
-            const integrity = `sha512-${crypto.createHash("sha512").update(fs.readFileSync(tarball)).digest("base64")}`;
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `tarball=${tarball}\ntag=${tag}\nidentity=${manifest.name}@${manifest.version}\nintegrity=${integrity}\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `tarball=${tarball}\ntag=${tag}\n`);
           ' "$RUNNER_TEMP/dsh-web-review-package.json"
-
-      - name: Check npm registry state
-        id: registry
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_READ_TOKEN }}
-          PACKAGE_IDENTITY: ${{ steps.artifact.outputs.identity }}
-          LOCAL_INTEGRITY: ${{ steps.artifact.outputs.integrity }}
-        run: |
-          set -euo pipefail
-          set +e
-          remote=$(npm view "$PACKAGE_IDENTITY" dist.integrity 2>&1)
-          status=$?
-          set -e
-          if test "$status" = 0; then
-            test "$remote" = "$LOCAL_INTEGRITY" || {
-              echo "Registry version exists with different integrity" >&2
-              exit 1
-            }
-            echo 'action=skip' >> "$GITHUB_OUTPUT"
-          elif printf '%s' "$remote" | grep -Eq 'E404|404 Not Found'; then
-            echo 'action=publish' >> "$GITHUB_OUTPUT"
-          else
-            printf '%s\n' "$remote" >&2
-            exit "$status"
-          fi
 
       # Set NPM_PUBLISH_MODE=bootstrap for exactly one run. After it succeeds,
       # configure npm Trusted Publishing, delete NPM_BOOTSTRAP_TOKEN, and set
       # the repository variable to trusted.
       - name: Bootstrap first npm publication
-        if: steps.registry.outputs.action == 'publish'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
         run: |
@@ -285,9 +223,3 @@ jobs:
           npm publish "${{ steps.artifact.outputs.tarball }}" \
             --access restricted \
             --tag "${{ steps.artifact.outputs.tag }}"
-
-      - name: Report idempotent rerun
-        if: steps.registry.outputs.action == 'skip'
-        env:
-          PACKAGE_IDENTITY: ${{ steps.artifact.outputs.identity }}
-        run: echo "$PACKAGE_IDENTITY is already published with identical integrity."
