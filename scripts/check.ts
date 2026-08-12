@@ -290,6 +290,7 @@ assert(
 if (!fast) run('assemble official DSH package', process.execPath, ['--import', 'tsx', join(ROOT, 'scripts/package-official.ts')])
 const expectedOfficialFiles = [
   'README.md',
+  'README_en.md',
   'cordis.patch.yml',
   'docs/assets/web-review-annotation-editor.jpg',
   'docs/assets/web-review-demo.gif',
