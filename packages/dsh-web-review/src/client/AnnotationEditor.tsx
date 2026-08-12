@@ -17,16 +17,12 @@ import {
   isSafeAnnotationStyleValue,
   type EditableStyleProperty,
 } from '../annotation-properties.ts'
-import {
-  applyCommitted,
-  baselineValue,
-  previewStyle,
-  previewText,
-  restoreAll,
-  restoreStyle,
-  restoreText,
-  type LiveElementPatch,
-} from './live-patch.ts'
+import type {
+  PreviewElementHandle,
+  PreviewElementNavigationAction,
+  PreviewElementTarget,
+  PreviewTreeNode,
+} from '../preview-contract.ts'
 import {
   BoxModelControl,
   type BoxModelLinks,
@@ -47,13 +43,8 @@ import { parseNumeric } from './inspector-values.ts'
 import { PROPERTY_BY_NAME, PROPERTY_GROUPS, type PropertyControl } from './property-editor-config.ts'
 import type { WebviewKey } from './locales.ts'
 import { RadiusControl, ShadowControl, SizeControl, TransformControl } from './CompositeControls.tsx'
-import { ElementSelector } from './ElementSelector.tsx'
-import {
-  elementNavigationAction,
-  elementTreeDetail,
-  navigateElement,
-  type ElementNavigationAction,
-} from './element-navigation.ts'
+import { PreviewElementSelector } from './PreviewElementSelector.tsx'
+import { elementNavigationAction } from './element-navigation.ts'
 import {
   clampFloatingEditorPosition,
   placeFloatingEditor,
@@ -71,9 +62,8 @@ export interface AnnotationEditorValue {
   viewport: AnnotationViewport
 }
 
-export interface AnnotationEditorProps {
+interface AnnotationEditorBaseProps {
   id: string
-  patch: LiveElementPatch
   frame: HTMLIFrameElement
   comment: string
   changes: readonly AnnotationStyleChange[]
@@ -85,10 +75,26 @@ export interface AnnotationEditorProps {
   t: Translate<WebviewKey>
   onCancel: () => void
   onConfirm: (value: AnnotationEditorValue) => void
-  onSelectElement: (element: Element, comment: string, mode: AnnotationEditorMode, action?: ElementNavigationAction) => void
+  /** Mirror the draft into the host transaction for iframe-origin shortcuts. */
+  onCommentChange?: (comment: string) => void
   onPositionChange?: (position: FloatingEditorPosition | null) => void
   onSizeChange?: (size: FloatingEditorSize | null) => void
   onSizeCommit?: (size: FloatingEditorSize) => void
+}
+
+export interface AnnotationEditorProps extends AnnotationEditorBaseProps {
+  target: PreviewElementTarget
+  tree: PreviewTreeNode | null
+  onNavigateTarget: (
+    action: PreviewElementNavigationAction,
+    comment: string,
+    mode: AnnotationEditorMode,
+  ) => void
+  onSelectTarget: (handle: PreviewElementHandle, comment: string, mode: AnnotationEditorMode) => void
+  onPreviewStyle: (property: EditableStyleProperty, value: string) => void
+  onRestoreStyle: (property: EditableStyleProperty) => void
+  onPreviewText: (value: string) => void
+  onRestoreText: () => void
 }
 
 /** Mutually exclusive surface shown below the annotation compose row. */
@@ -96,7 +102,7 @@ export type AnnotationEditorMode = 'collapsed' | 'select' | 'adjust'
 
 /** One canvas navigation acknowledgement that survives editor re-anchoring. */
 export interface ElementNavigationFeedback {
-  action: ElementNavigationAction
+  action: PreviewElementNavigationAction
   sequence: number
 }
 
@@ -106,17 +112,16 @@ const ignoreSizeCommit = (): void => {}
 
 const RESIZE_EDGES: readonly FloatingEditorResizeEdge[] = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']
 
-function navigationTargetLabel(element: Element, t: Translate<WebviewKey>): string {
-  const tag = element.tagName.toLowerCase()
-  const detail = elementTreeDetail(element)
-  if (detail.kind === 'children') return `${tag} · ${t('editor.select.children', { count: String(detail.count) })}`
-  if (detail.kind === 'empty') return tag
-  return `${tag} · “${detail.text}”`
+function previewNavigationTargetLabel(target: PreviewElementTarget, t: Translate<WebviewKey>): string {
+  const tag = target.snapshot.tagName
+  if (target.detail.kind === 'children') return `${tag} · ${t('editor.select.children', { count: String(target.detail.count) })}`
+  if (target.detail.kind === 'empty') return tag
+  return `${tag} · “${target.detail.text}”`
 }
 
-function validCssValue(element: Element, property: EditableStyleProperty, value: string): boolean {
+function validCssValue(property: EditableStyleProperty, value: string): boolean {
   if (!isSafeAnnotationStyleValue(value)) return false
-  const probe = element.ownerDocument.createElement('div').style
+  const probe = document.createElement('div').style
   probe.setProperty(property, value)
   return probe.getPropertyValue(property) !== ''
 }
@@ -173,21 +178,23 @@ function propertyLabel(control: PropertyControl, t: Translate<WebviewKey>): stri
 const four = <T,>(values: readonly T[]): [T, T, T, T] => [values[0]!, values[1]!, values[2]!, values[3]!]
 
 /** Host-owned, DSH-styled property inspector with reversible iframe preview. */
-export function AnnotationEditor({
-  patch, frame, comment: initialComment, changes: initialChanges,
-  textChange: initialTextChange, initialMode = 'collapsed', navigationFeedback = null,
-  position = null, size = null, t, onCancel, onConfirm, onSelectElement,
-  onPositionChange = ignorePositionChange,
-  onSizeChange = ignoreSizeChange,
-  onSizeCommit = ignoreSizeCommit,
-}: AnnotationEditorProps) {
+export function AnnotationEditor(props: AnnotationEditorProps) {
+  const {
+    frame, comment: initialComment, changes: initialChanges,
+    textChange: initialTextChange, initialMode = 'collapsed', navigationFeedback = null,
+    position = null, size = null, t, onCancel, onConfirm,
+    onPositionChange = ignorePositionChange,
+    onSizeChange = ignoreSizeChange,
+    onSizeCommit = ignoreSizeCommit,
+  } = props
+  const { target } = props
   const initialMap = useMemo(() => new Map(initialChanges.map(change => [change.property, change])), [initialChanges])
   const originals = useMemo(() => new Map(
     PROPERTY_GROUPS.flatMap(group => group.controls).map(({ property }) => [
       property,
-      initialMap.get(property)?.before ?? baselineValue(patch, property),
+      initialMap.get(property)?.before ?? target.baselines[property],
     ]),
-  ), [initialMap, patch])
+  ), [initialMap, target])
   const [comment, setComment] = useState(initialComment)
   const [mode, setMode] = useState<AnnotationEditorMode>(initialMode)
   const [hidden, setHidden] = useState(false)
@@ -196,7 +203,7 @@ export function AnnotationEditor({
     () => new Map([...originals].map(([property, before]) => [property, initialMap.get(property)?.after ?? before])),
   )
   const [invalid, setInvalid] = useState<Set<EditableStyleProperty>>(new Set())
-  const originalText = patch.originalText?.value
+  const originalText = target.originalText ?? undefined
   const [text, setText] = useState(initialTextChange?.after ?? originalText ?? '')
   const [marginLinks, setMarginLinks] = useState<BoxModelLinks>({ vertical: false, horizontal: false, all: false })
   const [paddingLinks, setPaddingLinks] = useState<BoxModelLinks>({ vertical: false, horizontal: false, all: false })
@@ -249,45 +256,29 @@ export function AnnotationEditor({
     return after === before ? [] : [{ property, before, after }]
   })
 
-  useEffect(() => {
-    const win = frame.contentWindow
-    if (win === null) return
-    const reposition = () => { forcePosition(value => value + 1) }
-    win.addEventListener('scroll', reposition, true)
-    win.addEventListener('resize', reposition)
-    return () => {
-      win.removeEventListener('scroll', reposition, true)
-      win.removeEventListener('resize', reposition)
-    }
-  }, [frame])
-
   useEffect(() => { forcePosition(value => value + 1) }, [mode])
 
   useEffect(() => {
     editorRef.current?.focus({ preventScroll: true })
-  }, [mode, patch])
+  }, [mode, target])
 
-  const cancel = (): void => {
-    restoreAll(patch)
-    applyCommitted(patch, initialChanges, initialTextChange)
-    onCancel()
-  }
+  const cancel = (): void => { onCancel() }
 
   const textChanged = originalText !== undefined && text !== originalText
-  const dirty = comment.trim() !== '' || currentChanges().length > 0 || textChanged
-  const canConfirm = invalid.size === 0
-    && comment.length <= ANNOTATION_LIMITS.comment
+  const canConfirmComment = (candidate: string): boolean => invalid.size === 0
+    && candidate.length <= ANNOTATION_LIMITS.comment
     && text.length <= ANNOTATION_LIMITS.textValue
-    && dirty
+    && (candidate.trim() !== '' || currentChanges().length > 0 || textChanged)
+  const canConfirm = canConfirmComment(comment)
 
-  const confirm = (): void => {
-    if (!canConfirm) return
+  const confirm = (candidate = comment): void => {
+    if (!canConfirmComment(candidate)) return
     const viewport = {
-      width: Math.round(frame.contentWindow?.innerWidth ?? frame.clientWidth),
-      height: Math.round(frame.contentWindow?.innerHeight ?? frame.clientHeight),
+      width: Math.round(target.viewport.width),
+      height: Math.round(target.viewport.height),
     }
     onConfirm({
-      comment,
+      comment: candidate,
       changes: currentChanges(),
       textChange: textChanged ? { before: initialTextChange?.before ?? originalText, after: text } : null,
       viewport,
@@ -297,30 +288,19 @@ export function AnnotationEditor({
   const moveSelection = (event: KeyboardEvent, capturePageActions = false): void => {
     const action = elementNavigationAction(event, { capturePageActions })
     if (action === null) return
-    const target = navigateElement(patch.element, action)
-    if (target === null && !capturePageActions) return
+    const available = target.navigation[action] === true
+    if (!available && !capturePageActions) return
     event.preventDefault()
     event.stopPropagation()
     event.stopImmediatePropagation()
-    if (target === null) return
-    onSelectElement(target, comment, mode, action)
+    if (!available) return
+    props.onNavigateTarget(action, comment, mode)
   }
-
-  useEffect(() => {
-    const win = frame.contentWindow
-    if (win === null) return
-    // Fallback for an explicitly refocused iframe. The normal selection flow
-    // moves focus to the host editor so page-owned window listeners never see
-    // hierarchy shortcuts in the first place.
-    const onFrameKeyDown = (event: KeyboardEvent): void => { moveSelection(event, true) }
-    win.addEventListener('keydown', onFrameKeyDown, true)
-    return () => { win.removeEventListener('keydown', onFrameKeyDown, true) }
-  }, [frame, patch, comment, mode, onSelectElement])
 
   const updateProperty = (property: EditableStyleProperty, next: string): void => {
     const before = originals.get(property) ?? ''
     if (next === before) {
-      restoreStyle(patch, property)
+      props.onRestoreStyle(property)
       setInvalid(current => { const copy = new Set(current); copy.delete(property); return copy })
       setValues(current => new Map(current).set(property, next))
       return
@@ -328,7 +308,7 @@ export function AnnotationEditor({
     if (
       next.length > ANNOTATION_LIMITS.styleValue
       || next.trim() === ''
-      || !validCssValue(patch.element, property, next)
+      || !validCssValue(property, next)
     ) {
       setInvalid(current => new Set(current).add(property))
       setValues(current => new Map(current).set(property, next))
@@ -336,7 +316,7 @@ export function AnnotationEditor({
     }
     // Record the rollback baseline before the state update can trigger a
     // render that derives numeric fallbacks for keyword values.
-    previewStyle(patch, property, next)
+    props.onPreviewStyle(property, next)
     setInvalid(current => { const copy = new Set(current); copy.delete(property); return copy })
     setValues(current => new Map(current).set(property, next))
   }
@@ -344,8 +324,9 @@ export function AnnotationEditor({
   const updateText = (next: string): void => {
     setText(next)
     if (originalText === undefined) return
-    if (next === originalText) restoreText(patch)
-    else previewText(patch, next)
+    if (next === originalText) {
+      props.onRestoreText()
+    } else props.onPreviewText(next)
   }
 
   const reset = (property: EditableStyleProperty): void => { updateProperty(property, originals.get(property) ?? '') }
@@ -354,7 +335,7 @@ export function AnnotationEditor({
   }
 
   const numericFallback = (property: EditableStyleProperty): string => {
-    const originalInline = patch.originalStyles.get(property)?.value
+    const originalInline = target.inlineStyles[property]?.value
     if (originalInline !== undefined && parseNumeric(originalInline) !== null) return originalInline
     const baseline = originals.get(property)
     if (baseline !== undefined && parseNumeric(baseline) !== null) return baseline
@@ -473,7 +454,16 @@ export function AnnotationEditor({
     )
   }
 
-  const rect = patch.element.getBoundingClientRect()
+  const rect = {
+    x: target.rect.x,
+    y: target.rect.y,
+    width: target.rect.width,
+    height: target.rect.height,
+    top: target.rect.y,
+    right: target.rect.x + target.rect.width,
+    bottom: target.rect.y + target.rect.height,
+    left: target.rect.x,
+  }
   const preferredWidth = mode === 'select' ? 414 : mode === 'adjust' ? 400 : 374
   const availableWidth = Math.max(0, frame.clientWidth - 16)
   const availableHeight = Math.max(0, frame.clientHeight - 16)
@@ -654,10 +644,14 @@ export function AnnotationEditor({
             value={comment}
             maxLength={ANNOTATION_LIMITS.comment}
             placeholder={t('editor.comment')}
-            onChange={event => { setComment(event.target.value) }}
+            onChange={(event) => {
+              const next = event.target.value
+              setComment(next)
+              props.onCommentChange?.(next)
+            }}
             onKeyDown={(event) => {
               if (event.key === 'Escape') { event.preventDefault(); if (mode === 'select') setMode('collapsed'); else cancel() }
-              if (event.key === 'Enter') { event.preventDefault(); confirm() }
+              if (event.key === 'Enter') { event.preventDefault(); confirm(event.currentTarget.value) }
             }}
           />
           {mode !== 'collapsed' && (
@@ -722,7 +716,7 @@ export function AnnotationEditor({
             <EyeIcon />
           </button>
           {mode === 'collapsed' && (
-            <button type="button" className={css.quickConfirm} aria-label={t('editor.confirm')} disabled={!canConfirm} onClick={confirm}>
+            <button type="button" className={css.quickConfirm} aria-label={t('editor.confirm')} disabled={!canConfirm} onClick={() => { confirm() }}>
               <IconCheckOutline16 size={16} />
             </button>
           )}
@@ -739,18 +733,19 @@ export function AnnotationEditor({
           <div className={css.navigationFeedback}>
             <span className={css.navigationGlyph} aria-hidden>&lt;&gt;</span>
             <span key={navigationFeedback?.sequence ?? 'current'} className={css.navigationTarget}>
-              {t('editor.select.current', { target: navigationTargetLabel(patch.element, t) })}
+              {t('editor.select.current', { target: previewNavigationTargetLabel(target, t) })}
             </span>
           </div>
         </div>
       )}
 
-      {mode === 'select' && frame.contentDocument?.documentElement !== undefined && frame.contentDocument?.documentElement !== null && (
-        <ElementSelector
-          root={frame.contentDocument.documentElement}
-          current={patch.element}
+      {mode === 'select' && (
+        <PreviewElementSelector
+          target={target}
+          tree={props.tree}
           t={t}
-          onSelect={element => { onSelectElement(element, comment, mode) }}
+          onNavigate={action => { props.onNavigateTarget(action, comment, mode) }}
+          onSelect={handle => { props.onSelectTarget(handle, comment, mode) }}
         />
       )}
 
@@ -901,7 +896,7 @@ export function AnnotationEditor({
           </div>
           <div className={css.footer} data-webview-editor-footer="">
             <button type="button" className={css.cancel} onClick={cancel}>{t('editor.cancel')}</button>
-            <button type="button" className={css.confirm} aria-label={t('editor.confirm')} disabled={!canConfirm} onClick={confirm}>
+            <button type="button" className={css.confirm} aria-label={t('editor.confirm')} disabled={!canConfirm} onClick={() => { confirm() }}>
               <IconCheckOutline16 size={16} />
             </button>
           </div>

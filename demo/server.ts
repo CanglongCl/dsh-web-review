@@ -22,6 +22,11 @@ const TYPES: Record<string, string> = {
 
 createServer(async (req: IncomingMessage, res: ServerResponse) => {
   const pathname = new URL(req.url ?? '/', 'http://localhost').pathname
+  if (pathname === '/cross-origin-redirect') {
+    res.writeHead(302, { location: `http://localhost:${String(port)}/` })
+    res.end()
+    return
+  }
   const file = join(root, 'demo', pathname === '/' ? 'index.html' : pathname.slice(1))
   try {
     const body = await readFile(file)

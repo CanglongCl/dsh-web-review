@@ -1,59 +1,7 @@
 /** Bounded byte transport and response-header policy for the preview proxy. */
 import type { IncomingMessage } from 'node:http'
-import { isLocalPreviewUrl } from './proxy-url.ts'
 
 export class BodyLimitError extends Error {}
-
-const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
-
-export interface LocalFetchOptions {
-  method: 'GET' | 'HEAD' | 'POST'
-  headers: Record<string, string>
-  body?: Uint8Array<ArrayBuffer>
-  signal: AbortSignal
-  maxRedirects?: number
-}
-
-/** Follow only local redirects, preserving Fetch's POST redirect semantics. */
-export async function fetchLocalResponse(target: string, options: LocalFetchOptions): Promise<Response> {
-  const maxRedirects = options.maxRedirects ?? 10
-  let current = target
-  let method: LocalFetchOptions['method'] = options.method
-  let body = options.body
-  let headers = new Headers(options.headers)
-  for (let redirects = 0; ; redirects += 1) {
-    if (!isLocalPreviewUrl(current)) throw new Error('remote preview target rejected')
-    const response = await fetch(current, {
-      method,
-      redirect: 'manual',
-      signal: options.signal,
-      headers,
-      ...(body === undefined ? {} : { body }),
-    })
-    const location = response.headers.get('location')
-    if (!REDIRECT_STATUSES.has(response.status) || location === null) return response
-    if (redirects >= maxRedirects) {
-      await response.body?.cancel('too many redirects')
-      throw new Error('too many redirects')
-    }
-    const next = new URL(location, current).href
-    if (!isLocalPreviewUrl(next)) {
-      await response.body?.cancel('remote redirect rejected')
-      throw new Error('remote redirect rejected')
-    }
-    await response.body?.cancel('following redirect')
-    if (
-      ((response.status === 301 || response.status === 302) && method === 'POST')
-      || (response.status === 303 && method !== 'HEAD')
-    ) {
-      method = 'GET'
-      body = undefined
-      headers = new Headers(headers)
-      headers.delete('content-type')
-    }
-    current = next
-  }
-}
 
 /** Read an inbound request as bytes without corrupting multipart/binary forms. */
 export async function readRequestBytes(req: IncomingMessage, maxBytes: number): Promise<Buffer | undefined> {

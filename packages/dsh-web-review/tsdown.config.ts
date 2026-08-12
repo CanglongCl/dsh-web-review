@@ -47,7 +47,7 @@ const CSS_VIRTUAL_SUFFIX = '.mjs'
 /** Externals resolved from the loader module table: platform modules + the runtime exemption. */
 export const CLIENT_EXTERNALS: readonly string[] = [...PLATFORM_MODULES, RUNTIME_STORE_EXEMPTION]
 /** Third-party packages intentionally embedded in the browser artifact. */
-const CLIENT_BUNDLED_DEPENDENCIES = ['clsx', 'css-selector-generator'] as const
+const CLIENT_BUNDLED_DEPENDENCIES = ['clsx'] as const
 
 /** Build one client artifact for an install channel and its loader id. */
 function clientBundle(pluginId: string, entryFile: string): UserConfig {
@@ -131,6 +131,25 @@ export default [
       alwaysBundle: ['parse5', 'entities'],
       onlyBundle: ['parse5', 'entities'],
     },
+  },
+  {
+    entry: { bridge: 'src/bridge/index.ts' },
+    tsconfig: 'tsconfig.bridge.json',
+    outDir: 'lib',
+    format: 'iife',
+    platform: 'browser',
+    target: 'es2022',
+    dts: false,
+    sourcemap: true,
+    clean: false,
+    deps: {
+      alwaysBundle: ['css-selector-generator'],
+      onlyBundle: ['css-selector-generator'],
+    },
+    define: {
+      'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
+    },
+    outputOptions: { entryFileNames: 'bridge.js' },
   },
   clientBundle(ENTRY_NAME, 'client.js'),
   clientBundle(PACKAGE_ID, 'client-official.js'),

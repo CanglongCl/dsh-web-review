@@ -1,13 +1,15 @@
 # @dsh-external/dsh-web-review
 
-External `dsh web` plugin that adds a Preview conversation tab, same-origin
-page proxy, in-frame element picker, and browser-comment context injection.
-Assistant-authored local-loopback HTTP(S) links open directly in Preview, and the plugin adds
-a short system-prompt capability note so the agent can offer a verified local
-frontend review link when useful.
+External `dsh web` plugin that adds a Preview conversation tab, isolated
+per-session page proxy, in-frame element picker, and browser-comment context
+injection. Any credential-free absolute HTTP(S) URL can open in Preview,
+including assistant-authored public, LAN, and loopback links. Each page runs on
+a random `*.localhost` Origin and talks to the host through a bounded,
+versioned `postMessage` bridge; page JavaScript never shares the DSH host
+Origin.
 The harness checkout is not modified.
 
-See the repository [AGENTS.md](../../AGENTS.md) for loading, proxy, picker,
+See the repository [AGENTS.md](../../AGENTS.md) for loading, isolation, bridge, picker,
 context, and testing contracts. The accepted implementation design lives in
 [docs/webview-ui-plan.md](../../docs/webview-ui-plan.md); the rich editor and
 rollback contract is specified in
@@ -40,9 +42,9 @@ Open `http://127.0.0.1:3090`, connect the workspace whose source the agent may
 edit, then:
 
 1. Open the **Web Preview** conversation tab.
-2. Enter a local-loopback URL and press Enter. The page loads through
-   `/webview-proxy` so the picker can access its document. Public and LAN
-   targets are deliberately rejected.
+2. Enter an absolute HTTP(S) URL and press Enter. The node face creates a
+   short-lived session on a random Preview Origin, and the iframe loads only
+   that Origin. Public, LAN, and loopback targets use the same isolated path.
 3. Toggle **Add page comments** and click a page element. The solid-white host
    editor accepts a comment; **Select** opens the DOM hierarchy and **Adjust** expands text, fill, typography,
    dimensions, layout, spacing, border, and effects controls. Changes preview
@@ -71,9 +73,9 @@ the prepared browser comments. With no draft, it sends the fixed localized
 request “Please apply the page comments to the frontend implementation.” because
 the stock input machine deliberately treats an empty draft as a no-op.
 
-The agent may also provide a Markdown link to a running local frontend page.
-An ordinary click on that loopback assistant link activates Preview and loads
-the target. Remote links and modifier clicks retain normal browser behavior.
+The agent may also provide a Markdown link to any HTTP(S) page. An ordinary
+click on that assistant link activates Preview and loads the target. Modifier
+clicks and links outside assistant rows retain normal browser behavior.
 
 ## Context model
 
@@ -124,36 +126,50 @@ node-issued snapshot id; unrelated or older user/context records cannot clear
 a newer snapshot. Sending while preparation is still in flight leaves the
 capsule visible for retry.
 
-## Known limitations
+## Isolation and known limitations
 
-- **Local-only same-origin trust boundary:** only loopback/wildcard development
-  hosts are accepted, and redirects to remote targets are rejected before the
-  remote request. Proxied page JavaScript still executes on
-  the host origin because the picker uses direct frame references. Structured
-  validation prevents a page from supplying preformatted context, but it does
-  not isolate arbitrary scripts from host routes. A complete fix requires a
-  dedicated proxy origin and validated `postMessage` bridge. Only preview
-  trusted local development pages until that architecture lands.
-- Absolute and root-relative URLs embedded in page JavaScript, plus WebSocket
-  endpoints, are not rewritten. Plain-relative URLs resolve through the
-  injected `<base>`; dev-server HMR WebSockets do not.
-- Server-side proxy fetches carry no browser cookies, so login-gated pages
-  cannot be annotated.
+- **Dedicated Preview Origin:** every top-level target receives a random,
+  short-lived `*.localhost` Origin that is distinct from the DSH host and from
+  every other preview session. The parent accepts bridge traffic only from the
+  exact iframe window, expected Origin, protocol version, and channel. The
+  bridge accepts only bounded commands and serializable results; the host never
+  reads `contentDocument` or keeps remote DOM references.
+- **Origin-bound fetches:** a session is bound to one target Origin. Its first
+  DNS resolution is pinned for the session to prevent a hostname from rebinding
+  to another network address. Same-Origin redirects stay in the session;
+  cross-Origin links and redirects receive a new random Preview Origin.
+- Page URL/title, selectors, DOM snapshots, and framework anchors remain
+  explicitly untrusted page evidence. The bridge isolates DSH capabilities; it
+  does not turn page-authored metadata into authenticated facts.
+- The server-side proxy carries no browser cookies. Login-gated pages and sites
+  that require their original browser Origin, client certificates, or anti-bot
+  challenges may not render completely.
+- Root-relative and plain-relative script requests use the isolated proxy.
+  Absolute URLs embedded inside page JavaScript and WebSocket endpoints are not
+  rewritten; dev-server HMR WebSockets do not survive the proxy.
+- Rewritten static links and server redirects perform a controlled Origin
+  handoff. Dynamically created links or programmatic navigation that assigns a
+  cross-Origin `location` directly can leave the bridge, after which Preview
+  reports that annotation is unavailable. Cross-Origin POST forms are not
+  supported.
+- Only credential-free HTTP(S) URLs are accepted. Schemes such as `file:`,
+  `data:`, and `javascript:`, plus `username:password@host` URLs, are rejected.
 - The generated launch entry is machine-specific. Run `pnpm gen-config` after
   moving the checkout, then restart the web process.
-- One page is active at a time; navigating clears its annotations.
+- One page is active at a time; an explicit new URL or cross-Origin navigation
+  clears its annotations.
 - Rich edits are temporary inline/text previews. Reset, Cancel, remove, clear,
   successful send, navigation, and unmount restore the original DOM. Text is
   editable only for an element with one safe direct text node.
 - Preview refresh after workspace edits is manual.
 - HTML rewriting uses a parser and intentionally touches only the documented
-  URL-bearing attributes. Remote absolute resources retain browser-native
-  cross-origin behavior rather than being served from the host origin.
+  URL-bearing attributes. Cross-Origin subresources retain browser-native CORS
+  behavior rather than being promoted into the Preview Origin.
 
 ## Verification
 
 ```bash
 pnpm check          # typecheck, unit/composition tests, config contracts, build
-pnpm test:e2e       # real GUI/proxy/picker/context ordering acceptance
+pnpm test:e2e       # real GUI/isolated Origin/bridge/context ordering acceptance
 pnpm check --e2e    # both ladders
 ```

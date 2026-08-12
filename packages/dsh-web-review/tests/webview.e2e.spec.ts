@@ -1,5 +1,5 @@
 /**
- * Real GUI + proxy + picker + send-time pre-step context acceptance.
+ * Real GUI + isolated preview bridge + picker + send-time context acceptance.
  * Fixed sleeps are deliberately absent: the composer capsule's ready state
  * is the browser-visible host acknowledgement boundary.
  */
@@ -14,6 +14,7 @@ import {
   startServices,
   type E2EServices,
 } from './e2e-scaffold.ts'
+import { en } from '../src/client/locales.ts'
 
 let services: E2EServices
 let browser: Browser
@@ -37,17 +38,17 @@ async function bootWithPanel(page: Page, name: string): Promise<void> {
     async () => previewTab.getAttribute('aria-selected'),
     { timeout: 10_000, message: 'Preview should be the active conversation view' },
   ).toBe('true')
-  await page.getByPlaceholder('Enter a URL and press Enter (e.g. http://localhost:5173)').waitFor({ timeout: 15_000 })
+  await page.getByPlaceholder(en['panel.urlPlaceholder']).waitFor({ timeout: 15_000 })
 }
 
 async function loadDemoPage(page: Page): Promise<FrameLocator> {
-  const input = page.getByPlaceholder('Enter a URL and press Enter (e.g. http://localhost:5173)')
+  const input = page.getByPlaceholder(en['panel.urlPlaceholder'])
   await input.fill(services.demoUrl)
   await input.press('Enter')
   const frame = page.frameLocator('iframe[title="Web preview"]')
   await expect.poll(
     async () => frame.locator('h1').textContent(),
-    { timeout: 20_000, message: 'proxied demo page should render' },
+    { timeout: 20_000, message: 'isolated demo page should render' },
   ).toBe('魔法 UI 演示页')
   return frame
 }
@@ -125,18 +126,42 @@ describe('dsh-web-review e2e', () => {
     ).toBe('true')
     await expect.poll(
       async () => page.frameLocator('iframe[title="Web preview"]').locator('h1').textContent(),
-      { timeout: 20_000, message: 'assistant link target should render through the proxy' },
+      { timeout: 20_000, message: 'assistant link target should render in Preview' },
     ).toBe('魔法 UI 演示页')
     await page.close()
   })
 
-  it('opens Preview and renders the same-origin proxy iframe', async () => {
+  it('renders Preview on a random Origin isolated from the DSH host', async () => {
     const page = await newPage(browser)
     onTestFailed(() => saveFailureShot(page, 'proxy-navigation'))
     await bootWithPanel(page, 'proxy-nav')
     await loadDemoPage(page)
-    expect(await page.locator('iframe[title="Web preview"]').getAttribute('src'))
-      .toContain('/webview-proxy/http%3A//127.0.0.1%3A')
+    const frameUrl = new URL((await page.locator('iframe[title="Web preview"]').getAttribute('src')) ?? '')
+    expect(frameUrl.hostname).toMatch(/^[a-f\d]{32}\.localhost$/u)
+    expect(frameUrl.origin).not.toBe(new URL(services.webUrl).origin)
+    expect(frameUrl.pathname).toContain('/.dsh-web-review/entry/http%3A//127.0.0.1%3A')
+    await page.close()
+  })
+
+  it('rebuilds the bridge after a cross-target-Origin redirect', async () => {
+    const page = await newPage(browser)
+    onTestFailed(() => saveFailureShot(page, 'cross-origin-handoff'))
+    await bootWithPanel(page, 'cross-origin-handoff')
+    const input = page.getByPlaceholder(en['panel.urlPlaceholder'])
+    await input.fill(`${services.demoUrl}/cross-origin-redirect`)
+    await input.press('Enter')
+    const frame = page.frameLocator('iframe[title="Web preview"]')
+    await expect.poll(
+      async () => frame.locator('h1').textContent(),
+      { timeout: 20_000, message: 'cross-Origin handoff target should render' },
+    ).toBe('魔法 UI 演示页')
+    await expect.poll(async () => input.inputValue()).toBe(
+      new URL(services.demoUrl.replace('127.0.0.1', 'localhost')).href,
+    )
+    await expect.poll(
+      async () => page.getByRole('button', { name: 'Add page comments' }).isEnabled(),
+      { timeout: 15_000 },
+    ).toBe(true)
     await page.close()
   })
 
@@ -270,7 +295,10 @@ describe('dsh-web-review e2e', () => {
       .toBe('rgba(65, 118, 230, 0.1)')
     const buttonBox = await selectionBox.boundingBox()
     await editor.press('Backslash')
-    expect(await selectionBox.evaluate(element => element.getAnimations().length)).toBeGreaterThan(0)
+    await expect.poll(
+      async () => selectionBox.evaluate(element => element.getAnimations().length),
+      { timeout: 500, interval: 10 },
+    ).toBeGreaterThan(0)
     await expect.poll(async () => frame.locator('.card').first().getAttribute('data-dsh-wv-selected')).not.toBeNull()
     expect(await feedback.getAttribute('data-action')).toBe('parent')
     expect(await feedback.textContent()).toContain('Selected div')
@@ -292,6 +320,7 @@ describe('dsh-web-review e2e', () => {
     await editor.getByRole('button', { name: 'Select', exact: true }).click()
     const tree = editor.getByRole('tree', { name: 'Element tree' })
     const selected = tree.locator('[role="treeitem"][aria-selected="true"]')
+    const firstCardTreeKey = await selected.getAttribute('data-tree-key')
     expect(await selected.getAttribute('tabindex')).toBe('-1')
     expect(await tree.locator('[role="treeitem"]:focus').count()).toBe(0)
     await editor.press('Tab')
@@ -301,6 +330,9 @@ describe('dsh-web-review e2e', () => {
     expect(await page.locator('[data-webview-navigation-feedback]').count()).toBe(0)
     await editor.press('Shift+Tab')
     await expect.poll(async () => frame.locator('.card').first().getAttribute('data-dsh-wv-selected')).not.toBeNull()
+    await expect.poll(
+      async () => tree.locator('[role="treeitem"][aria-selected="true"]').getAttribute('data-tree-key'),
+    ).toBe(firstCardTreeKey)
 
     await editor.press('ArrowRight')
     expect(await tree.locator('[role="treeitem"]:focus').count()).toBe(0)

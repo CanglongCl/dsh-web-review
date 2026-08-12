@@ -2,8 +2,38 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
-import { AnnotationEditor } from '../src/client/AnnotationEditor.tsx'
-import { createLivePatch } from '../src/client/live-patch.ts'
+import {
+  AnnotationEditor as IsolatedAnnotationEditor,
+  type AnnotationEditorMode,
+  type AnnotationEditorProps,
+} from '../src/client/AnnotationEditor.tsx'
+import { EDITABLE_STYLE_PROPERTIES, type EditableStyleProperty } from '../src/annotation-properties.ts'
+import type {
+  PreviewElementHandle,
+  PreviewElementNavigationAction,
+  PreviewElementTarget,
+  PreviewTreeNode,
+} from '../src/preview-contract.ts'
+import {
+  applyCommitted,
+  baselineValue,
+  createLivePatch,
+  previewStyle,
+  previewText,
+  restoreAll,
+  restoreStyle,
+  restoreText,
+  type LiveElementPatch,
+} from '../src/client/live-patch.ts'
+import {
+  elementTreeDetail,
+  firstReviewableChild,
+  navigateElement,
+  nextReviewableSibling,
+  previousReviewableSibling,
+  reviewableChildren,
+  reviewableParent,
+} from '../src/client/element-navigation.ts'
 import { zh, type WebviewKey } from '../src/client/locales.ts'
 
 const t: Translate<WebviewKey> = (key, params) => {
@@ -19,6 +49,131 @@ function fixture(): { frame: HTMLIFrameElement; element: HTMLElement } {
   frame.contentDocument!.write('<!doctype html><html><body><h1 style="font-size: 16px">Example Domain</h1></body></html>')
   frame.contentDocument!.close()
   return { frame, element: frame.contentDocument!.querySelector('h1') as HTMLElement }
+}
+
+type TestEditorProps = Omit<AnnotationEditorProps,
+  | 'target'
+  | 'tree'
+  | 'onNavigateTarget'
+  | 'onSelectTarget'
+  | 'onPreviewStyle'
+  | 'onRestoreStyle'
+  | 'onPreviewText'
+  | 'onRestoreText'
+  | 'onCancel'
+> & {
+  patch: LiveElementPatch
+  onCancel: () => void
+  onSelectElement: (
+    element: Element,
+    comment: string,
+    mode: AnnotationEditorMode,
+    action?: PreviewElementNavigationAction,
+  ) => void
+}
+
+/** Test-only DOM adapter; production AnnotationEditor has no iframe-DOM path. */
+function AnnotationEditor({ patch, onCancel, onSelectElement, ...props }: TestEditorProps): JSX.Element {
+  const handles = new Map<PreviewElementHandle, Element>()
+  const handlesByElement = new WeakMap<Element, PreviewElementHandle>()
+  let handleSequence = 0
+  const handleOf = (element: Element): PreviewElementHandle => {
+    const existing = handlesByElement.get(element)
+    if (existing !== undefined) return existing
+    handleSequence += 1
+    const handle = handleSequence.toString(16).padStart(16, '0') as PreviewElementHandle
+    handles.set(handle, element)
+    handlesByElement.set(element, handle)
+    return handle
+  }
+  const navigationOf = (element: Element): PreviewElementTarget['navigation'] => ({
+    child: firstReviewableChild(element) !== null,
+    parent: reviewableParent(element) !== null,
+    'previous-sibling': previousReviewableSibling(element) !== null,
+    'next-sibling': nextReviewableSibling(element) !== null,
+  })
+  const inlineStyles: PreviewElementTarget['inlineStyles'] = {}
+  for (const property of EDITABLE_STYLE_PROPERTIES) {
+    const value = (patch.element as HTMLElement).style.getPropertyValue(property)
+    if (value !== '') inlineStyles[property] = {
+      value,
+      priority: (patch.element as HTMLElement).style.getPropertyPriority(property),
+    }
+  }
+  const rect = patch.element.getBoundingClientRect()
+  const computed = patch.element.ownerDocument.defaultView!.getComputedStyle(patch.element)
+  const tagName = patch.element.tagName.toLowerCase()
+  const target: PreviewElementTarget = {
+    handle: handleOf(patch.element),
+    snapshot: {
+      tagName,
+      id: patch.element.id,
+      className: patch.element.getAttribute('class') ?? '',
+      cssPath: tagName,
+      fullPath: tagName,
+      label: patch.element.textContent ?? '',
+      role: '',
+      stableClasses: [],
+      anchor: null,
+      outerHTML: patch.element.outerHTML.slice(0, 1_500),
+      textContent: (patch.element.textContent ?? '').slice(0, 300),
+      rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+      computed: {
+        display: computed.display,
+        position: computed.position,
+        fontSize: computed.fontSize,
+        color: computed.color,
+        backgroundColor: computed.backgroundColor,
+        margin: computed.margin,
+        padding: computed.padding,
+        width: computed.width,
+        height: computed.height,
+      },
+    },
+    rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+    viewport: { width: props.frame.clientWidth, height: props.frame.clientHeight },
+    baselines: Object.fromEntries(EDITABLE_STYLE_PROPERTIES.map(property => [
+      property,
+      baselineValue(patch, property),
+    ])) as Record<EditableStyleProperty, string>,
+    inlineStyles,
+    originalText: patch.originalText?.value ?? null,
+    detail: elementTreeDetail(patch.element),
+    navigation: navigationOf(patch.element),
+  }
+  const treeOf = (element: Element, key: string): PreviewTreeNode => ({
+    handle: handleOf(element),
+    key,
+    tagName: element.tagName.toLowerCase(),
+    detail: elementTreeDetail(element),
+    current: element === patch.element,
+    children: reviewableChildren(element).map((child, index) => treeOf(child, `${key}/${String(index)}`)),
+  })
+  const root = patch.element.ownerDocument.documentElement
+  return (
+    <IsolatedAnnotationEditor
+      {...props}
+      target={target}
+      tree={treeOf(root, '0')}
+      onCancel={() => {
+        restoreAll(patch)
+        applyCommitted(patch, props.changes, props.textChange)
+        onCancel()
+      }}
+      onNavigateTarget={(action, comment, mode) => {
+        const element = navigateElement(patch.element, action)
+        if (element !== null) onSelectElement(element, comment, mode, action)
+      }}
+      onSelectTarget={(handle, comment, mode) => {
+        const element = handles.get(handle)
+        if (element !== undefined) onSelectElement(element, comment, mode)
+      }}
+      onPreviewStyle={(property, value) => { previewStyle(patch, property, value) }}
+      onRestoreStyle={(property) => { restoreStyle(patch, property) }}
+      onPreviewText={(value) => { previewText(patch, value) }}
+      onRestoreText={() => { restoreText(patch) }}
+    />
+  )
 }
 
 afterEach(() => { document.body.innerHTML = '' })
@@ -235,17 +390,6 @@ describe('AnnotationEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: '展开 html' }))
     expect(document.querySelector('[data-webview-element-selector] [aria-selected="true"]')).toBeTruthy()
     expect(document.querySelector('[data-webview-element-selector]')?.textContent).not.toContain('点击元素可切换批注目标')
-    const pageKeydown = vi.fn()
-    frame.contentDocument!.addEventListener('keydown', pageKeydown)
-    fireEvent.keyDown(frame.contentDocument!.body, { key: 'Tab', code: 'Tab' })
-    expect(select).toHaveBeenLastCalledWith(frame.contentDocument!.querySelector('main > div:last-child'), 'Keep this comment', 'select', 'next-sibling')
-    expect(pageKeydown).not.toHaveBeenCalled()
-    const pageButton = frame.contentDocument!.createElement('button')
-    card.append(pageButton)
-    fireEvent.keyDown(pageButton, { key: 'Enter', code: 'Enter' })
-    expect(select).toHaveBeenLastCalledWith(card.querySelector('h3'), 'Keep this comment', 'select', 'child')
-    expect(pageKeydown).not.toHaveBeenCalled()
-    select.mockClear()
     const editor = document.querySelector('[data-webview-annotation-editor]') as HTMLDivElement
     const currentTreeItem = document.querySelector('[data-webview-element-tree] [aria-selected="true"]') as HTMLLIElement
     expect(currentTreeItem.tabIndex).toBe(-1)
@@ -266,18 +410,16 @@ describe('AnnotationEditor', () => {
     expect(document.querySelector('[data-webview-element-selector]')).toBeNull()
     expect(document.querySelector('[data-webview-property-inspector]')).toBeTruthy()
 
-    fireEvent.keyDown(frame.contentDocument!.body, { key: 'Enter', code: 'Enter' })
+    fireEvent.keyDown(editor, { key: 'Enter', code: 'Enter' })
     expect(select).toHaveBeenLastCalledWith(card.querySelector('h3'), 'Keep this comment', 'adjust', 'child')
     select.mockClear()
     fireEvent.keyDown(screen.getByPlaceholderText(zh['editor.comment']), { key: 'Tab', code: 'Tab' })
     expect(select).not.toHaveBeenCalled()
   })
 
-  it('keeps unavailable navigation keys from falling through to the iframe page', () => {
+  it('does not emit unavailable hierarchy movements from the host surface', () => {
     const { frame, element } = fixture()
-    const pageKeydown = vi.fn()
     const select = vi.fn()
-    frame.contentDocument!.addEventListener('keydown', pageKeydown)
     render(
       <AnnotationEditor
         id="leaf"
@@ -295,9 +437,8 @@ describe('AnnotationEditor', () => {
 
     expect(document.activeElement).toBe(document.querySelector('[data-webview-annotation-editor]'))
 
-    fireEvent.keyDown(element, { key: 'Enter', code: 'Enter' })
+    fireEvent.keyDown(document.querySelector('[data-webview-annotation-editor]')!, { key: 'Enter', code: 'Enter' })
     expect(select).not.toHaveBeenCalled()
-    expect(pageKeydown).not.toHaveBeenCalled()
   })
 
   it('keeps the selected target visible outside the element tree', () => {

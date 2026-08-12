@@ -1,6 +1,6 @@
-import { isLocalPreviewUrl } from '../proxy-url.ts'
+import { isPreviewableUrl } from '../proxy-url.ts'
 
-/** Normalize an address-bar value into an absolute local-development URL. */
+/** Normalize an address-bar value into an absolute HTTP(S) preview URL. */
 export function normalizePreviewUrl(value: string): string | undefined {
   const input = value.trim()
   if (input === '') return undefined
@@ -12,8 +12,8 @@ export function normalizePreviewUrl(value: string): string | undefined {
     candidate = `http:${input}`
   } else {
     // Reject explicit non-HTTP schemes instead of turning e.g. `ftp://...`
-    // into a misleading local hostname. Scheme-less development hosts use
-    // HTTP; explicit HTTPS remains supported for local TLS servers.
+    // into a misleading hostname. Scheme-less addresses use HTTP; explicit
+    // HTTPS remains available for public and local pages.
     if (/^[a-z][a-z\d+.-]*:/i.test(input) && !/^[^/:]+:\d+(?:[/?#]|$)/.test(input)) {
       return undefined
     }
@@ -22,7 +22,7 @@ export function normalizePreviewUrl(value: string): string | undefined {
 
   try {
     const url = new URL(candidate)
-    return isLocalPreviewUrl(url.href) ? url.href : undefined
+    return isPreviewableUrl(url.href) ? url.href : undefined
   } catch {
     return undefined
   }

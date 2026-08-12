@@ -7,6 +7,7 @@
  * SourceAnchor — or null for plain elements and production builds.
  */
 import { describe, expect, it } from 'vitest'
+import { PREVIEW_ELEMENT_LIMITS } from '../src/preview-contract.ts'
 import { sourceAnchorOf, type SourceAnchor } from '../src/client/source-anchor.ts'
 
 /** Attach a framework-internal metadata prop to an element (jsdom allows arbitrary JS props). */
@@ -130,6 +131,16 @@ describe('sourceAnchorOf — Svelte 5', () => {
     expect(anchor.component).toBe('Hero')
     expect(anchor.file).toBe('src/components/Hero.svelte')
     expect(anchor.line).toBe(42)
+  })
+
+  it('bounds page-owned source metadata before bridge serialization', () => {
+    const el = document.createElement('div')
+    const component = 'S'.repeat(PREVIEW_ELEMENT_LIMITS.anchorComponent + 50)
+    const file = `src/${'d/'.repeat(PREVIEW_ELEMENT_LIMITS.anchorFile)}/${component}.svelte`
+    attach(el, '__svelte_meta', { loc: { file } })
+    const anchor = expectAnchor(el)
+    expect(anchor.component).toHaveLength(PREVIEW_ELEMENT_LIMITS.anchorComponent)
+    expect(anchor.file).toHaveLength(PREVIEW_ELEMENT_LIMITS.anchorFile)
   })
 })
 

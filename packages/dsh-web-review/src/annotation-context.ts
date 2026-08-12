@@ -22,7 +22,7 @@ import {
   type AnnotationSnapshotId as AnnotationSnapshotIdType,
 } from './annotation-contract.ts'
 import { isEditableStyleProperty, isSafeAnnotationStyleValue } from './annotation-properties.ts'
-import { isLocalPreviewUrl } from './proxy-url.ts'
+import { isPreviewableUrl } from './proxy-url.ts'
 import { readRequestBytes } from './proxy-transport.ts'
 
 /** Plugin provenance recorded on every injected context message. */
@@ -190,7 +190,7 @@ export function parseAnnotationBody(body: string): AnnotationSnapshot | undefine
   const title = boundedString(page.title, ANNOTATION_LIMITS.pageTitle)
   if (sessionId === undefined || url === undefined || title === undefined) return undefined
   if (record.comments.length > MAX_ANNOTATIONS) return undefined
-  if (record.comments.length > 0 && !isLocalPreviewUrl(url)) return undefined
+  if (record.comments.length > 0 && !isPreviewableUrl(url)) return undefined
   const comments: AnnotationComment[] = []
   const ids = new Set<string>()
   let totalChanges = 0

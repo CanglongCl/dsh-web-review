@@ -95,13 +95,16 @@ describe('parseAnnotationBody', () => {
     })))).toBeUndefined()
   })
 
-  it('requires a local page and at least one user-authored intent per comment', () => {
+  it('accepts remote HTTP(S) pages and requires one user-authored intent per comment', () => {
     const base = snapshot().comments[0]!
     expect(parseAnnotationBody(JSON.stringify(snapshot({
       page: { url: 'file:///tmp/page.html', title: 'Local' },
     })))).toBeUndefined()
     expect(parseAnnotationBody(JSON.stringify(snapshot({
       page: { url: 'https://example.com/', title: 'Remote' },
+    })))?.page.url).toBe('https://example.com/')
+    expect(parseAnnotationBody(JSON.stringify(snapshot({
+      page: { url: 'https://user:secret@example.com/', title: 'Credentialed' },
     })))).toBeUndefined()
     expect(parseAnnotationBody(JSON.stringify(snapshot({
       comments: [{ ...base, comment: '  ', changes: [], textChange: null }],

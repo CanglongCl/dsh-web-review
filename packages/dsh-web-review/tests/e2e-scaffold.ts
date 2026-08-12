@@ -8,7 +8,7 @@
  * follows the harness's dialog flow, and failure evidence lands in the
  * gitignored `.artifacts/`.
  */
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer } from 'node:net'
@@ -65,6 +65,39 @@ export async function waitFor(check: () => Promise<boolean> | boolean, timeoutMs
     await new Promise((resolve) => { setTimeout(resolve, 500) })
   }
   throw new Error(`waitFor(${label}) timed out after ${timeoutMs}ms${lastError === undefined ? '' : `: ${String(lastError)}`}`)
+}
+
+/** Poll a service while also failing immediately when its child cannot start. */
+async function waitForChildService(
+  child: ChildProcess,
+  check: () => Promise<boolean> | boolean,
+  timeoutMs: number,
+  label: string,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const cleanup = (): void => {
+      child.off('error', onError)
+      child.off('exit', onExit)
+    }
+    const settle = (callback: () => void): void => {
+      cleanup()
+      callback()
+    }
+    const onError = (error: Error): void => {
+      settle(() => { reject(new Error(`${label} failed to start`, { cause: error })) })
+    }
+    const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
+      settle(() => {
+        reject(new Error(`${label} exited before readiness (${signal ?? `status ${String(code)}`})`))
+      })
+    }
+    child.once('error', onError)
+    child.once('exit', onExit)
+    void waitFor(check, timeoutMs, label).then(
+      () => { settle(resolve) },
+      (error: unknown) => { settle(() => { reject(error) }) },
+    )
+  })
 }
 
 /**
@@ -184,12 +217,13 @@ export async function startServices(): Promise<E2EServices> {
   const webUrl = `http://127.0.0.1:${webPort}`
   const demoUrl = `http://127.0.0.1:${demoPort}`
   try {
-    await waitFor(async () => (await fetch(webUrl)).ok, 90_000, 'web ready')
-    await waitFor(async () => (await fetch(demoUrl)).ok, 30_000, 'demo ready')
+    await waitForChildService(web, async () => (await fetch(webUrl)).ok, 90_000, 'web ready')
+    await waitForChildService(demo, async () => (await fetch(demoUrl)).ok, 30_000, 'demo ready')
   } catch (error) {
     console.error(logs.join('\n'))
     web.kill('SIGTERM')
     demo.kill('SIGTERM')
+    await rm(dshHome, { recursive: true, force: true }).catch(() => {})
     throw error
   }
 
@@ -207,6 +241,17 @@ export async function startServices(): Promise<E2EServices> {
 /** Open the standard browser page with the English locale pinned (deterministic locators). */
 export async function newPage(browser: Browser): Promise<Page> {
   const page = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: 'en-US' })
+  page.on('pageerror', (error) => {
+    console.error(`[browser pageerror] ${error.stack ?? error.message}`)
+  })
+  page.on('console', (message) => {
+    if (message.type() === 'error') console.error(`[browser console] ${message.text()}`)
+  })
+  page.on('requestfailed', (request) => {
+    if (request.url().includes('.dsh-web-review/')) {
+      console.error(`[browser requestfailed] ${request.url()}: ${request.failure()?.errorText ?? 'unknown error'}`)
+    }
+  })
   await page.addInitScript(() => { localStorage.setItem('dsh.locale', 'en') })
   return page
 }

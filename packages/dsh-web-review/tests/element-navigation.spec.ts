@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 import {
+  boundedReviewableTree,
   elementNavigationAction,
   elementTreeDetail,
   firstReviewableChild,
@@ -10,6 +11,10 @@ import {
   reviewableChildren,
   reviewableParent,
 } from '../src/client/element-navigation.ts'
+
+function treeElements(tree: ReturnType<typeof boundedReviewableTree>): Element[] {
+  return [tree.element, ...tree.children.flatMap(treeElements)]
+}
 
 function dom(): Document {
   const document = window.document.implementation.createHTMLDocument('tree')
@@ -47,6 +52,33 @@ describe('element navigation', () => {
     const second = document.querySelector('#second')!
     second.textContent = 'A'.repeat(60)
     expect(elementTreeDetail(second)).toEqual({ kind: 'text', text: `${'A'.repeat(47)}…` })
+  })
+
+  it('reserves tree budget for a selected element after a large earlier subtree', () => {
+    const document = window.document.implementation.createHTMLDocument('large tree')
+    const earlier = document.createElement('section')
+    for (let index = 0; index < 100; index += 1) earlier.appendChild(document.createElement('div'))
+    const selected = document.createElement('button')
+    document.body.append(earlier, selected)
+
+    const tree = boundedReviewableTree(selected, 25, 10)
+    const elements = treeElements(tree)
+    expect(elements.length).toBeLessThanOrEqual(25)
+    expect(elements).toContain(selected)
+  })
+
+  it('keeps the nearest ancestry when page nesting exceeds the depth bound', () => {
+    const document = window.document.implementation.createHTMLDocument('deep tree')
+    let selected: Element = document.body
+    for (let depth = 0; depth < 20; depth += 1) {
+      const child = document.createElement('div')
+      selected.appendChild(child)
+      selected = child
+    }
+    const tree = boundedReviewableTree(selected, 100, 5)
+    const elements = treeElements(tree)
+    expect(elements).toHaveLength(6)
+    expect(elements.at(-1)).toBe(selected)
   })
 
   it('maps Figma-like keys but preserves editable and modified events', () => {

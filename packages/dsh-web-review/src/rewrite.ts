@@ -1,86 +1,12 @@
-/**
- * Pure URL/HTML rewriting for the /webview-proxy route (node half).
- *
- * The whole proxy rewrite surface lives here as pure functions so the route
- * handler stays a thin shell and every rule is unit-testable. Contract (see
- * AGENTS.md — do not extend casually):
- * - targets are PATH-encoded into the proxy URL (`/webview-proxy/<enc>`),
- *   keeping `/` raw and encoding everything else (`%3A`, `%3F`, `%23` ...).
- *   A query-string encoding would break relative resolution through the
- *   injected `<base>` (relative references replace the base's query);
- * - inject `<base href="/webview-proxy/<enc final-page-url>">` as the first
- *   `<head>` child, so plain-relative URLs in the document — including script
- *   `fetch('x')` — resolve through the proxy;
- * - rewrite root-relative and local absolute http(s) URLs in href/src/action/
- *   poster/data-src and srcset values to proxy URLs (root-relative refs do
- *   NOT resolve against `<base>` paths, so they must be rewritten); remote
- *   absolute resources retain browser-native cross-origin behavior;
- *   leave javascript:/mailto:/data:/tel:/blob:/file:/#/?/relative values
- *   untouched;
- * - no JS rewriting, no cookie forwarding, no headless browser.
- */
+/** Pure HTML rewriting for one capability-scoped isolated Preview Origin. */
 import {
   parse,
   parseFragment,
   serialize,
   type DefaultTreeAdapterTypes,
 } from 'parse5'
-import { PROXY_PREFIX, isHttpUrl, isLocalPreviewUrl, proxyUrl } from './proxy-url.ts'
-export {
-  PROXY_PREFIX,
-  decodeTarget,
-  encodeTarget,
-  isHttpUrl,
-  isLocalPreviewUrl,
-  proxyUrl,
-} from './proxy-url.ts'
-
-/**
- * Rewrite one attribute URL value against the target page: local absolute
- * http(s) URLs and root-relative refs become proxy URLs. Remote absolute,
- * plain-relative, query-only, fragment and non-network values stay intact.
- * @param value - the raw attribute value (already unquoted).
- * @param base - the absolute page URL used to resolve root-relative values.
- * @param prefix - proxy route prefix.
- * @returns the rewritten value.
- */
-export function rewriteUrlValue(value: string, base: string, prefix = PROXY_PREFIX): string {
-  if (value === '') return value
-  const candidate = value.trim()
-  if (!candidate.startsWith('/') && !isHttpUrl(candidate)) return value
-  try {
-    const resolved = new URL(candidate, base)
-    if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') return value
-    // Remote resources keep browser-native cross-origin semantics. They must
-    // never be promoted into host-origin executable content by this proxy.
-    if (!isLocalPreviewUrl(resolved.href)) return value
-    return proxyUrl(resolved.href, prefix)
-  } catch {
-    return value
-  }
-}
-
-/**
- * Rewrite a srcset value: comma-separated URL + optional descriptor pairs.
- * (Documented limitation: commas inside data: URLs in a srcset are not
- * handled — data: URIs are deliberately left untouched by design.)
- * @param value - the raw srcset value.
- * @param base - the absolute page URL.
- * @param prefix - proxy route prefix.
- * @returns the rewritten value.
- */
-export function rewriteSrcset(value: string, base: string, prefix = PROXY_PREFIX): string {
-  // A whole-value data: srcset is left untouched (commas inside data: URIs
-  // cannot be split safely — documented limitation).
-  if (value.trim().startsWith('data:')) return value
-  return value.split(',').map((part) => {
-    const trimmed = part.trim()
-    if (trimmed === '') return part
-    const [url, ...descriptors] = trimmed.split(/\s+/)
-    const rewritten = url !== undefined ? rewriteUrlValue(url, base, prefix) : trimmed
-    return descriptors.length > 0 ? `${rewritten} ${descriptors.join(' ')}` : rewritten
-  }).join(', ')
-}
+import type { PreviewChannel } from './preview-contract.ts'
+import { isHttpUrl, proxyUrl } from './proxy-url.ts'
 
 /** Attribute names whose URL values are rewritten (srcset handled separately). */
 const URL_ATTRS = new Set(['href', 'src', 'action', 'poster', 'data-src'])
@@ -101,22 +27,66 @@ function isRemovedMetaDirective(node: Node): boolean {
     || httpEquiv === 'refresh'
 }
 
-function rewriteElement(element: Element, base: string, prefix: string): void {
-  for (const attribute of element.attrs) {
-    const name = attribute.name.toLowerCase()
-    if (name === 'srcset') attribute.value = rewriteSrcset(attribute.value, base, prefix)
-    else if (URL_ATTRS.has(name)) attribute.value = rewriteUrlValue(attribute.value, base, prefix)
+/** Paths and routing identity owned by one isolated preview origin. */
+export interface IsolatedRewriteOptions {
+  proxyPrefix: string
+  navigatePrefix: string
+  bridgePath: string
+  channel: PreviewChannel
+  parentOrigin: string
+}
+
+function isolatedUrlValue(
+  value: string,
+  base: string,
+  attribute: string,
+  options: IsolatedRewriteOptions,
+): string {
+  if (value === '') return value
+  const candidate = value.trim()
+  if (!candidate.startsWith('/') && !isHttpUrl(candidate)) return value
+  try {
+    const resolved = new URL(candidate, base)
+    if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') return value
+    const route = resolved.origin === new URL(base).origin
+      ? options.proxyPrefix
+      : attribute === 'href' || attribute === 'action'
+        ? options.navigatePrefix
+        : undefined
+    return route === undefined ? value : proxyUrl(resolved.href, route)
+  } catch {
+    return value
   }
 }
 
-/** Traverse parsed HTML nodes while leaving raw-text/script contents untouched. */
-function rewriteTree(parent: ParentNode, base: string, prefix: string): void {
+function isolatedSrcset(value: string, base: string, options: IsolatedRewriteOptions): string {
+  if (value.trim().startsWith('data:')) return value
+  return value.split(',').map((part) => {
+    const trimmed = part.trim()
+    if (trimmed === '') return part
+    const [url, ...descriptors] = trimmed.split(/\s+/u)
+    const rewritten = url === undefined ? trimmed : isolatedUrlValue(url, base, 'srcset', options)
+    return descriptors.length === 0 ? rewritten : `${rewritten} ${descriptors.join(' ')}`
+  }).join(', ')
+}
+
+function rewriteIsolatedElement(element: Element, base: string, options: IsolatedRewriteOptions): void {
+  for (const attribute of element.attrs) {
+    const name = attribute.name.toLowerCase()
+    if (name === 'srcset') attribute.value = isolatedSrcset(attribute.value, base, options)
+    else if (URL_ATTRS.has(name)) attribute.value = isolatedUrlValue(attribute.value, base, name, options)
+  }
+}
+
+function rewriteIsolatedTree(parent: ParentNode, base: string, options: IsolatedRewriteOptions): void {
   parent.childNodes = parent.childNodes.filter(node => !isRemovedMetaDirective(node))
   for (const child of parent.childNodes) {
     if (!isElement(child)) continue
-    rewriteElement(child, base, prefix)
-    rewriteTree(child, base, prefix)
-    if (child.tagName === 'template' && 'content' in child) rewriteTree(child.content, base, prefix)
+    rewriteIsolatedElement(child, base, options)
+    rewriteIsolatedTree(child, base, options)
+    if (child.tagName === 'template' && 'content' in child) {
+      rewriteIsolatedTree(child.content, base, options)
+    }
   }
 }
 
@@ -138,34 +108,44 @@ function baseElement(href: string): Element {
   return element
 }
 
-/**
- * Rewrite URL-bearing attributes inside one parsed HTML fragment.
- * @param tag - the raw tag text including angle brackets.
- * @param base - the absolute page URL.
- * @param prefix - proxy route prefix.
- * @returns the rewritten tag.
- */
-export function rewriteTag(tag: string, base: string, prefix = PROXY_PREFIX): string {
-  const fragment = parseFragment(tag)
-  rewriteTree(fragment, base, prefix)
-  return serialize(fragment)
+function scriptElement(attributes: Record<string, string>, source = ''): Element {
+  const fragment = parseFragment(`<script>${source}</script>`)
+  const element = fragment.childNodes[0]
+  if (element === undefined || !isElement(element)) throw new Error('failed to create preview script element')
+  element.attrs = Object.entries(attributes).map(([name, value]) => ({ name, value }))
+  return element
 }
 
 /**
- * Rewrite one HTML document: attribute rewriting plus `<base>` injection.
- * @param html - the target document source.
- * @param targetUrl - the absolute URL the document was fetched from.
- * @param prefix - proxy route prefix.
- * @returns the rewritten document.
+ * Rewrite one document for a dedicated preview origin and inject the bridge
+ * before page-authored scripts. Same-target-origin resources stay on the
+ * isolated proxy; cross-origin navigations go through an origin handoff.
  */
-export function rewriteHtml(html: string, targetUrl: string, prefix = PROXY_PREFIX): string {
+export function rewriteIsolatedHtml(
+  html: string,
+  targetUrl: string,
+  options: IsolatedRewriteOptions,
+): string {
   const target = new URL(targetUrl).href
   const document = parse(html)
-  rewriteTree(document, target, prefix)
+  rewriteIsolatedTree(document, target, options)
   const head = findElement(document, 'head')
   if (head === undefined) throw new Error('parsed HTML document has no head element')
-  const base = baseElement(proxyUrl(target, prefix))
-  base.parentNode = head
-  head.childNodes.unshift(base)
+  const base = baseElement(proxyUrl(target, options.proxyPrefix))
+  const configSource = `window.__DSH_WEB_REVIEW_BRIDGE_CONFIG__=Object.freeze(${JSON.stringify({
+    protocol: 'dsh-web-review/bridge',
+    version: 1,
+    channel: options.channel,
+    parentOrigin: options.parentOrigin,
+    pageUrl: target,
+    targetOrigin: new URL(target).origin,
+  }).replaceAll('<', '\\u003c')});`
+  const config = scriptElement({ 'data-dsh-web-review': 'config' }, configSource)
+  const bridge = scriptElement({
+    src: options.bridgePath,
+    'data-dsh-web-review': 'bridge',
+  })
+  for (const child of [base, config, bridge]) child.parentNode = head
+  head.childNodes.unshift(base, config, bridge)
   return serialize(document)
 }

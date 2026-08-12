@@ -14,8 +14,16 @@ describe('normalizePreviewUrl', () => {
   })
 
   it.each([
-    '', '   ', 'example.com', 'https://example.com', '192.168.1.10:5173',
-    'ftp://localhost', 'mailto:user@example.com', 'not a host',
+    ['example.com', 'http://example.com/'],
+    ['https://example.com', 'https://example.com/'],
+    ['192.168.1.10:5173', 'http://192.168.1.10:5173/'],
+  ])('accepts arbitrary HTTP(S) target %s', (input, expected) => {
+    expect(normalizePreviewUrl(input)).toBe(expected)
+  })
+
+  it.each([
+    '', '   ', 'ftp://localhost', 'mailto:user@example.com', 'not a host',
+    'https://user:secret@example.com/',
   ])('rejects %s', (input) => {
     expect(normalizePreviewUrl(input)).toBeUndefined()
   })

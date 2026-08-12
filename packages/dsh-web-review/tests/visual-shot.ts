@@ -37,12 +37,7 @@ try {
   await urlInput.fill(services.demoUrl)
   await urlInput.press('Enter')
   const frame = page.frameLocator('iframe[title="Web preview"]')
-  await page.waitForFunction(
-    (expected) => (document.querySelector('iframe[title="Web preview"]') as HTMLIFrameElement | null)
-      ?.contentDocument?.title.startsWith(expected) ?? false,
-    '魔法 UI',
-    { timeout: 20_000 },
-  ).catch(() => {})
+  await frame.locator('h1').waitFor({ timeout: 20_000 })
   await page.waitForTimeout(500)
   await shot(page, 'panel-with-page')
 

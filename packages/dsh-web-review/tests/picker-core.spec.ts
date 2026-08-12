@@ -6,6 +6,7 @@
  * snapshot caps (jsdom).
  */
 import { describe, expect, it } from 'vitest'
+import { PREVIEW_ELEMENT_LIMITS } from '../src/preview-contract.ts'
 import {
   OUTER_HTML_CAP, TEXT_CAP, accessibleLabel, cssPath, fullPathOf, roleOf,
   snapshotOf, stableClassesOf, truncate,
@@ -125,5 +126,31 @@ describe('snapshotOf', () => {
     expect(snap.computed.display).toBe('block')
     expect(snap.computed.margin).toBe('4px')
     expect(snap.computed.padding).toBe('8px')
+  })
+
+  it('bounds every page-controlled identity field before it crosses the bridge', () => {
+    const el = document.createElement('div')
+    el.id = 'i'.repeat(PREVIEW_ELEMENT_LIMITS.cssPath + 1)
+    el.className = [
+      ...Array.from(
+        { length: PREVIEW_ELEMENT_LIMITS.stableClasses + 5 },
+        (_, index) => `semantic-${String(index)}`,
+      ),
+      `oversized-${'x'.repeat(PREVIEW_ELEMENT_LIMITS.className)}`,
+    ].join(' ')
+    el.setAttribute('role', 'r'.repeat(PREVIEW_ELEMENT_LIMITS.role + 1))
+    el.textContent = 'content'
+    document.body.appendChild(el)
+
+    const snap = snapshotOf(el)
+    expect(snap.id).toHaveLength(PREVIEW_ELEMENT_LIMITS.id)
+    expect(snap.className).toHaveLength(PREVIEW_ELEMENT_LIMITS.className)
+    expect(snap.role).toHaveLength(PREVIEW_ELEMENT_LIMITS.role)
+    expect(snap.stableClasses).toHaveLength(PREVIEW_ELEMENT_LIMITS.stableClasses)
+    expect(snap.stableClasses.every(value => value.length <= PREVIEW_ELEMENT_LIMITS.stableClass)).toBe(true)
+    // An overlong unique selector must fall back to a valid tag, not become a
+    // syntactically invalid string truncation.
+    expect(snap.cssPath).toBe('div')
+    expect(snap.fullPath.length).toBeLessThanOrEqual(PREVIEW_ELEMENT_LIMITS.fullPath)
   })
 })

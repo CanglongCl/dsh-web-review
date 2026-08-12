@@ -50,7 +50,7 @@ cpSync(join(root, 'README.md'), join(staging, 'README.md'))
 for (const file of ['web-review-demo.gif', 'web-review-preview.jpg', 'web-review-annotation-editor.jpg']) {
   cpSync(join(root, 'docs', 'assets', file), join(staging, 'docs', 'assets', file))
 }
-for (const file of ['index.js', 'client-official.js', 'client-official.js.map']) {
+for (const file of ['index.js', 'bridge.js', 'bridge.js.map', 'client-official.js', 'client-official.js.map']) {
   cpSync(join(source, 'lib', file), join(staging, 'lib', file))
 }
 

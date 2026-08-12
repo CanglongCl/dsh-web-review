@@ -1,7 +1,4 @@
-/** Cross-face URL codec for the path-encoded preview proxy. */
-
-/** Route prefix this package registers on the web server. */
-export const PROXY_PREFIX = '/webview-proxy'
+/** Cross-face URL codec for path-encoded isolated-preview routes. */
 
 /** Path-encode a target URL: everything percent-encoded except `/`. */
 export function encodeTarget(url: string): string {
@@ -13,9 +10,9 @@ export function decodeTarget(encoded: string): string {
   return decodeURIComponent(encoded)
 }
 
-/** Build the same-origin proxy URL for a target URL. */
-export function proxyUrl(target: string, prefix = PROXY_PREFIX): string {
-  return `${prefix}/${encodeTarget(target)}`
+/** Build a path-encoded route with exactly one prefix separator. */
+export function proxyUrl(target: string, prefix: string): string {
+  return `${prefix.endsWith('/') ? prefix : `${prefix}/`}${encodeTarget(target)}`
 }
 
 /** True when the value parses as an absolute http(s) URL. */
@@ -28,22 +25,13 @@ export function isHttpUrl(value: string): boolean {
   }
 }
 
-/**
- * True only for loopback/wildcard development hosts on this machine.
- * Deliberately excludes LAN names, public hosts and DNS-based allowlists.
- */
-export function isLocalPreviewUrl(value: string): boolean {
+/** Absolute HTTP(S) page URL accepted by the isolated preview transport. */
+export function isPreviewableUrl(value: string): boolean {
   try {
     const url = new URL(value)
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false
-    if (url.username !== '' || url.password !== '') return false
-    const hostname = url.hostname.toLowerCase()
-    return hostname === 'localhost'
-      || hostname.endsWith('.localhost')
-      || hostname === '0.0.0.0'
-      || hostname === '[::]'
-      || hostname === '[::1]'
-      || /^127(?:\.\d{1,3}){3}$/u.test(hostname)
+    return (url.protocol === 'http:' || url.protocol === 'https:')
+      && url.username === ''
+      && url.password === ''
   } catch {
     return false
   }

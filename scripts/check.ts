@@ -160,8 +160,19 @@ assert(
 )
 assert(
   'browser half excludes the node HTML parser',
-  () => !readFileSync(join(PKG, 'lib', 'client.js'), 'utf8').includes('parse5'),
-  () => 'lib/client.js contains parse5 — import URL helpers from proxy-url.ts, not rewrite.ts',
+  () => [join(PKG, 'lib', 'client.js'), join(PKG, 'lib', 'bridge.js')]
+    .every(file => !readFileSync(file, 'utf8').includes('parse5')),
+  () => 'a browser artifact contains parse5 — import URL helpers from proxy-url.ts, not rewrite.ts',
+)
+assert(
+  'isolated frame bridge is a self-contained IIFE',
+  () => {
+    const bridge = readFileSync(join(PKG, 'lib', 'bridge.js'), 'utf8')
+    return bridge.startsWith('(function() {')
+      && esmImports(bridge).length === 0
+      && !/\brequire\s*\(/u.test(bridge)
+  },
+  () => 'lib/bridge.js must not retain runtime imports or CommonJS requires',
 )
 
 // Official DSH profile bundle: stable id plus an exact prebuilt tarball.
@@ -181,6 +192,8 @@ const expectedOfficialFiles = [
   'docs/assets/web-review-annotation-editor.jpg',
   'docs/assets/web-review-demo.gif',
   'docs/assets/web-review-preview.jpg',
+  'lib/bridge.js',
+  'lib/bridge.js.map',
   'lib/client-official.js',
   'lib/client-official.js.map',
   'lib/index.js',

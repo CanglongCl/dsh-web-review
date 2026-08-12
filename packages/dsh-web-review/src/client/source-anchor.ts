@@ -15,6 +15,8 @@
  * the page.
  */
 
+import { PREVIEW_ELEMENT_LIMITS } from '../preview-contract.ts'
+
 /** One resolved source anchor, or null when the framework/context exposes none. */
 export interface SourceAnchor {
   /** The framework the anchor was read from ('react' | 'vue' | 'svelte'). */
@@ -128,8 +130,11 @@ function reactAnchor(el: Element): SourceAnchor | null {
   const line = lineOf(propertyOf(source, 'lineNumber'))
   return {
     framework: 'react',
-    component: truncate(components.reverse().join(' › ') || 'Unknown', 500),
-    file: truncate(relativizeFile(fileName), 160),
+    component: truncate(
+      components.reverse().join(' › ') || 'Unknown',
+      PREVIEW_ELEMENT_LIMITS.anchorComponent,
+    ),
+    file: truncate(relativizeFile(fileName), PREVIEW_ELEMENT_LIMITS.anchorFile),
     ...(line !== undefined ? { line } : {}),
   }
 }
@@ -143,8 +148,8 @@ function vue3Anchor(el: Element): SourceAnchor | null {
   const component = stringOf(propertyOf(type, 'name')) ?? stringOf(propertyOf(type, '__name')) ?? 'Unknown'
   return {
     framework: 'vue',
-    component: truncate(component, 500),
-    file: truncate(relativizeFile(file), 160),
+    component: truncate(component, PREVIEW_ELEMENT_LIMITS.anchorComponent),
+    file: truncate(relativizeFile(file), PREVIEW_ELEMENT_LIMITS.anchorFile),
   }
 }
 
@@ -155,8 +160,11 @@ function vue2Anchor(el: Element): SourceAnchor | null {
   if (file === undefined) return null
   return {
     framework: 'vue',
-    component: truncate(stringOf(propertyOf(options, 'name')) ?? 'Unknown', 500),
-    file: truncate(relativizeFile(file), 160),
+    component: truncate(
+      stringOf(propertyOf(options, 'name')) ?? 'Unknown',
+      PREVIEW_ELEMENT_LIMITS.anchorComponent,
+    ),
+    file: truncate(relativizeFile(file), PREVIEW_ELEMENT_LIMITS.anchorFile),
   }
 }
 
@@ -169,8 +177,11 @@ function svelteAnchor(el: Element): SourceAnchor | null {
   const line = lineOf(propertyOf(loc, 'line'))
   return {
     framework: 'svelte',
-    component: base.replace(/\.svelte$/i, ''),
-    file: truncate(relativizeFile(file), 160),
+    component: truncate(
+      base.replace(/\.svelte$/i, ''),
+      PREVIEW_ELEMENT_LIMITS.anchorComponent,
+    ),
+    file: truncate(relativizeFile(file), PREVIEW_ELEMENT_LIMITS.anchorFile),
     ...(line !== undefined ? { line } : {}),
   }
 }

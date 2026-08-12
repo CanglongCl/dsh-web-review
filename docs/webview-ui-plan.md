@@ -22,7 +22,7 @@ and the interim eager-`agent.inject` design.
 - The node face registers the reviewed `plugin:dsh-web-review-preview` system-prompt
   section, which advertises the verified-link → Preview → annotation loop.
 - The always-mounted dock delegates ordinary clicks on assistant-authored absolute
-  local-loopback HTTP(S) links into the shared preview store and activates the Preview tab.
+  credential-free absolute HTTP(S) links into the shared preview store and activates the Preview tab.
 - User/tool links, modifier clicks, and plugin chrome keep native behavior.
 - The plugin closes Details through `ctx.layout` and never reads or mutates the
   conversation package's private view store.
@@ -193,17 +193,17 @@ its own cap in addition to the HTTP body cap.
   property allowlist, live preview, and exact rollback contract.
 - Store the current page title alongside URL and picks so the dock can create a complete
   snapshot even when the preview tab is not active.
-- Continue to keep live DOM references in component refs, never in the shared store.
+- Keep live DOM references and rollback ledgers inside the isolated-frame bridge,
+  never in React component refs or the shared store.
 
 ## Security boundary
 
 The structured route and node-owned serializer prevent the browser from supplying a
-preformatted model message, but they do not make arbitrary proxied scripts trustworthy.
-Today the proxied document executes same-origin with the host and the picker uses direct
-frame references. A complete isolation fix requires a dedicated proxy origin plus a
-validated `postMessage` bridge; that is a separate architectural change and must remain
-documented as a release-level limitation. This implementation must not claim that the
-current iframe is a security boundary.
+preformatted model message, but they do not make page-authored metadata trustworthy.
+As of 2026-08-12, arbitrary HTTP(S) pages run on random per-session Preview Origins,
+separate from DSH and from each other. The host uses only the validated, bounded
+`postMessage` bridge and never reads the frame DOM. This isolates host capabilities;
+URL/title/selectors/DOM snapshots remain explicitly untrusted page evidence.
 
 ## Files and implementation slices
 
@@ -249,4 +249,5 @@ current iframe is a security boundary.
 - Replacing the stock composer or sending the user's prompt from the plugin.
 - Capturing a fake marker screenshot.
 - Rewriting arbitrary absolute URLs or WebSockets inside page JavaScript.
-- Solving authenticated-page proxying or same-origin iframe isolation in this change.
+- Solving authenticated-page/cookie forwarding, hardcoded absolute API rewriting, or
+  WebSocket/HMR transport in this change.

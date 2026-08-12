@@ -1,4 +1,5 @@
 import { getCssSelector } from 'css-selector-generator'
+import { PREVIEW_ELEMENT_LIMITS } from '../preview-contract.ts'
 import { sourceAnchorOf } from './source-anchor.ts'
 
 /**
@@ -6,9 +7,8 @@ import { sourceAnchorOf } from './source-anchor.ts'
  *
  * The CSS-selector path is delegated to `css-selector-generator` (id →
  * class → tag → nth-of-type priority, shortest unique selector); everything
- * else here is a thin wrapper over native DOM APIs. The injected picker
- * script (picker.ts) is event-only — these helpers never run inside the
- * target page's document context, so they may import freely.
+ * else here is a thin wrapper over native DOM APIs. These helpers are bundled
+ * into the isolated-frame bridge and unit-tested directly.
  *
  * The page DOM is untrusted data, read-only — these helpers never write
  * into the page.
@@ -17,9 +17,9 @@ import { sourceAnchorOf } from './source-anchor.ts'
  */
 
 /** Cap for the outerHTML snapshot (exact limit — truncation lands at cap). */
-export const OUTER_HTML_CAP = 1500
+export const OUTER_HTML_CAP = PREVIEW_ELEMENT_LIMITS.outerHTML
 /** Cap for the textContent snapshot. */
-export const TEXT_CAP = 300
+export const TEXT_CAP = PREVIEW_ELEMENT_LIMITS.textContent
 /** Cap for the accessible label. */
 export const LABEL_CAP = 48
 
@@ -48,7 +48,10 @@ export function accessibleLabel(el: Element): string {
 /** Explicit or implicit ARIA role of an element ('' when none applies). */
 export function roleOf(el: Element): string {
   const explicit = el.getAttribute('role')
-  if (explicit !== null) return explicit.split(/\s+/)[0] ?? ''
+  if (explicit !== null) return truncate(
+    explicit.split(/\s+/)[0] ?? '',
+    PREVIEW_ELEMENT_LIMITS.role,
+  )
   const tag = el.tagName.toLowerCase()
   if (tag === 'button') return 'button'
   if (tag === 'a' && el.getAttribute('href') !== null) return 'link'
@@ -67,7 +70,9 @@ export function roleOf(el: Element): string {
  * (css-*, CSS-module hashes, UUIDs) that are meaningless to search.
  */
 export function stableClassesOf(el: Element): string[] {
-  return Array.from(el.classList).filter(isStableClass)
+  return Array.from(el.classList)
+    .filter(cls => cls.length <= PREVIEW_ELEMENT_LIMITS.stableClass && isStableClass(cls))
+    .slice(0, PREVIEW_ELEMENT_LIMITS.stableClasses)
 }
 
 const UTILITY_CLASS =
@@ -99,7 +104,15 @@ const SELECTOR_OPTIONS: { selectors: SelectorPriority[] } = { selectors: ['id', 
  * the bare tag when the library yields nothing.
  */
 export function cssPath(el: Element): string {
-  return getCssSelector(el, SELECTOR_OPTIONS) ?? el.tagName.toLowerCase()
+  const fallback = truncate(el.tagName.toLowerCase(), PREVIEW_ELEMENT_LIMITS.tagName)
+  try {
+    const selector = getCssSelector(el, SELECTOR_OPTIONS)
+    return selector !== null && selector.length <= PREVIEW_ELEMENT_LIMITS.cssPath
+      ? selector
+      : fallback
+  } catch {
+    return fallback
+  }
 }
 
 /**
@@ -138,7 +151,7 @@ export function fullPathOf(el: Element): string {
     parts.unshift(segment)
     node = node.parentElement
   }
-  return parts.join(' > ')
+  return truncate(parts.join(' > '), PREVIEW_ELEMENT_LIMITS.fullPath)
 }
 
 /**
@@ -175,9 +188,12 @@ export function snapshotOf(el: Element): {
   const style = window.getComputedStyle(el)
   const rect = el.getBoundingClientRect()
   return {
-    tagName: el.tagName.toLowerCase(),
-    id: el.id,
-    className: typeof el.className === 'string' ? el.className : '',
+    tagName: truncate(el.tagName.toLowerCase(), PREVIEW_ELEMENT_LIMITS.tagName),
+    id: truncate(el.id, PREVIEW_ELEMENT_LIMITS.id),
+    className: truncate(
+      typeof el.className === 'string' ? el.className : '',
+      PREVIEW_ELEMENT_LIMITS.className,
+    ),
     cssPath: cssPath(el),
     fullPath: fullPathOf(el),
     label: accessibleLabel(el),
@@ -193,15 +209,15 @@ export function snapshotOf(el: Element): {
       height: Math.round(rect.height),
     },
     computed: {
-      display: style.display,
-      position: style.position,
-      fontSize: style.fontSize,
-      color: style.color,
-      backgroundColor: style.backgroundColor,
-      margin: style.margin,
-      padding: style.padding,
-      width: style.width,
-      height: style.height,
+      display: truncate(style.display, PREVIEW_ELEMENT_LIMITS.computedValue),
+      position: truncate(style.position, PREVIEW_ELEMENT_LIMITS.computedValue),
+      fontSize: truncate(style.fontSize, PREVIEW_ELEMENT_LIMITS.computedValue),
+      color: truncate(style.color, PREVIEW_ELEMENT_LIMITS.computedValue),
+      backgroundColor: truncate(style.backgroundColor, PREVIEW_ELEMENT_LIMITS.computedValue),
+      margin: truncate(style.margin, PREVIEW_ELEMENT_LIMITS.computedValue),
+      padding: truncate(style.padding, PREVIEW_ELEMENT_LIMITS.computedValue),
+      width: truncate(style.width, PREVIEW_ELEMENT_LIMITS.computedValue),
+      height: truncate(style.height, PREVIEW_ELEMENT_LIMITS.computedValue),
     },
   }
 }

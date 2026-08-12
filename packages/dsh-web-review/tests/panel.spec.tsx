@@ -10,12 +10,26 @@ import {
   type AnnotationDraft,
   type AnnotationSyncReceipt,
 } from '../src/annotation-contract.ts'
+import {
+  EDITABLE_STYLE_PROPERTIES,
+  type EditableStyleProperty,
+} from '../src/annotation-properties.ts'
+import {
+  PREVIEW_ENTRY_PREFIX,
+  PREVIEW_BRIDGE_PROTOCOL,
+  PREVIEW_BRIDGE_VERSION,
+  type PreviewChannel,
+  type PreviewElementHandle,
+  type PreviewElementTarget,
+  type PreviewHostMessage,
+  type PreviewSessionDescriptor,
+  type PreviewSessionId,
+} from '../src/preview-contract.ts'
+import { encodeTarget } from '../src/proxy-url.ts'
 import { DraftOverlayBar, type WebviewDockInjected } from '../src/client/DraftOverlayBar.tsx'
 import { WebviewView } from '../src/client/WebviewView.tsx'
 import type { PickItem } from '../src/client/contract.ts'
 import { zh, type WebviewKey } from '../src/client/locales.ts'
-import * as pickerModule from '../src/client/picker.ts'
-import type { PickerSurface } from '../src/client/picker.ts'
 import { activatePreviewTab } from '../src/client/preview-link.ts'
 import { createWebviewStore, type WebviewState, type WebviewStore } from '../src/client/stores.ts'
 
@@ -80,20 +94,6 @@ function pick(id = 'p1', comment = ''): PickItem {
   }
 }
 
-function mockPickerSurface(): PickerSurface {
-  return {
-    activate: vi.fn(),
-    deactivate: vi.fn(),
-    isActive: () => false,
-    onPick: null,
-    onCancel: null,
-    onMarkClick: null,
-    syncMarkers: vi.fn(),
-    select: vi.fn(),
-    clearSelection: vi.fn(),
-  }
-}
-
 function receipt(id: string): AnnotationSyncReceipt {
   return { kind: 'ready', snapshotId: AnnotationSnapshotId(id) }
 }
@@ -145,6 +145,112 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); vi.restoreAllMocks(); window.localStorage.clear() })
 
+let activeDescriptor: PreviewSessionDescriptor | undefined
+
+function previewTarget(
+  handleSeed = 1,
+  overrides: Partial<PreviewElementTarget> = {},
+): PreviewElementTarget {
+  const handle = handleSeed.toString(16).padStart(24, '0') as PreviewElementHandle
+  const item = pick(`target-${String(handleSeed)}`)
+  const baselines = Object.fromEntries(EDITABLE_STYLE_PROPERTIES.map(property => [
+    property,
+    property === 'font-size' ? '16px'
+      : property === 'display' ? 'block'
+        : property === 'position' ? 'static'
+          : '',
+  ])) as Record<EditableStyleProperty, string>
+  return {
+    handle,
+    snapshot: item.snapshot,
+    rect: { x: 20, y: 30, width: 180, height: 48 },
+    viewport: { width: 800, height: 600 },
+    baselines,
+    inlineStyles: { 'font-size': { value: '16px', priority: '' } },
+    originalText: 'Example Domain',
+    detail: { kind: 'text', text: 'Example Domain' },
+    navigation: { child: false, parent: true, 'previous-sibling': false, 'next-sibling': true },
+    ...overrides,
+  }
+}
+
+function installFrameBridge(options: {
+  openTarget?: PreviewElementTarget
+  navigateTarget?: PreviewElementTarget
+} = {}) {
+  const descriptor = activeDescriptor
+  const frame = document.querySelector('iframe') as HTMLIFrameElement | null
+  if (descriptor === undefined || frame?.contentWindow === null || frame === null) {
+    throw new Error('preview frame is not mounted')
+  }
+  const commands: PreviewHostMessage[] = []
+  const emit = (event: { name: string; payload: unknown }): void => {
+    window.dispatchEvent(new MessageEvent('message', {
+      source: frame.contentWindow,
+      origin: descriptor.frameOrigin,
+      data: {
+        protocol: PREVIEW_BRIDGE_PROTOCOL,
+        version: PREVIEW_BRIDGE_VERSION,
+        channel: descriptor.channel,
+        direction: 'frame-to-host',
+        event,
+      },
+    }))
+  }
+  vi.spyOn(frame.contentWindow, 'postMessage').mockImplementation((message: unknown) => {
+    const command = message as PreviewHostMessage
+    commands.push(command)
+    let value: unknown = null
+    if (command.command.name === 'open-pick') value = options.openTarget ?? previewTarget()
+    if (command.command.name === 'navigate-element') value = options.navigateTarget ?? null
+    if (command.command.name === 'select-element') value = options.navigateTarget ?? null
+    if (command.command.name === 'read-tree') {
+      const target = options.navigateTarget ?? options.openTarget ?? previewTarget()
+      value = {
+        handle: target.handle,
+        key: 'html:0/body:0/h1:0',
+        tagName: target.snapshot.tagName,
+        detail: target.detail,
+        current: true,
+        children: [],
+      }
+    }
+    queueMicrotask(() => {
+      window.dispatchEvent(new MessageEvent('message', {
+        source: frame.contentWindow,
+        origin: descriptor.frameOrigin,
+        data: {
+          protocol: PREVIEW_BRIDGE_PROTOCOL,
+          version: PREVIEW_BRIDGE_VERSION,
+          channel: descriptor.channel,
+          direction: 'frame-to-host',
+          requestId: command.requestId,
+          response: { ok: true, value },
+        },
+      }))
+    })
+  })
+  const ready = (canGoBack = false, canGoForward = false): void => {
+    emit({
+      name: 'ready',
+      payload: {
+        pageUrl: 'http://localhost:5173/',
+        title: 'Example Domain',
+        viewport: { width: 800, height: 600 },
+        canGoBack,
+        canGoForward,
+      },
+    })
+  }
+  return {
+    frame,
+    commands,
+    ready,
+    pick(target = previewTarget()) { emit({ name: 'pick', payload: { target } }) },
+    commandNames: () => commands.map(message => message.command.name),
+  }
+}
+
 function renderView(
   sendAnnotationsWithoutDraft: () => Promise<void> = vi.fn(async () => {}),
   draft = '',
@@ -156,6 +262,27 @@ function renderView(
   const input = {
     draft, draftRev: 0, phase, occurrences: [], queue: [], imageIds: [],
   }
+  let sessionSequence = 0
+  const createPreviewSession = (target: string): Promise<PreviewSessionDescriptor> => {
+    sessionSequence += 1
+    const sessionId = sessionSequence.toString(16).padStart(32, '0') as PreviewSessionId
+    const channel = (sessionSequence + 100).toString(16).padStart(32, '0') as PreviewChannel
+    const frameOrigin = `http://${sessionId}.localhost:43123`
+    const descriptor = {
+      sessionId,
+      channel,
+      frameOrigin,
+      frameUrl: `${frameOrigin}${PREVIEW_ENTRY_PREFIX}${encodeTarget(target)}`,
+      targetOrigin: new URL(target).origin,
+    }
+    activeDescriptor = descriptor
+    return {
+      then(resolve: (value: PreviewSessionDescriptor) => unknown) {
+        resolve(descriptor)
+        return Promise.resolve(descriptor)
+      },
+    } as unknown as Promise<PreviewSessionDescriptor>
+  }
   render(
     <WebviewView
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -166,6 +293,8 @@ function renderView(
       useInput={(selector) => selector(input)}
       inputActions={{ setDraft: vi.fn(), submit }}
       sendAnnotationsWithoutDraft={sendAnnotationsWithoutDraft}
+      createPreviewSession={createPreviewSession}
+      releasePreviewSessions={vi.fn(async () => {})}
       t={t}
     />,
   )
@@ -218,7 +347,7 @@ describe('WebviewView', () => {
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(store.getSnapshot()).toMatchObject({ title: '', picks: [] })
     const frame = document.querySelector('iframe') as HTMLIFrameElement
-    expect(frame.src).toContain('webview-proxy/http%3A//localhost%3A5173/')
+    expect(frame.src).toContain('/.dsh-web-review/entry/http%3A//localhost%3A5173/')
     expect(frame.title).toBe(zh['panel.frame'])
   })
 
@@ -235,7 +364,7 @@ describe('WebviewView', () => {
     expect(store.getSnapshot().url).toBe('http://localhost:5173/demo')
   })
 
-  it('keeps invalid, remote and non-http addresses out of the proxy', () => {
+  it('keeps invalid non-http addresses out and accepts remote pages', () => {
     const store = renderView()
     const input = screen.getByPlaceholderText(zh['panel.urlPlaceholder'])
     fireEvent.change(input, { target: { value: 'ftp://example.com/file' } })
@@ -244,31 +373,25 @@ describe('WebviewView', () => {
     expect(screen.getByRole('alert').textContent).toContain(zh['panel.urlInvalid'])
     fireEvent.change(input, { target: { value: 'https://example.com/' } })
     fireEvent.keyDown(input, { key: 'Enter' })
-    expect(store.getSnapshot().url).toBe('')
+    expect(store.getSnapshot().url).toBe('https://example.com/')
   })
 
-  it('focuses a dock-selected pick through its selector', () => {
-    const surface = mockPickerSurface()
-    vi.spyOn(pickerModule, 'pickerOf').mockReturnValue(surface)
+  it('focuses a dock-selected pick through the isolated bridge', async () => {
     const store = renderView()
     act(() => {
       store.actions.setUrl('http://localhost:5173/')
       store.actions.addPick(pick('p1', 'Make it smaller'))
     })
-    const frame = document.querySelector('iframe') as HTMLIFrameElement
-    const doc = frame.contentDocument!
-    doc.write('<!doctype html><html><body><h1 class="hero-title">Example Domain</h1></body></html>')
-    doc.close()
+    const bridge = installFrameBridge({ openTarget: previewTarget() })
+    act(() => { bridge.ready() })
     act(() => { store.actions.setFocusPickId('p1') })
-    const call = vi.mocked(surface.select).mock.calls[0] as [Element]
-    expect(call[0].className).toBe('hero-title')
+    await waitFor(() => expect(screen.getByPlaceholderText(zh['editor.comment'])).toBeTruthy())
     expect((screen.getByPlaceholderText(zh['editor.comment']) as HTMLInputElement).value).toBe('Make it smaller')
+    expect(bridge.commandNames()).toContain('open-pick')
     expect(store.getSnapshot().focusPickId).toBeNull()
   })
 
-  it('discards an active existing edit when that pick is removed', () => {
-    const surface = mockPickerSurface()
-    vi.spyOn(pickerModule, 'pickerOf').mockReturnValue(surface)
+  it('asks the isolated frame to roll back an active edit when its pick is removed', async () => {
     const store = renderView()
     const existing = {
       ...pick('p1', 'Existing'),
@@ -278,77 +401,63 @@ describe('WebviewView', () => {
       store.actions.setUrl('http://localhost:5173/')
       store.actions.addPick(existing)
     })
-    const frame = document.querySelector('iframe') as HTMLIFrameElement
-    frame.contentDocument!.write('<!doctype html><html><body><h1 class="hero-title" style="font-size: 16px">Example Domain</h1></body></html>')
-    frame.contentDocument!.close()
-    const heading = frame.contentDocument!.querySelector('h1') as HTMLElement
+    const bridge = installFrameBridge({ openTarget: previewTarget() })
+    act(() => { bridge.ready() })
     act(() => { store.actions.setFocusPickId('p1') })
-    expect(heading.style.fontSize).toBe('20px')
+    await waitFor(() => expect(screen.getByPlaceholderText(zh['editor.comment'])).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: zh['editor.adjust'] }))
     fireEvent.change(screen.getByLabelText(zh['editor.property.fontSize']), { target: { value: '30px' } })
-    expect(heading.style.fontSize).toBe('30px')
+    await waitFor(() => expect(bridge.commandNames()).toContain('preview-style'))
 
     act(() => { store.actions.removePick('p1') })
-    expect(heading.style.fontSize).toBe('16px')
+    expect(bridge.commandNames()).toContain('cancel-edit')
+    expect(bridge.commandNames()).toContain('sync-markers')
     expect(document.querySelector('[data-webview-annotation-editor]')).toBeNull()
   })
 
-  it('discards an uncommitted editor on an explicit pick reset and on unmount', () => {
-    const surface = mockPickerSurface()
-    vi.spyOn(pickerModule, 'ensurePicker').mockReturnValue(surface)
-    vi.spyOn(pickerModule, 'pickerOf').mockReturnValue(surface)
+  it('discards an uncommitted bridge transaction on an explicit pick reset', async () => {
     const store = renderView()
     act(() => {
       store.actions.setUrl('http://localhost:5173/')
       store.actions.addPick(pick('existing', 'Keep'))
       store.actions.togglePickMode()
     })
-    const frame = document.querySelector('iframe') as HTMLIFrameElement
-    frame.contentDocument!.write('<!doctype html><html><body><h1 class="hero-title">Example Domain</h1><button style="font-size: 16px">Submit</button></body></html>')
-    frame.contentDocument!.close()
-    fireEvent.load(frame)
-    const button = frame.contentDocument!.querySelector('button') as HTMLElement
-    act(() => { surface.onPick?.(button) })
+    const bridge = installFrameBridge()
+    act(() => { bridge.ready(); bridge.pick(previewTarget(2)) })
+    await waitFor(() => expect(screen.getByPlaceholderText(zh['editor.comment'])).toBeTruthy())
     fireEvent.change(screen.getByPlaceholderText(zh['editor.comment']), { target: { value: 'Change it' } })
     fireEvent.click(screen.getByRole('button', { name: zh['editor.adjust'] }))
     fireEvent.change(screen.getByLabelText(zh['editor.property.fontSize']), { target: { value: '24px' } })
-    expect(button.style.fontSize).toBe('24px')
+    await waitFor(() => expect(bridge.commandNames()).toContain('preview-style'))
 
     act(() => { store.actions.clearPicks() })
-    expect(button.style.fontSize).toBe('16px')
+    expect(bridge.commandNames()).toContain('cancel-edit')
     expect(document.querySelector('[data-webview-annotation-editor]')).toBeNull()
-
-    act(() => { surface.onPick?.(button) })
-    fireEvent.change(screen.getByPlaceholderText(zh['editor.comment']), { target: { value: 'Change it again' } })
-    fireEvent.click(screen.getByRole('button', { name: zh['editor.adjust'] }))
-    fireEvent.change(screen.getByLabelText(zh['editor.property.fontSize']), { target: { value: '28px' } })
-    expect(button.style.fontSize).toBe('28px')
-    cleanup()
-    expect(button.style.fontSize).toBe('16px')
   })
 
-  it('re-anchors an edit through hierarchy shortcuts without carrying old element diffs', () => {
-    const surface = mockPickerSurface()
-    vi.spyOn(pickerModule, 'ensurePicker').mockReturnValue(surface)
-    vi.spyOn(pickerModule, 'pickerOf').mockReturnValue(surface)
+  it('re-anchors through bridge hierarchy commands without carrying old diffs', async () => {
     const store = renderView()
     act(() => {
       store.actions.setUrl('http://localhost:5173/')
       store.actions.togglePickMode()
     })
-    const frame = document.querySelector('iframe') as HTMLIFrameElement
-    frame.contentDocument!.write('<!doctype html><html><body><main><div class="card"><h3>Title</h3><button style="font-size: 16px">Submit</button></div></main></body></html>')
-    frame.contentDocument!.close()
-    fireEvent.load(frame)
-    const button = frame.contentDocument!.querySelector('button') as HTMLElement
-    const card = frame.contentDocument!.querySelector('.card') as HTMLElement
-    act(() => { surface.onPick?.(button) })
+    const button = previewTarget(2, {
+      snapshot: { ...pick().snapshot, tagName: 'button', className: '', cssPath: 'button' },
+      detail: { kind: 'text', text: 'Submit' },
+    })
+    const card = previewTarget(3, {
+      snapshot: { ...pick().snapshot, tagName: 'div', className: 'card', cssPath: 'div.card' },
+      detail: { kind: 'children', count: 2 },
+    })
+    const bridge = installFrameBridge({ navigateTarget: card })
+    act(() => { bridge.ready(); bridge.pick(button) })
+    await waitFor(() => expect(screen.getByPlaceholderText(zh['editor.comment'])).toBeTruthy())
 
     const comment = screen.getByPlaceholderText(zh['editor.comment']) as HTMLInputElement
     fireEvent.change(comment, { target: { value: 'Move this annotation' } })
     fireEvent.click(screen.getByRole('button', { name: zh['editor.adjust'] }))
     fireEvent.change(screen.getByLabelText(zh['editor.property.fontSize']), { target: { value: '24px' } })
-    expect(button.style.fontSize).toBe('24px')
+    await waitFor(() => expect(bridge.commandNames()).toContain('preview-style'))
 
     const moveHandle = screen.getByRole('button', { name: zh['editor.move'] }) as HTMLButtonElement
     moveHandle.setPointerCapture = vi.fn()
@@ -359,16 +468,15 @@ describe('WebviewView', () => {
     const movedEditor = document.querySelector('[data-webview-annotation-editor]') as HTMLDivElement
     const movedPosition = { left: movedEditor.style.left, top: movedEditor.style.top }
 
-    fireEvent.keyDown(frame.contentDocument!.body, { key: '\\', code: 'Backslash' })
-    expect(button.style.fontSize).toBe('16px')
-    expect(surface.select).toHaveBeenLastCalledWith(card)
+    fireEvent.keyDown(document.querySelector('[data-webview-annotation-editor]')!, { key: '\\', code: 'Backslash' })
+    await waitFor(() => expect(bridge.commandNames()).toContain('navigate-element'))
     expect((screen.getByPlaceholderText(zh['editor.comment']) as HTMLInputElement).value).toBe('Move this annotation')
     expect(document.querySelector('[data-webview-property-inspector]')).toBeTruthy()
     const reanchoredEditor = document.querySelector('[data-webview-annotation-editor]') as HTMLDivElement
     expect({ left: reanchoredEditor.style.left, top: reanchoredEditor.style.top }).toEqual(movedPosition)
 
     fireEvent.click(screen.getByRole('button', { name: zh['editor.select'] }))
-    expect(document.querySelector('[data-webview-element-selector] [aria-selected="true"]')?.textContent).toContain('div')
+    await waitFor(() => expect(document.querySelector('[data-webview-element-selector] [aria-selected="true"]')?.textContent).toContain('div'))
     fireEvent.click(screen.getByRole('button', { name: zh['editor.select'] }))
     fireEvent.click(screen.getByRole('button', { name: zh['editor.confirm'] }))
     expect(store.getSnapshot().picks[0]).toMatchObject({
@@ -378,25 +486,20 @@ describe('WebviewView', () => {
     })
   })
 
-  it('remembers a committed editor size for the next opened element', () => {
-    const surface = mockPickerSurface()
-    vi.spyOn(pickerModule, 'ensurePicker').mockReturnValue(surface)
-    vi.spyOn(pickerModule, 'pickerOf').mockReturnValue(surface)
+  it('remembers a committed editor size for the next bridged element', async () => {
     const store = renderView()
     act(() => {
       store.actions.setUrl('http://localhost:5173/')
       store.actions.togglePickMode()
     })
-    const frame = document.querySelector('iframe') as HTMLIFrameElement
+    const bridge = installFrameBridge()
+    const frame = bridge.frame
     Object.defineProperties(frame, {
       clientWidth: { configurable: true, value: 800 },
       clientHeight: { configurable: true, value: 600 },
     })
-    frame.contentDocument!.write('<!doctype html><html><body><button>One</button><button>Two</button></body></html>')
-    frame.contentDocument!.close()
-    fireEvent.load(frame)
-    const [first, second] = [...frame.contentDocument!.querySelectorAll('button')]
-    act(() => { surface.onPick?.(first!) })
+    act(() => { bridge.ready(); bridge.pick(previewTarget(4)) })
+    await waitFor(() => expect(screen.getByRole('button', { name: zh['editor.adjust'] })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: zh['editor.adjust'] }))
 
     const handle = document.querySelector('[data-resize-edge="se"]') as HTMLDivElement
@@ -406,31 +509,34 @@ describe('WebviewView', () => {
     fireEvent(handle, new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 500, clientY: 500 }))
     fireEvent(handle, new MouseEvent('pointermove', { bubbles: true, button: 0, clientX: 460, clientY: 460 }))
     fireEvent(handle, new MouseEvent('pointerup', { bubbles: true, button: 0, clientX: 460, clientY: 460 }))
-    expect(window.localStorage.getItem('dsh-web-review.editor-size.v1')).toBe('{"width":360,"height":520}')
+    const storedSize = JSON.parse(window.localStorage.getItem('dsh-web-review.editor-size.v1') ?? '{}') as {
+      width?: number
+      height?: number
+    }
+    expect(storedSize.width).toBe(360)
+    expect(storedSize.height).toBeGreaterThan(400)
 
     fireEvent.click(screen.getByRole('button', { name: zh['editor.cancel'] }))
-    act(() => { surface.onPick?.(second!) })
+    act(() => { bridge.pick(previewTarget(5)) })
+    await waitFor(() => expect(screen.getByRole('button', { name: zh['editor.adjust'] })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: zh['editor.adjust'] }))
     const reopened = document.querySelector('[data-webview-annotation-editor]') as HTMLDivElement
     expect(reopened.style.width).toBe('360px')
-    expect(reopened.style.height).toBe('520px')
+    expect(reopened.style.height).toBe(`${String(storedSize.height)}px`)
   })
 
-  it('keeps the shared annotation state unchanged while the editor is temporarily hidden', () => {
-    const surface = mockPickerSurface()
-    vi.spyOn(pickerModule, 'pickerOf').mockReturnValue(surface)
+  it('keeps shared annotation state unchanged while a bridged editor is hidden', async () => {
     const store = renderView()
     act(() => {
       store.actions.setUrl('http://localhost:5173/')
       store.actions.addPick(pick('p1', 'Keep this annotation'))
       store.actions.togglePickMode()
     })
-    const frame = document.querySelector('iframe') as HTMLIFrameElement
-    const doc = frame.contentDocument!
-    doc.write('<!doctype html><html><body><h1 class="hero-title">Example Domain</h1></body></html>')
-    doc.close()
+    const bridge = installFrameBridge({ openTarget: previewTarget() })
+    act(() => { bridge.ready() })
     act(() => { store.actions.setFocusPickId('p1') })
 
+    await waitFor(() => expect(screen.getByRole('button', { name: zh['editor.hide'] })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: zh['editor.hide'] }))
     expect(store.getSnapshot().pickMode).toBe(true)
     expect(store.getSnapshot().picks).toHaveLength(1)
@@ -551,19 +657,11 @@ describe('WebviewView', () => {
     expect(store.getSnapshot().pickMode).toBe(true)
   })
 
-  it('orders iframe history controls before refresh and the address field', () => {
+  it('orders history controls and delegates them through the bridge', () => {
     const store = renderView()
     act(() => { store.actions.setUrl('http://localhost:5173/') })
-    const frame = document.querySelector('iframe') as HTMLIFrameElement
-    frame.contentDocument!.write('<!doctype html><html><body></body></html>')
-    frame.contentDocument!.close()
-    Object.defineProperty(frame.contentWindow, 'navigation', {
-      configurable: true,
-      value: { canGoBack: true, canGoForward: true },
-    })
-    const back = vi.spyOn(frame.contentWindow!.history, 'back').mockImplementation(() => {})
-    const forward = vi.spyOn(frame.contentWindow!.history, 'forward').mockImplementation(() => {})
-    fireEvent.load(frame)
+    const bridge = installFrameBridge()
+    act(() => { bridge.ready(true, true) })
 
     const backButton = screen.getByRole('button', { name: zh['panel.back'] })
     const forwardButton = screen.getByRole('button', { name: zh['panel.forward'] })
@@ -573,8 +671,8 @@ describe('WebviewView', () => {
 
     fireEvent.click(backButton)
     fireEvent.click(forwardButton)
-    expect(back).toHaveBeenCalledOnce()
-    expect(forward).toHaveBeenCalledOnce()
+    expect(bridge.commandNames()).toContain('history-back')
+    expect(bridge.commandNames()).toContain('history-forward')
   })
 
 })
@@ -597,8 +695,9 @@ describe('DraftOverlayBar', () => {
     const remoteLink = document.createElement('a')
     remoteLink.href = 'https://example.com/review'
     assistant.appendChild(remoteLink)
-    expect(dispatchLink(remoteLink, new MouseEvent('click', { bubbles: true, cancelable: true }))).toBe(false)
-    expect(openPreview).toHaveBeenCalledTimes(1)
+    expect(dispatchLink(remoteLink, new MouseEvent('click', { bubbles: true, cancelable: true }))).toBe(true)
+    expect(openPreview).toHaveBeenLastCalledWith('https://example.com/review')
+    expect(openPreview).toHaveBeenCalledTimes(2)
 
     const user = document.createElement('div')
     user.dataset.chatFlowKind = 'user'
@@ -606,7 +705,7 @@ describe('DraftOverlayBar', () => {
     user.appendChild(userLink)
     document.body.appendChild(user)
     expect(dispatchLink(userLink, new MouseEvent('click', { bubbles: true, cancelable: true }))).toBe(false)
-    expect(openPreview).toHaveBeenCalledTimes(1)
+    expect(openPreview).toHaveBeenCalledTimes(2)
     assistant.remove()
     user.remove()
   })

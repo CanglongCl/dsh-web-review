@@ -1,6 +1,6 @@
 /**
- * dsh-web-review browser half: the "网页预览" conversation view tab (proxied iframe +
- * in-iframe element picker + annotation echo layer) and the "注释" dock above
+ * dsh-web-review browser half: the "网页预览" conversation view tab (isolated
+ * Preview frame + message bridge) and the "注释" dock above
  * the composer, sharing one webview store instance. Structured annotation
  * snapshots commit immediately to the node half's `/webview-annotations`
  * route as pending state, then become separately logged plugin context only
@@ -28,6 +28,14 @@ import {
   annotationSyncReceiptOf,
   type AnnotationSyncReceipt,
 } from '../annotation-contract.ts'
+import {
+  PREVIEW_CLIENT_HEADER,
+  PREVIEW_CLIENT_HEADER_VALUE,
+  PREVIEW_SESSIONS_PATH,
+  previewSessionDescriptorOf,
+  type PreviewSessionDescriptor,
+  type PreviewSessionId,
+} from '../preview-contract.ts'
 import { en, zh, type WebviewKey } from './locales.ts'
 import { createWebviewStore } from './stores.ts'
 import { WebviewView, type WebviewViewInjected } from './WebviewView.tsx'
@@ -132,6 +140,37 @@ export function makeSyncAnnotations(sessionId: SessionId): WebviewDockInjected['
   }
 }
 
+/** Create one node-owned isolated Origin for a requested page. */
+export async function createPreviewSession(target: string): Promise<PreviewSessionDescriptor> {
+  const response = await fetch(PREVIEW_SESSIONS_PATH, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      [PREVIEW_CLIENT_HEADER]: PREVIEW_CLIENT_HEADER_VALUE,
+    },
+    body: JSON.stringify({ target }),
+  })
+  if (!response.ok) throw new Error(`preview session creation failed (${String(response.status)})`)
+  const descriptor = previewSessionDescriptorOf(await response.json() as unknown)
+  if (descriptor === undefined) throw new Error('preview session creation returned an invalid descriptor')
+  return descriptor
+}
+
+/** Release every Origin minted during one iframe's navigation chain. */
+export async function releasePreviewSessions(sessionIds: readonly PreviewSessionId[]): Promise<void> {
+  if (sessionIds.length === 0) return
+  const response = await fetch(PREVIEW_SESSIONS_PATH, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+      [PREVIEW_CLIENT_HEADER]: PREVIEW_CLIENT_HEADER_VALUE,
+    },
+    body: JSON.stringify({ sessionIds }),
+    keepalive: true,
+  })
+  if (!response.ok) throw new Error(`preview session release failed (${String(response.status)})`)
+}
+
 /** The plugin body: dictionaries and the two shared-store registrations. */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-web-review: dictionaries')
@@ -155,6 +194,8 @@ export function apply(ctx: ClientContext): void {
     store: webviewStore,
     inject: (sessionId: SessionId): WebviewViewInjected => ({
       sendAnnotationsWithoutDraft: () => scopedConversation(ctx, sessionId).send(t('panel.pick.defaultPrompt')),
+      createPreviewSession,
+      releasePreviewSessions,
     }),
   }, WebviewView))
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
