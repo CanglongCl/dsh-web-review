@@ -57,10 +57,13 @@ importers:
         specifier: ^7.3.0
         version: 7.3.0
     devDependencies:
-      '@cordisjs/plugin-include':
+      '@deepseek-ai/cordis':
+        specifier: link:/Users/canglong/Program/deepseek-harness/vendor/cordis
+        version: link:../../../../../../Program/deepseek-harness/vendor/cordis
+      '@deepseek-ai/cordis-plugin-include':
         specifier: link:/Users/canglong/Program/deepseek-harness/vendor/include
         version: link:../../../../../../Program/deepseek-harness/vendor/include
-      '@cordisjs/plugin-loader':
+      '@deepseek-ai/cordis-plugin-loader':
         specifier: link:/Users/canglong/Program/deepseek-harness/vendor/loader
         version: link:../../../../../../Program/deepseek-harness/vendor/loader
       '@deepseek-ai/dsh-agent':
@@ -114,9 +117,6 @@ importers:
       clsx:
         specifier: ^2.0.0
         version: 2.1.1
-      cordis:
-        specifier: link:/Users/canglong/Program/deepseek-harness/vendor/cordis
-        version: link:../../../../../../Program/deepseek-harness/vendor/cordis
       lightningcss:
         specifier: ^1.32.0
         version: 1.33.0

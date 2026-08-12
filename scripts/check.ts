@@ -97,6 +97,21 @@ assert(
     && readFileSync(join(ROOT, 'cordis.yml'), 'utf8') === cordisBefore,
   () => 'generated absolute-path config changed across two consecutive runs',
 )
+const webLauncherFiles = [
+  join(ROOT, 'scripts', 'dev.ts'),
+  join(ROOT, 'scripts', 'acceptance.ts'),
+  join(PKG, 'tests', 'e2e-scaffold.ts'),
+]
+assert(
+  '0811 Web launchers share the built-CLI helper',
+  () => webLauncherFiles.every(path => {
+    const source = readFileSync(path, 'utf8')
+    return source.includes('harnessWebLaunch(')
+      && !source.includes("'--dev'")
+      && !source.includes("'bin', 'dsh'")
+  }),
+  () => 'dev, acceptance, and E2E launchers must use harnessWebLaunch without bin/dsh or --dev',
+)
 
 run('source + scripts typecheck (tsc -b --force)', process.execPath, [
   join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc'),

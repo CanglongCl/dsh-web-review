@@ -63,7 +63,7 @@
 
 ### 前置条件
 
-- 支持官方 profile 插件机制的 DeepSeek Harness；已验证基线为 `snapshot-20260810T155924Z-8ec407cd64`
+- 支持官方 profile 插件机制的 DeepSeek Harness；已验证基线为 `snapshot-20260811T152241Z-da262ec14c`
 - 已安装 `dsh` 与 pnpm
 
 ### 使用官方 bundle 安装

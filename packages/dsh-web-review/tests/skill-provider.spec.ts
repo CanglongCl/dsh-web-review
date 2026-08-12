@@ -1,4 +1,4 @@
-import { Context } from 'cordis'
+import { Context } from '@deepseek-ai/cordis'
 import SkillService from '@deepseek-ai/dsh-skill'
 import { describe, expect, it } from 'vitest'
 import { registerUiSkillProvider, skillBody } from '../src/skill-provider.ts'

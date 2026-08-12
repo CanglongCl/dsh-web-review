@@ -29,8 +29,9 @@
     "watch": "tsdown --watch"
   },
   "devDependencies": {
-    "@cordisjs/plugin-include": "link:/Users/canglong/Program/deepseek-harness/vendor/include",
-    "@cordisjs/plugin-loader": "link:/Users/canglong/Program/deepseek-harness/vendor/loader",
+    "@deepseek-ai/cordis": "link:/Users/canglong/Program/deepseek-harness/vendor/cordis",
+    "@deepseek-ai/cordis-plugin-include": "link:/Users/canglong/Program/deepseek-harness/vendor/include",
+    "@deepseek-ai/cordis-plugin-loader": "link:/Users/canglong/Program/deepseek-harness/vendor/loader",
     "@deepseek-ai/dsh-agent": "link:/Users/canglong/Program/deepseek-harness/packages/core/agent",
     "@deepseek-ai/dsh-client-locale": "link:/Users/canglong/Program/deepseek-harness/packages/client/locale",
     "@deepseek-ai/dsh-client-runtime": "link:/Users/canglong/Program/deepseek-harness/packages/client/runtime",
@@ -47,7 +48,6 @@
     "@deepseek-ai/schemastery": "link:/Users/canglong/Program/deepseek-harness/vendor/schemastery",
     "@types/react": "~18.3.1",
     "clsx": "^2.0.0",
-    "cordis": "link:/Users/canglong/Program/deepseek-harness/vendor/cordis",
     "lightningcss": "^1.32.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

@@ -30,10 +30,11 @@ const PACKAGE_ID = (
 
 /** The shell's shared platform module table (mirror of packages/client/web/src/platform.ts). */
 const PLATFORM_MODULES = [
-  'react', 'react/jsx-runtime', 'react-dom', 'react-dom/client', 'cordis',
+  'react', 'react/jsx-runtime', 'react-dom', 'react-dom/client', '@deepseek-ai/cordis',
   '@deepseek-ai/dsh-client-ui-slots',
   '@deepseek-ai/dsh-client-web-react',
   '@deepseek-ai/dsh-client-ui-primitives',
+  '@deepseek-ai/dsh-client-ui-attachment',
   '@deepseek-ai/dsh-client-schema-form',
 ] as const
 

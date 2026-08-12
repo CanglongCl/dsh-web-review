@@ -22,6 +22,7 @@ import {
   WELCOME_NOTICE_SETTINGS_NAMESPACE,
   WELCOME_NOTICE_VERSION,
 } from '@deepseek-ai/dsh-client-ui-settings-general'
+import { harnessWebLaunch } from '../../../scripts/harness-cli.ts'
 import { resolveHarnessRoot } from '../../../scripts/harness-path.ts'
 
 /** Repo root (dsh-web-review). */
@@ -101,7 +102,7 @@ async function waitForChildService(
 }
 
 /**
- * Start the dev instance (`dsh web --dev --patch ./cordis.yml`, no bundle
+ * Start the dev instance (`dsh web --patch ./cordis.yml`, no bundle
  * watch — the e2e asserts the built bundle) and the demo page server on
  * free ports. Returns the URLs plus a stopper.
  */
@@ -181,27 +182,21 @@ export async function startServices(): Promise<E2EServices> {
   ].join('\n'))
 
   const harness = resolveHarnessRoot(REPO_ROOT)
-  const bin = join(harness, 'bin', 'dsh')
-  const web = spawn(bin, [
-    'web',
-    '--dev',
-    '--host', '127.0.0.1',
-    '--port', String(webPort),
-    '--patch', overlayPath,
-  ], {
+  const launch = harnessWebLaunch(harness, overlayPath, '127.0.0.1', webPort, {
+    ...process.env,
+    DSH_HOME: dshHome,
+    ...(apiKey === undefined ? {} : { DEEPSEEK_API_KEY: apiKey }),
+    // With either supported credential source the probe message hits the
+    // configured provider; only a truly credential-free run uses a dead
+    // loopback so failure settles instantly (a hung turn churns the header).
+    ...(apiKey === undefined && !hasStoredCredentials
+      ? { DEEPSEEK_BASE_URL: 'http://127.0.0.1:9' }
+      : {}),
+  })
+  const web = spawn(launch.command, launch.args, {
     cwd: REPO_ROOT,
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: {
-      ...process.env,
-      DSH_HOME: dshHome,
-      ...(apiKey === undefined ? {} : { DEEPSEEK_API_KEY: apiKey }),
-      // With either supported credential source the probe message hits the
-      // configured provider; only a truly credential-free run uses a dead
-      // loopback so failure settles instantly (a hung turn churns the header).
-      ...(apiKey === undefined && !hasStoredCredentials
-        ? { DEEPSEEK_BASE_URL: 'http://127.0.0.1:9' }
-        : {}),
-    },
+    env: launch.env,
   })
   web.stdout?.on('data', capture('web'))
   web.stderr?.on('data', capture('web'))

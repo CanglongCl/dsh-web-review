@@ -13,6 +13,7 @@ import { createServer } from 'node:net'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { harnessWebLaunch } from './harness-cli.ts'
 import { resolveHarnessRoot } from './harness-path.ts'
 import { ensureAcceptanceHistory } from './acceptance-history.ts'
 
@@ -166,9 +167,8 @@ console.log(`acceptance: demo page: http://${host}:${demoPort}`)
 console.log(`acceptance: mock history: ${seededHistory ? 'created' : 'reused'} (网页批注验收)`)
 console.log('acceptance: open 网页批注验收 and click its Demo link')
 
-const web = start(join(harness, 'bin', 'dsh'), [
-  'web', '--dev', '--host', host, '--port', webPort, '--patch', overlayPath,
-], root)
+const launch = harnessWebLaunch(harness, overlayPath, host, webPort, sharedEnv)
+const web = start(launch.command, launch.args, root, launch.env)
 start('pnpm', ['run', 'build:watch'], root)
 start(process.execPath, ['--import', 'tsx', join(root, 'demo/server.ts'), demoPort], root, process.env)
 
