@@ -56,46 +56,55 @@ importers:
     devDependencies:
       '@cordisjs/plugin-include':
         specifier: link:/Users/canglong/Program/deepseek-harness/vendor/include
-        version: link:../../../deepseek-harness/vendor/include
+        version: link:../../../../../../Program/deepseek-harness/vendor/include
       '@cordisjs/plugin-loader':
         specifier: link:/Users/canglong/Program/deepseek-harness/vendor/loader
-        version: link:../../../deepseek-harness/vendor/loader
+        version: link:../../../../../../Program/deepseek-harness/vendor/loader
       '@deepseek-ai/dsh-agent':
         specifier: link:/Users/canglong/Program/deepseek-harness/packages/core/agent
-        version: link:../../../deepseek-harness/packages/core/agent
+        version: link:../../../../../../Program/deepseek-harness/packages/core/agent
       '@deepseek-ai/dsh-client-locale':
         specifier: link:/Users/canglong/Program/deepseek-harness/packages/client/locale
-        version: link:../../../deepseek-harness/packages/client/locale
+        version: link:../../../../../../Program/deepseek-harness/packages/client/locale
       '@deepseek-ai/dsh-client-runtime':
         specifier: link:/Users/canglong/Program/deepseek-harness/packages/client/runtime
-        version: link:../../../deepseek-harness/packages/client/runtime
+        version: link:../../../../../../Program/deepseek-harness/packages/client/runtime
+      '@deepseek-ai/dsh-client-ui-command':
+        specifier: link:/Users/canglong/Program/deepseek-harness/packages/client/ui-command
+        version: link:../../../../../../Program/deepseek-harness/packages/client/ui-command
       '@deepseek-ai/dsh-client-ui-conversation':
         specifier: link:/Users/canglong/Program/deepseek-harness/packages/client/ui-conversation
-        version: link:../../../deepseek-harness/packages/client/ui-conversation
+        version: link:../../../../../../Program/deepseek-harness/packages/client/ui-conversation
       '@deepseek-ai/dsh-client-ui-layout':
         specifier: link:/Users/canglong/Program/deepseek-harness/packages/client/ui-layout
-        version: link:../../../deepseek-harness/packages/client/ui-layout
+        version: link:../../../../../../Program/deepseek-harness/packages/client/ui-layout
       '@deepseek-ai/dsh-client-ui-primitives':
         specifier: link:/Users/canglong/Program/deepseek-harness/packages/client/ui-primitives
-        version: link:../../../deepseek-harness/packages/client/ui-primitives
+        version: link:../../../../../../Program/deepseek-harness/packages/client/ui-primitives
       '@deepseek-ai/dsh-client-ui-settings-general':
         specifier: link:/Users/canglong/Program/deepseek-harness/packages/client/ui-settings-general
-        version: link:../../../deepseek-harness/packages/client/ui-settings-general
+        version: link:../../../../../../Program/deepseek-harness/packages/client/ui-settings-general
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: link:/Users/canglong/Program/deepseek-harness/packages/client/ui-slots
-        version: link:../../../deepseek-harness/packages/client/ui-slots
+        version: link:../../../../../../Program/deepseek-harness/packages/client/ui-slots
       '@deepseek-ai/dsh-host-webserver':
         specifier: link:/Users/canglong/Program/deepseek-harness/packages/host/webserver
-        version: link:../../../deepseek-harness/packages/host/webserver
+        version: link:../../../../../../Program/deepseek-harness/packages/host/webserver
       '@deepseek-ai/dsh-llm':
         specifier: link:/Users/canglong/Program/deepseek-harness/packages/llm/llm
-        version: link:../../../deepseek-harness/packages/llm/llm
+        version: link:../../../../../../Program/deepseek-harness/packages/llm/llm
       '@deepseek-ai/dsh-session':
         specifier: link:/Users/canglong/Program/deepseek-harness/packages/core/session
-        version: link:../../../deepseek-harness/packages/core/session
+        version: link:../../../../../../Program/deepseek-harness/packages/core/session
+      '@deepseek-ai/dsh-skill':
+        specifier: link:/Users/canglong/Program/deepseek-harness/packages/skill/skill
+        version: link:../../../../../../Program/deepseek-harness/packages/skill/skill
       '@deepseek-ai/dsh-system-prompt':
         specifier: link:/Users/canglong/Program/deepseek-harness/packages/core/system-prompt
-        version: link:../../../deepseek-harness/packages/core/system-prompt
+        version: link:../../../../../../Program/deepseek-harness/packages/core/system-prompt
+      '@deepseek-ai/schemastery':
+        specifier: link:/Users/canglong/Program/deepseek-harness/vendor/schemastery
+        version: link:../../../../../../Program/deepseek-harness/vendor/schemastery
       '@types/react':
         specifier: ~18.3.1
         version: 18.3.31
@@ -104,7 +113,7 @@ importers:
         version: 2.1.1
       cordis:
         specifier: link:/Users/canglong/Program/deepseek-harness/vendor/cordis
-        version: link:../../../deepseek-harness/vendor/cordis
+        version: link:../../../../../../Program/deepseek-harness/vendor/cordis
       lightningcss:
         specifier: ^1.32.0
         version: 1.33.0

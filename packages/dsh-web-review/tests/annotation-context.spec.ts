@@ -2,8 +2,7 @@
 import type { IncomingMessage } from 'node:http'
 import type { Agent, AgentRegistry, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import { SessionId, type SessionId as SessionIdType } from '@deepseek-ai/dsh-session'
+import { Session, SessionId, type SessionEvent, type SessionId as SessionIdType } from '@deepseek-ai/dsh-session'
 import { describe, expect, it } from 'vitest'
 import {
   ANNOTATION_LIMITS,
@@ -19,11 +18,13 @@ import {
   parseAnnotationBody,
   readRequestBody,
   storeAnnotationSnapshot,
+  type AnnotationCommitState,
 } from '../src/annotation-context.ts'
 
 function snapshot(overrides: Partial<AnnotationSnapshot> = {}): AnnotationSnapshot {
   return {
     sessionId: 'session-1',
+    selectedSkills: [],
     page: { url: 'https://example.com/', title: 'Example Domain' },
     comments: [{
       id: 'pick-1',
@@ -43,12 +44,27 @@ function snapshot(overrides: Partial<AnnotationSnapshot> = {}): AnnotationSnapsh
   }
 }
 
+const signal = new AbortController().signal
+const noSelectedSkills = {
+  get: async () => { throw new Error('unexpected Skill lookup') },
+}
+
+function attach(
+  state: AnnotationCommitState,
+  agent: Agent,
+  next: () => Promise<PreStepDecision>,
+  skills: Parameters<typeof attachPendingAnnotationContext>[2] = noSelectedSkills,
+): Promise<PreStepDecision> {
+  return attachPendingAnnotationContext(state, agent, skills, signal, [], next)
+}
+
 function harness(rawId = 'session-1'): {
   agent: Agent
   agents: Pick<AgentRegistry, 'get'>
 } {
   const agent = {
     id: SessionId(rawId),
+    session: Session.create(SessionId(rawId)),
   } as unknown as Agent
   return {
     agent,
@@ -197,20 +213,20 @@ describe('formatAnnotationContext', () => {
 describe('pending annotation admission', () => {
   it('stores snapshots without injecting and deduplicates repeats', () => {
     const { agents } = harness()
-    const state = new Map<string, string>()
+    const state: AnnotationCommitState = new Map()
     expect(storeAnnotationSnapshot(agents, state, snapshot())).toBe('pending')
-    expect(state.get('session-1')).toContain('# Browser comments')
+    expect(state.get('session-1')?.context).toContain('# Browser comments')
     expect(storeAnnotationSnapshot(agents, state, snapshot())).toBe('deduplicated')
   })
 
   it('replaces changed pending snapshots and clearing removes them without model context', () => {
     const { agents } = harness()
-    const state = new Map<string, string>()
+    const state: AnnotationCommitState = new Map()
     storeAnnotationSnapshot(agents, state, snapshot())
     const changed = snapshot()
     changed.comments[0]!.comment = 'Use a different font.'
     expect(storeAnnotationSnapshot(agents, state, changed)).toBe('pending')
-    expect(state.get('session-1')).toContain('Use a different font.')
+    expect(state.get('session-1')?.context).toContain('Use a different font.')
     expect(storeAnnotationSnapshot(agents, state, snapshot({ comments: [] }))).toBe('cleared')
     expect(state.size).toBe(0)
     expect(storeAnnotationSnapshot(agents, state, snapshot({ comments: [] }))).toBe('initial-empty')
@@ -218,7 +234,7 @@ describe('pending annotation admission', () => {
 
   it('requires a live agent, rejects rendered overflow and forgets disposed state', () => {
     const { agent, agents } = harness()
-    const state = new Map<string, string>()
+    const state: AnnotationCommitState = new Map()
     expect(storeAnnotationSnapshot(agents, state, snapshot({ sessionId: 'missing' }))).toBe('agent-not-found')
     const base = snapshot().comments[0]!
     const large = snapshot({ comments: Array.from({ length: MAX_ANNOTATIONS }, (_, index) => ({
@@ -228,20 +244,20 @@ describe('pending annotation admission', () => {
     })) })
     expect(storeAnnotationSnapshot(agents, state, large)).toBe('context-too-large')
     expect(state.size).toBe(0)
-    state.set(agent.id, 'active')
+    state.set(agent.id, { context: 'active', selectedSkills: [] })
     forgetAgent(state, agent)
     expect(state.size).toBe(0)
   })
 
   it('adds pending context only to an entered step and preserves downstream messages', async () => {
     const { agent, agents } = harness()
-    const state = new Map<string, string>()
+    const state: AnnotationCommitState = new Map()
     storeAnnotationSnapshot(agents, state, snapshot())
     const existing = createUserMessage({
       source: { kind: 'plugin', plugin: 'existing' },
       content: [{ type: 'text', text: 'existing context' }],
     })
-    const decision = await attachPendingAnnotationContext(state, agent, async () => ({
+    const decision = await attach(state, agent, async () => ({
       kind: 'enter', messages: [existing],
     }))
     if (decision.kind !== 'enter') throw new Error('expected enter')
@@ -254,14 +270,14 @@ describe('pending annotation admission', () => {
     expect(state.has('session-1')).toBe(true)
 
     const blocked: PreStepDecision = { kind: 'reject' }
-    expect(await attachPendingAnnotationContext(state, agent, async () => blocked)).toBe(blocked)
+    expect(await attach(state, agent, async () => blocked)).toBe(blocked)
   })
 
   it('consumes only the exact context event that actually committed', async () => {
     const { agent, agents } = harness()
-    const state = new Map<string, string>()
+    const state: AnnotationCommitState = new Map()
     storeAnnotationSnapshot(agents, state, snapshot())
-    const decision = await attachPendingAnnotationContext(state, agent, async () => ({ kind: 'enter', messages: [] }))
+    const decision = await attach(state, agent, async () => ({ kind: 'enter', messages: [] }))
     if (decision.kind !== 'enter') throw new Error('expected enter')
     const admitted = decision.messages[0]
     if (admitted === undefined) throw new Error('missing annotation context')
@@ -270,14 +286,63 @@ describe('pending annotation admission', () => {
     changed.comments[0]!.comment = 'Newer pending change.'
     storeAnnotationSnapshot(agents, state, changed)
     acknowledgeAnnotationEvent(state, agent.id, contextEvent(admitted))
-    expect(state.get(agent.id)).toContain('Newer pending change.')
+    expect(state.get(agent.id)?.context).toContain('Newer pending change.')
 
-    const nextDecision = await attachPendingAnnotationContext(state, agent, async () => ({ kind: 'enter', messages: [] }))
+    const nextDecision = await attach(state, agent, async () => ({ kind: 'enter', messages: [] }))
     if (nextDecision.kind !== 'enter') throw new Error('expected enter')
     const latest = nextDecision.messages[0]
     if (latest === undefined) throw new Error('missing latest annotation context')
     acknowledgeAnnotationEvent(state, agent.id, contextEvent(latest))
     expect(state.has(agent.id)).toBe(false)
+  })
+
+  it('loads a selected Skill before Browser Comments when its instructions are absent', async () => {
+    const { agent, agents } = harness()
+    const state: AnnotationCommitState = new Map()
+    storeAnnotationSnapshot(agents, state, snapshot({ selectedSkills: ['better-writing'] }))
+    const skills = {
+      get: async (name: string) => ({
+        name,
+        description: 'Writing guidance',
+        invocation: { modelInvocable: false, userInvocable: true },
+        provider: 'test',
+        source: 'bundled' as const,
+        content: '# Better Writing\n\nUse concise interface copy.',
+      }),
+    }
+    const decision = await attach(state, agent, async () => ({ kind: 'enter', messages: [] }), skills)
+    if (decision.kind !== 'enter') throw new Error('expected enter')
+    expect(decision.messages).toHaveLength(2)
+    expect(decision.messages[0]).toMatchObject({
+      source: { kind: 'skill-invocation', name: 'better-writing', form: 'instructions' },
+    })
+    expect(decision.messages[0]?.content[0]).toMatchObject({
+      type: 'text', text: expect.stringContaining('# Better Writing'),
+    })
+    expect(decision.messages[1]).toMatchObject({
+      source: { kind: 'plugin', plugin: 'dsh-web-review' },
+      content: [{ type: 'text', text: expect.stringContaining('# Browser comments') }],
+    })
+  })
+
+  it('reminds the model after Browser Comments when the selected Skill is already visible', async () => {
+    const { agent, agents } = harness()
+    agent.session.append('user/message', createUserMessage({
+      source: { kind: 'skill-invocation', name: 'better-writing', form: 'instructions' },
+      content: [{ type: 'text', text: 'previously loaded instructions' }],
+    }), { surfaceOp: 'append' })
+    const state: AnnotationCommitState = new Map()
+    storeAnnotationSnapshot(agents, state, snapshot({ selectedSkills: ['better-writing'] }))
+    const decision = await attach(state, agent, async () => ({ kind: 'enter', messages: [] }))
+    if (decision.kind !== 'enter') throw new Error('expected enter')
+    expect(decision.messages).toHaveLength(2)
+    expect(decision.messages[0]?.content[0]).toMatchObject({
+      type: 'text', text: expect.stringContaining('# Browser comments'),
+    })
+    expect(decision.messages[1]?.content[0]).toMatchObject({
+      type: 'text',
+      text: '# Selected UI optimization skills\n\nThe user selected these already-loaded skills for the current Browser Comments task:\n- `better-writing`\n\nTheir full instructions are already present in the current model-visible context. Apply those instructions when interpreting the Browser Comments and editing the frontend implementation.',
+    })
   })
 })
 

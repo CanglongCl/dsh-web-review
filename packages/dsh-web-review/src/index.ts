@@ -20,6 +20,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from 'cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-system-prompt'
+import type {} from '@deepseek-ai/dsh-skill'
 import { MAX_ANNOTATION_BODY } from './annotation-contract.ts'
 import {
   acknowledgeAnnotationEvent,
@@ -37,13 +38,15 @@ import {
   rewriteHtml,
 } from './rewrite.ts'
 import { PREVIEW_GUIDANCE } from './preview-guidance.ts'
+import { registerUiSkillProvider, type Config as PluginConfig } from './skill-provider.ts'
+export { Config } from './skill-provider.ts'
 export { PROXY_PREFIX } from './rewrite.ts'
 export { PREVIEW_GUIDANCE } from './preview-guidance.ts'
 
 /** Plugin identity for diagnostics and the client-modules scan. */
 export const name = 'dsh-web-review'
 /** Services required before the routes register. */
-export const inject = ['httpServer', 'agents', 'systemPrompt']
+export const inject = ['httpServer', 'agents', 'systemPrompt', 'skills']
 
 /** Server-side fetch timeout in ms. */
 export const TIMEOUT_MS = 15_000
@@ -71,8 +74,9 @@ const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'POST'])
  * Plugin body: register proxy/pending routes and send-time context admission.
  * @param ctx - root context carrying the httpServer and live-agent services.
  */
-export function apply(ctx: Context): void {
+export function apply(ctx: Context, config: PluginConfig): void {
   const annotations: AnnotationCommitState = new Map()
+  registerUiSkillProvider(ctx, config)
   ctx.systemPrompt.section({
     name: 'plugin:dsh-web-review-preview',
     order: -97,
@@ -90,8 +94,8 @@ export function apply(ctx: Context): void {
     }),
     'dsh-web-review: /webview-annotations route',
   )
-  ctx.on('agent/pre-step', ({ agent }, next) =>
-    attachPendingAnnotationContext(annotations, agent, next))
+  ctx.on('agent/pre-step', ({ agent, messages, signal }, next) =>
+    attachPendingAnnotationContext(annotations, agent, ctx.skills, signal, messages, next))
   ctx.on('session/event', (session, event) => {
     acknowledgeAnnotationEvent(annotations, session.id, event)
   })

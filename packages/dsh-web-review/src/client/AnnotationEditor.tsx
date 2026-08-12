@@ -39,6 +39,8 @@ import {
 } from './InspectorControls.tsx'
 import { PROPERTY_BY_NAME, PROPERTY_GROUPS, type PropertyControl } from './property-editor-config.ts'
 import type { WebviewKey } from './locales.ts'
+import type { UiSkillName } from '../ui-skills.ts'
+import { UiSkillSelector } from './UiSkillSelector.tsx'
 import { RadiusControl, ShadowControl, SizeControl, TransformControl } from './CompositeControls.tsx'
 import { ElementSelector } from './ElementSelector.tsx'
 import {
@@ -66,10 +68,12 @@ export interface AnnotationEditorProps {
   textChange: AnnotationTextChange | null | undefined
   initialMode?: AnnotationEditorMode
   navigationFeedback?: ElementNavigationFeedback | null
+  selectedSkills?: readonly UiSkillName[]
   t: Translate<WebviewKey>
   onCancel: () => void
   onConfirm: (value: AnnotationEditorValue) => void
   onSelectElement: (element: Element, comment: string, mode: AnnotationEditorMode, action?: ElementNavigationAction) => void
+  onToggleSkill?: (name: UiSkillName) => void
 }
 
 /** Mutually exclusive surface shown below the annotation compose row. */
@@ -143,7 +147,7 @@ const four = <T,>(values: readonly T[]): [T, T, T, T] => [values[0]!, values[1]!
 export function AnnotationEditor({
   patch, frame, comment: initialComment, changes: initialChanges,
   textChange: initialTextChange, initialMode = 'collapsed', navigationFeedback = null,
-  t, onCancel, onConfirm, onSelectElement,
+  selectedSkills = [], t, onCancel, onConfirm, onSelectElement, onToggleSkill = () => {},
 }: AnnotationEditorProps) {
   const initialMap = useMemo(() => new Map(initialChanges.map(change => [change.property, change])), [initialChanges])
   const originals = useMemo(() => new Map(
@@ -513,6 +517,7 @@ export function AnnotationEditor({
       {mode === 'adjust' && (
         <>
           <div className={css.inspector} data-webview-property-inspector="">
+            <UiSkillSelector selected={selectedSkills} t={t} onToggle={onToggleSkill} />
             {originalText !== undefined && (
               <InspectorSection label={t('editor.text')}>
                 <InspectorRow wide label={t('editor.text')} changed={textChanged} resetLabel={t('editor.reset')} onReset={() => { updateText(originalText) }}>

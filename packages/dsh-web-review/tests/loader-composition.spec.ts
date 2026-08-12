@@ -22,6 +22,7 @@ import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import HttpServer from '@deepseek-ai/dsh-host-webserver'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import SkillService from '@deepseek-ai/dsh-skill'
 import * as plugin from '../src/index.ts'
 import { PREVIEW_GUIDANCE, PROXY_PREFIX } from '../src/index.ts'
 import { MAX_ANNOTATION_BODY, type AnnotationSnapshot } from '../src/annotation-contract.ts'
@@ -98,6 +99,8 @@ async function loadComposition(): Promise<Context> {
     '',
     "- name: '@deepseek-ai/dsh-system-prompt'",
     '',
+    "- name: '@deepseek-ai/dsh-skill'",
+    '',
     "- name: '@deepseek-ai/dsh-host-webserver'",
     '  config:',
     "    host: '127.0.0.1'",
@@ -115,6 +118,7 @@ async function loadComposition(): Promise<Context> {
   const modules = new Map<string, unknown>([
     ['@deepseek-ai/dsh-agent', AgentRegistry],
     ['@deepseek-ai/dsh-system-prompt', SystemPrompt],
+    ['@deepseek-ai/dsh-skill', SkillService],
     ['@deepseek-ai/dsh-host-webserver', HttpServer],
     ['dsh-web-review-test', plugin],
   ])
@@ -143,6 +147,7 @@ function proxyPath(target: string): string {
 function annotationSnapshot(sessionId = 'session-1', comments = 1): AnnotationSnapshot {
   return {
     sessionId,
+    selectedSkills: [],
     page: { url: 'https://example.com/', title: 'Example Domain' },
     comments: Array.from({ length: comments }, (_, index) => ({
       id: `pick-${index + 1}`,

@@ -7,6 +7,7 @@
  */
 import { defineStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PickItem } from './contract.ts'
+import type { UiSkillName } from '../ui-skills.ts'
 
 export interface WebviewState {
   /** Current loaded URL used by the iframe and annotation evidence. */
@@ -19,6 +20,8 @@ export interface WebviewState {
   pickMode: boolean
   /** Annotation entries, each with its own comment. */
   picks: PickItem[]
+  /** UI optimization Skills selected for the current Browser Comments batch. */
+  selectedSkills: UiSkillName[]
   /** Last user-visible error, cleared on the next gesture. */
   error: string | null
   /** One-shot focus signal: a dock detail row selected this pick id. */
@@ -42,6 +45,7 @@ export function createWebviewStore() {
       title: '',
       pickMode: false,
       picks: [],
+      selectedSkills: [],
       error: null,
       focusPickId: null,
       annotationSync: 'idle',
@@ -64,8 +68,16 @@ export function createWebviewStore() {
       updatePick: (d, id: string, pick: PickItem) => {
         d.picks = d.picks.map(current => current.id === id ? pick : current)
       },
-      removePick: (d, id: string) => { d.picks = d.picks.filter((p) => p.id !== id) },
-      clearPicks: (d) => { d.picks = [] },
+      removePick: (d, id: string) => {
+        d.picks = d.picks.filter((p) => p.id !== id)
+        if (d.picks.length === 0) d.selectedSkills = []
+      },
+      clearPicks: (d) => { d.picks = []; d.selectedSkills = [] },
+      toggleSelectedSkill: (d, name: UiSkillName) => {
+        d.selectedSkills = d.selectedSkills.includes(name)
+          ? d.selectedSkills.filter(current => current !== name)
+          : [...d.selectedSkills, name]
+      },
       setError: (d, error: string | null) => { d.error = error },
       setFocusPickId: (d, id: string | null) => { d.focusPickId = id },
       setAnnotationSync: (

@@ -1,5 +1,6 @@
 /** Map the rich picker store into the bounded browser-to-host wire shape. */
 import { ANNOTATION_LIMITS, MAX_ANNOTATION_CHANGES, type AnnotationDraft } from '../annotation-contract.ts'
+import type { UiSkillName } from '../ui-skills.ts'
 import type { PickItem } from './contract.ts'
 
 function bounded(value: string, cap: number): string {
@@ -11,8 +12,10 @@ export function annotationDraft(
   url: string,
   title: string,
   picks: readonly PickItem[],
+  selectedSkills: readonly UiSkillName[] = [],
 ): AnnotationDraft {
   return {
+    selectedSkills: [...selectedSkills],
     page: {
       url: bounded(url, ANNOTATION_LIMITS.pageUrl),
       title: bounded(title, ANNOTATION_LIMITS.pageTitle),

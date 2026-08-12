@@ -36,7 +36,7 @@ describe('package directory import (Loader resolution path)', () => {
       hasApply: boolean
     }
     expect(parsed.name).toBe('dsh-web-review')
-    expect(parsed.inject).toEqual(['httpServer', 'agents', 'systemPrompt'])
+    expect(parsed.inject).toEqual(['httpServer', 'agents', 'systemPrompt', 'skills'])
     expect(parsed.hasApply).toBe(true)
   })
 })

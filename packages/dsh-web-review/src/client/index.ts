@@ -22,6 +22,7 @@ import type { ClientContext, ISessions, SessionId } from '@deepseek-ai/dsh-clien
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the ui-conversation SlotMap merge (the view/dock entries).
 import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { CommandServiceContract } from '@deepseek-ai/dsh-client-ui-command/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
 import { en, zh, type WebviewKey } from './locales.ts'
@@ -30,6 +31,7 @@ import { WebviewView, type WebviewViewInjected } from './WebviewView.tsx'
 import { DraftOverlayBar, type WebviewDockInjected } from './DraftOverlayBar.tsx'
 import { normalizePreviewUrl } from './navigation-url.ts'
 import { activatePreviewTab } from './preview-link.ts'
+import { isUiSkillName, UI_SKILLS, type UiSkillName } from '../ui-skills.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -42,7 +44,18 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export const NS = 'webview' as const
 
 /** Required services (cordis fiber inject — activation waits on them). */
-export const inject = ['slots', 'conversation', 'layout', 'locale', 'sessions']
+export const inject = ['slots', 'conversation', 'layout', 'locale', 'sessions', 'command']
+
+const SKILL_DESCRIPTION_KEYS: Record<UiSkillName, WebviewKey> = {
+  'better-ui': 'editor.skills.betterUi',
+  'better-typography': 'editor.skills.betterTypography',
+  'better-layout': 'editor.skills.betterLayout',
+  'better-writing': 'editor.skills.betterWriting',
+  'better-accessibility': 'editor.skills.betterAccessibility',
+  'better-colors': 'editor.skills.betterColors',
+  'better-interface': 'editor.skills.betterInterface',
+  'interface-review': 'editor.skills.interfaceReview',
+}
 
 /** Resolve the public conversation face through one session scope. */
 function scopedConversation(ctx: ClientContext, sessionId: SessionId): IConversation {
@@ -55,6 +68,17 @@ function scopedConversation(ctx: ClientContext, sessionId: SessionId): IConversa
   const conversation = scope.get('conversation')
   if (conversation === undefined) throw new Error('dsh-web-review: conversation service unavailable through session scope')
   return conversation
+}
+
+/** Replace the active composer draft with one explicit Skill invocation. */
+export function setUiSkillDraft(ctx: Pick<ClientContext, 'sessions'>, sessionId: SessionId, name: string): void {
+  if (!isUiSkillName(name)) throw new Error(`unknown UI optimization Skill "${name}"`)
+  const sessions = ctx.sessions as unknown as ISessions
+  const sessionScope = sessions.scope(sessionId)
+  if (sessionScope === undefined) throw new Error(`dsh-web-review: session "${sessionId}" resolved no scope`)
+  const conversation = sessionScope.get('conversation')
+  if (conversation === undefined) throw new Error('dsh-web-review: conversation service unavailable through session scope')
+  conversation.input.for(sessionScope).setDraft(`/${name}`)
 }
 
 /**
@@ -121,6 +145,26 @@ export function apply(ctx: ClientContext): void {
   // registrations declare the same handle (one instance per session — the
   // preview tab and the annotation dock share one pick list).
   const webviewStore = createWebviewStore()
+
+  ctx.inject(['command'], (scope: ClientContext) => {
+    const command = scope.get('command') as CommandServiceContract
+    scope.effect(() => command.register({
+      name: 'skills',
+      description: t('command.skills.description'),
+      available: () => true,
+      ui: {
+        kind: 'popupSelect',
+        options: () => Promise.resolve(UI_SKILLS.map(skill => ({
+          id: skill.name,
+          label: skill.name,
+          detail: t(SKILL_DESCRIPTION_KEYS[skill.name]),
+        }))),
+        onSelect: (option, session) => {
+          setUiSkillDraft(scope, session.sessionId, option.id)
+        },
+      },
+    }), 'dsh-web-review: /skills contribution')
+  })
 
   ctx.slots.inject('conversation.view', () => ctx.slots.register({
     name: 'conversation.view',

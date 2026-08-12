@@ -39,10 +39,27 @@
 
 ### Figma 风格属性调整器
 
+- 「调整」顶部提供紧凑的「使用 UI 优化 Skill」入口；展开后可为本批批注勾选一项或多项规则，也可在输入框中使用 `/skills` 单独调用。
 - 支持安全的直接文本修改。
 - 支持文本色、背景、透明度、字体、字重、字号、行高、字间距、对齐和文本装饰。
 - 支持宽高、显示与定位、Margin、Padding、边框、圆角、约束和效果。
 - 修改即时预览；每个已变更字段都能单独重置，取消时恢复精确的原始内联值与优先级。
+
+### UI 优化 Skill
+
+插件随包提供 `better-ui`、`better-typography`、`better-layout`、`better-writing`、`better-accessibility`、`better-colors`、`better-interface` 和 `interface-review`。它们都可由用户通过斜杠命令调用。
+
+模型目录的自动加载由 Cordis 插件参数 `autoLoadSkills` 独立控制，不与批注编辑器里的勾选状态耦合。默认值为：
+
+```yaml
+autoLoadSkills:
+  - better-ui
+  - better-typography
+  - better-layout
+  - better-writing
+```
+
+修改 Cordis 中 `dsh-web-review` 条目的 `config.autoLoadSkills` 后，插件按新的列表重新注册 Skill provider；填入空数组即可关闭全部自动加载。批注中勾选的 Skill 只对本批 Browser Comments 生效：当前模型可见上下文尚无完整规则时注入规则全文，已经存在时只追加一条使用提醒。
 
 ### AI 协作闭环
 
@@ -100,7 +117,7 @@ pnpm setup:harness
 pnpm package:official
 ```
 
-产物位于 `dist/dsh-external-dsh-web-review-<版本>.tgz`。其中只包含自包含的 Node bundle、使用稳定包名注册的浏览器 bundle、官方 `cordis.patch.yml` 和 README，不包含源码、本机 `node_modules` 或开发用绝对路径配置。
+产物位于 `dist/dsh-external-dsh-web-review-<版本>.tgz`。其中只包含自包含的 Node bundle、使用稳定包名注册的浏览器 bundle、随包 Skill、官方 `cordis.patch.yml` 和 README，不包含源码、本机 `node_modules` 或开发用绝对路径配置。
 
 ### 维护者本地发布 Release
 
@@ -135,7 +152,7 @@ git push origin main v0.0.3
 |---|---|
 | Node 端 | 页面代理、批注请求校验、稳定英文上下文组装、会话级待发送状态 |
 | 浏览器端 | 预览标签、同源元素选择器、宿主层属性编辑器、批注胶囊与发送确认 |
-| AI 协作 | 在进入模型步骤前追加独立插件消息；Agent 使用现有工作区文件和 Shell 工具改源码 |
+| AI 协作 | 按需追加所选 Skill、Browser Comments 与已加载 Skill 提醒；Agent 使用现有工作区文件和 Shell 工具改源码 |
 
 插件不会注册新的模型工具，也不会把截图、完整 `outerHTML`、全量计算样式或编辑器内部状态发给模型。页面证据与用户意见在上下文中明确区分，字段数量、长度和允许的视觉属性均有硬限制。
 

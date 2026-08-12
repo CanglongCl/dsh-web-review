@@ -91,7 +91,7 @@ export function DraftOverlayBar({ useStore, useSession, actions, syncAnnotations
     if (!clearing) hadAnnotations.current = true
     const currentRevision = ++revision.current
     if (!initialEmpty) actions.setAnnotationSync('syncing')
-    const snapshot = annotationDraft(state.url, state.title, state.picks)
+    const snapshot = annotationDraft(state.url, state.title, state.picks, state.selectedSkills)
     void syncAnnotations(snapshot).then(
       () => {
         if (revision.current !== currentRevision) return
@@ -104,7 +104,7 @@ export function DraftOverlayBar({ useStore, useSession, actions, syncAnnotations
       },
     )
     return () => { revision.current += 1 }
-  }, [actions, retry, state.picks, state.title, state.url, syncAnnotations])
+  }, [actions, retry, state.picks, state.selectedSkills, state.title, state.url, syncAnnotations])
 
   useEffect(() => {
     if (state.picks.length === 0) setOpen(false)

@@ -140,7 +140,8 @@ const expectedOfficialFiles = [
   'lib/client-official.js.map',
   'lib/index.js',
   'package.json',
-]
+  ...listFiles(join(PKG, 'skills')).map(file => `skills/${file}`),
+].sort()
 assert(
   'official package contains only the distribution allowlist',
   () => JSON.stringify(listFiles(OFFICIAL)) === JSON.stringify(expectedOfficialFiles),

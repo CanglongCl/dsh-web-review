@@ -15,6 +15,8 @@ export const MAX_ANNOTATION_CHANGES = 48
 export const MAX_TOTAL_ANNOTATION_CHANGES = 200
 /** Maximum rendered model context. */
 export const MAX_ANNOTATION_CONTEXT = 60 * 1024
+/** Maximum UI optimization Skills selected for one annotation snapshot. */
+export const MAX_SELECTED_SKILLS = 8
 
 export const ANNOTATION_LIMITS = {
   sessionId: 512,
@@ -79,6 +81,8 @@ export interface AnnotationComment {
 /** Full current annotation state for one live conversation session. */
 export interface AnnotationSnapshot {
   sessionId: string
+  /** User-selected UI optimization Skills to apply to this Browser Comments task. */
+  selectedSkills: import('./ui-skills.ts').UiSkillName[]
   page: {
     url: string
     title: string

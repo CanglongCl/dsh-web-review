@@ -5,25 +5,38 @@
  */
 import type { IncomingMessage } from 'node:http'
 import type { Agent, AgentRegistry, PreStepDecision } from '@deepseek-ai/dsh-agent'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
+import {
+  renderSkillContent,
+  type SkillInvocationSource,
+  type SkillService,
+} from '@deepseek-ai/dsh-skill'
 import {
   ANNOTATION_LIMITS,
   MAX_ANNOTATION_CHANGES,
   MAX_ANNOTATION_CONTEXT,
   MAX_ANNOTATIONS,
+  MAX_SELECTED_SKILLS,
   MAX_TOTAL_ANNOTATION_CHANGES,
   type AnnotationAnchor,
   type AnnotationComment,
   type AnnotationSnapshot,
 } from './annotation-contract.ts'
 import { isEditableStyleProperty, isSafeAnnotationStyleValue } from './annotation-properties.ts'
+import { isUiSkillName, type UiSkillName } from './ui-skills.ts'
 
 /** Plugin provenance recorded on every injected context message. */
 export const ANNOTATION_SOURCE = { kind: 'plugin', plugin: 'dsh-web-review' } as const
 
+/** One prepared Browser Comments snapshot and its requested UI optimization Skills. */
+export interface PendingAnnotationContext {
+  context: string
+  selectedSkills: UiSkillName[]
+}
+
 /** Per-plugin-instance state used only to deduplicate full snapshots. */
-export type AnnotationCommitState = Map<string, string>
+export type AnnotationCommitState = Map<string, PendingAnnotationContext>
 
 export type AnnotationCommitResult =
   | 'pending'
@@ -145,6 +158,16 @@ function parseComment(value: unknown): AnnotationComment | undefined {
   }
 }
 
+function parseSelectedSkills(value: unknown): UiSkillName[] | undefined {
+  if (!Array.isArray(value) || value.length > MAX_SELECTED_SKILLS) return undefined
+  const selected: UiSkillName[] = []
+  for (const name of value) {
+    if (!isUiSkillName(name) || selected.includes(name)) return undefined
+    selected.push(name)
+  }
+  return selected
+}
+
 /** Parse and strictly validate one structured annotation snapshot. */
 export function parseAnnotationBody(body: string): AnnotationSnapshot | undefined {
   let value: unknown
@@ -159,7 +182,8 @@ export function parseAnnotationBody(body: string): AnnotationSnapshot | undefine
   const sessionId = boundedString(record.sessionId, ANNOTATION_LIMITS.sessionId, false)
   const url = boundedString(page.url, ANNOTATION_LIMITS.pageUrl)
   const title = boundedString(page.title, ANNOTATION_LIMITS.pageTitle)
-  if (sessionId === undefined || url === undefined || title === undefined) return undefined
+  const selectedSkills = parseSelectedSkills(record.selectedSkills)
+  if (sessionId === undefined || url === undefined || title === undefined || selectedSkills === undefined) return undefined
   if (record.comments.length > MAX_ANNOTATIONS) return undefined
   const comments: AnnotationComment[] = []
   const ids = new Set<string>()
@@ -172,7 +196,7 @@ export function parseAnnotationBody(body: string): AnnotationSnapshot | undefine
     ids.add(comment.id)
     comments.push(comment)
   }
-  return { sessionId, page: { url, title }, comments }
+  return { sessionId, selectedSkills, page: { url, title }, comments }
 }
 
 /** Collapse untrusted metadata to one line so it cannot create sibling fields. */
@@ -273,9 +297,70 @@ export function storeAnnotationSnapshot(
   }
   const context = formatAnnotationContext(snapshot)
   if (context.length > MAX_ANNOTATION_CONTEXT) return 'context-too-large'
-  if (context === previous) return 'deduplicated'
-  state.set(snapshot.sessionId, context)
+  if (
+    context === previous?.context
+    && snapshot.selectedSkills.length === previous.selectedSkills.length
+    && snapshot.selectedSkills.every((name, index) => previous.selectedSkills[index] === name)
+  ) return 'deduplicated'
+  state.set(snapshot.sessionId, { context, selectedSkills: [...snapshot.selectedSkills] })
   return 'pending'
+}
+
+const SKILL_GESTURE = /(^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)(?=\s|$)/g
+
+function decisionSkillNames(messages: readonly UserMessage[]): Set<string> {
+  const names = new Set<string>()
+  for (const message of messages) {
+    const source = message.source as { kind?: unknown; name?: unknown }
+    if (source.kind === 'skill-invocation' && typeof source.name === 'string') names.add(source.name)
+    if (source.kind !== 'user') continue
+    for (const block of message.content) {
+      if (block.type !== 'text') continue
+      for (const match of block.text.matchAll(SKILL_GESTURE)) {
+        const name = match[2]
+        if (name !== undefined) names.add(name)
+      }
+    }
+  }
+  return names
+}
+
+/** Skill bodies that remain on the exact model-visible session surface. */
+export function visibleSkillNames(agent: Pick<Agent, 'session'>): Set<string> {
+  const names = new Set<string>()
+  const events = agent.session.events
+  for (const seq of agent.session.surface.nodes) {
+    const event = events[seq]
+    if (event?.type === 'user/message') {
+      const source = event.data.source as { kind?: unknown; name?: unknown }
+      if (source.kind === 'skill-invocation' && typeof source.name === 'string') names.add(source.name)
+      continue
+    }
+    if (event?.type !== 'tool/result' || event.data.message.content[0]?.isError === true) continue
+    const callSeq = event.sourceEventSeqs?.[0]
+    const call = callSeq === undefined ? undefined : events[callSeq]
+    if (call?.type !== 'tool/call' || call.data.name !== 'skill') continue
+    try {
+      const args = JSON.parse(call.data.arguments) as { name?: unknown }
+      if (typeof args.name === 'string') names.add(args.name)
+    } catch {
+      // Provider-produced tool calls already passed schema validation; malformed
+      // historical arguments simply cannot prove that a Skill was loaded.
+    }
+  }
+  return names
+}
+
+/** Model-facing reminder for selected Skill bodies already present in context. */
+export function formatLoadedSkillReminder(names: readonly UiSkillName[]): string {
+  return [
+    '# Selected UI optimization skills',
+    '',
+    'The user selected these already-loaded skills for the current Browser Comments task:',
+    ...names.map(name => `- \`${name}\``),
+    '',
+    'Their full instructions are already present in the current model-visible context. Apply those instructions when interpreting the Browser Comments and editing the frontend implementation.',
+  ].join('\n')
 }
 
 /**
@@ -285,20 +370,50 @@ export function storeAnnotationSnapshot(
  */
 export async function attachPendingAnnotationContext(
   state: AnnotationCommitState,
-  agent: Pick<Agent, 'id'>,
+  agent: Pick<Agent, 'id' | 'session'>,
+  skills: Pick<SkillService, 'get'>,
+  signal: AbortSignal,
+  claimedMessages: readonly UserMessage[],
   next: () => Promise<PreStepDecision>,
 ): Promise<PreStepDecision> {
   const decision = await next()
   if (decision.kind !== 'enter') return decision
-  const context = state.get(agent.id)
-  if (context === undefined) return decision
+  const pending = state.get(agent.id)
+  if (pending === undefined) return decision
+  signal.throwIfAborted()
+  const loaded = visibleSkillNames(agent)
+  for (const name of decisionSkillNames([...claimedMessages, ...decision.messages])) loaded.add(name)
+  const injections: UserMessage[] = []
+  const reminders: UiSkillName[] = []
+  for (const name of pending.selectedSkills) {
+    if (loaded.has(name)) {
+      reminders.push(name)
+      continue
+    }
+    const skill = await skills.get(name, {
+      cwd: agent.session.header.cwd,
+      scope: agent,
+      signal,
+    })
+    signal.throwIfAborted()
+    if (skill === undefined) throw new Error(`selected UI optimization Skill "${name}" is unavailable`)
+    const source: SkillInvocationSource = { kind: 'skill-invocation', name, form: 'instructions' }
+    injections.push(createUserMessage({
+      source,
+      content: [{ type: 'text', text: renderSkillContent(skill) }],
+    }))
+  }
   const annotation = createUserMessage({
     source: ANNOTATION_SOURCE,
-    content: [{ type: 'text', text: context }],
+    content: [{ type: 'text', text: pending.context }],
   })
+  const reminder = reminders.length === 0 ? [] : [createUserMessage({
+    source: ANNOTATION_SOURCE,
+    content: [{ type: 'text', text: formatLoadedSkillReminder(reminders) }],
+  })]
   return {
     kind: 'enter',
-    messages: [...decision.messages, annotation],
+    messages: [...decision.messages, ...injections, annotation, ...reminder],
   }
 }
 
@@ -314,7 +429,7 @@ export function acknowledgeAnnotationEvent(
   const text = event.data.content.length === 1 && event.data.content[0]?.type === 'text'
     ? event.data.content[0].text
     : undefined
-  if (text !== undefined && state.get(sessionId) === text) state.delete(sessionId)
+  if (text !== undefined && state.get(sessionId)?.context === text) state.delete(sessionId)
 }
 
 /** Release dedupe state when the exact live agent leaves the registry. */

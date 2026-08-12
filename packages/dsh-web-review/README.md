@@ -40,6 +40,9 @@ edit, then:
    actions and briefly identifies the new target below the comment field.
    Inside the tree those shortcuts keep moving the selection, while arrow keys
    navigate and expand/collapse visible rows.
+   Adjust begins with a compact **Use UI optimization Skills** disclosure. Its
+   first expanded line points to `/skills`, followed by eight per-batch Skill
+   checkboxes.
 4. Confirm the editor. A numbered marker appears in the page and one compact
    annotation capsule appears above the stock composer. The preview is temporary
    and never edits workspace source.
@@ -90,6 +93,29 @@ The format separates trust domains:
 
 No model-facing tool is registered. The agent uses the workspace tools already
 available in the session.
+
+## Bundled UI optimization Skills
+
+The package vendors the eight Skills from `jakubkrehel/skills` at the commit
+recorded in `skills/UPSTREAM.md`. Every candidate is user-invocable, including
+through the client-owned `/skills` popup command. Model-catalog visibility is
+deployment configuration and is independent from the annotation checkboxes:
+
+```yaml
+config:
+  autoLoadSkills:
+    - better-ui
+    - better-typography
+    - better-layout
+    - better-writing
+```
+
+Changing `autoLoadSkills` in the Cordis plugin row reconfigures the provider;
+an empty list hides all eight from the model catalog while preserving user
+invocation. At annotation admission, a selected Skill absent from the current
+model-visible surface is inserted in canonical Skill form before Browser
+Comments. If its complete instructions are already visible, Browser Comments
+is followed by a short instruction to apply that Skill instead.
 
 ## Synchronization semantics
 

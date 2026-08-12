@@ -1,0 +1,109 @@
+.root {
+  position: relative;
+  border-bottom: 1px solid var(--dsw-alias-border-l1, rgb(0 0 0 / 8%));
+}
+
+.trigger {
+  display: flex;
+  width: 100%;
+  min-height: 36px;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-primary, #17191c);
+  cursor: pointer;
+  font: 600 12px/18px system-ui, sans-serif;
+  text-align: left;
+}
+
+.trigger:hover { background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%)); }
+
+.trigger:focus-visible {
+  box-shadow: 0 0 0 1px var(--dsw-alias-brand-primary, #4176e6);
+}
+
+.title { min-width: 0; flex: 1; }
+.count { flex: none; color: var(--dsw-alias-label-tertiary, #747a82); font-weight: 500; }
+.chevron,
+.chevronOpen { flex: none; color: var(--dsw-alias-label-tertiary, #747a82); transition: transform 120ms ease; }
+.chevronOpen { transform: rotate(180deg); }
+
+.sectionBody {
+  display: grid;
+  gap: 4px;
+  padding: 2px 12px 10px;
+}
+
+.command {
+  margin: 0;
+  padding: 2px 0 0;
+  color: var(--dsw-alias-label-tertiary, #747a82);
+  font: 11px/16px system-ui, sans-serif;
+}
+
+.field {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  outline: 0;
+  background: var(--dsw-alias-bg-module-platform, #f5f6f7);
+  color: var(--dsw-alias-label-primary, #17191c);
+  cursor: pointer;
+  font: 12px/18px system-ui, sans-serif;
+  text-align: left;
+}
+
+.field:hover { background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 8%)); }
+.field:focus-visible { border-color: var(--dsw-alias-brand-primary, #4176e6); box-shadow: 0 0 0 1px var(--dsw-alias-brand-primary, #4176e6); }
+.fieldValue { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fieldChevron,
+.fieldChevronOpen { flex: none; color: var(--dsw-alias-label-tertiary, #747a82); transition: transform 120ms ease; }
+.fieldChevronOpen { transform: rotate(180deg); }
+
+.panel {
+  position: fixed;
+  z-index: 1100;
+  box-sizing: border-box;
+  padding: 4px;
+  overflow: hidden;
+  border: 1px solid var(--dsw-alias-border-inverted, rgb(0 0 0 / 8%));
+  border-radius: 12px;
+  background: var(--dsw-specific-menu, #fff);
+  box-shadow: var(--dsw-shadow-lv3, 0 8px 24px rgb(0 0 0 / 14%));
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+.list { display: flex; max-height: 330px; flex-direction: column; overflow: auto; }
+.option {
+  display: grid;
+  min-height: 40px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.option:hover { background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%)); }
+.option:focus-within { box-shadow: 0 0 0 1px var(--dsw-alias-brand-primary, #4176e6); }
+.option input { width: 16px; height: 16px; margin: 0; accent-color: var(--dsw-alias-brand-primary, #4176e6); }
+.optionText { display: block; min-width: 0; }
+.optionName { display: block; overflow: hidden; color: var(--dsw-alias-label-primary, #17191c); font: 600 12px/17px var(--ds-font-family-code, ui-monospace, monospace); text-overflow: ellipsis; white-space: nowrap; }
+.optionDescription { display: block; overflow: hidden; color: var(--dsw-alias-label-secondary, #555a62); font: 11px/16px system-ui, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .chevron,
+  .chevronOpen,
+  .fieldChevron,
+  .fieldChevronOpen { transition: none; }
+}

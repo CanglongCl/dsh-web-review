@@ -569,10 +569,12 @@ export function WebviewView({
               textChange={editor.original !== null && sameElement(editor.original.element, editor.element) ? editor.existing?.textChange : null}
               initialMode={editor.mode}
               navigationFeedback={editor.navigationFeedback}
+              selectedSkills={state.selectedSkills}
               t={t}
               onCancel={() => { closeEditor(false) }}
               onConfirm={confirmEditor}
               onSelectElement={selectEditorElement}
+              onToggleSkill={actions.toggleSelectedSkill}
             />
           )}
         </div>

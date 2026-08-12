@@ -19,6 +19,7 @@ const sourceManifest = JSON.parse(readFileSync(join(source, 'package.json'), 'ut
 rmSync(staging, { recursive: true, force: true })
 mkdirSync(join(staging, 'lib'), { recursive: true })
 mkdirSync(join(staging, 'docs', 'assets'), { recursive: true })
+mkdirSync(join(staging, 'skills'), { recursive: true })
 
 const manifest = {
   name: sourceManifest.name,
@@ -31,7 +32,7 @@ const manifest = {
     './client': './lib/client-official.js',
     './package.json': './package.json',
   },
-  files: ['lib', 'docs/assets', 'cordis.patch.yml', 'README.md'],
+  files: ['lib', 'docs/assets', 'skills', 'cordis.patch.yml', 'README.md'],
   dsh: {
     bundle: { patch: './cordis.patch.yml' },
     client: sourceManifest.dsh.client,
@@ -53,6 +54,7 @@ for (const file of ['web-review-demo.gif', 'web-review-preview.jpg', 'web-review
 for (const file of ['index.js', 'client-official.js', 'client-official.js.map']) {
   cpSync(join(source, 'lib', file), join(staging, 'lib', file))
 }
+cpSync(join(source, 'skills'), join(staging, 'skills'), { recursive: true })
 
 const packed = spawnSync('pnpm', ['pack', '--pack-destination', output], {
   cwd: staging,
