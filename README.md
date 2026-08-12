@@ -1,8 +1,6 @@
 # dsh-web-review
 
-> 在 DeepSeek Harness Web GUI 中预览网页、点选元素并留下批注，让 AI 直接修改前端源码。
-
-把正在开发的网页放进 DSH 对话后，你可以像使用设计工具一样选择页面元素、填写修改意见，并临时调整文本、颜色、字体、尺寸、间距、边框与效果。确认发送后，Agent 会结合页面批注修改当前工作区中的源码。
+在内置浏览器中，像使用设计工具一样选择页面元素、填写修改意见，并临时调整文本、颜色、字体、尺寸、间距、边框与效果。确认发送后，Agent 会结合页面批注修改当前工作区中的源码。
 
 <p align="center">
   <img width="100%" alt="dsh-web-review 网页预览、元素批注与视觉调整演示" src="./docs/assets/web-review-demo.gif" />
@@ -13,36 +11,18 @@
   <img width="49%" alt="dsh-web-review 元素批注与属性调整器" src="./docs/assets/web-review-annotation-editor.jpg" />
 </p>
 
-## 为什么使用
-
-- **直接点选**：不用反复描述“右上角第二个按钮”，选中元素就能留下意见。
-- **即时预览**：先在页面中尝试样式和文本调整，满意后再交给 Agent 修改源码。
-- **信息准确**：批注会携带目标元素、页面位置和修改前后值，减少 Agent 猜测。
-- **融入对话**：沿用 DSH 原有输入框与发送流程，不需要学习新的模型工具。
-- **随时回滚**：临时预览不会直接改动源码，取消或清空后会恢复页面原状。
+> 如果你用过 v0、Codex 等 Coding Agent 应用的内置浏览器，你应该对此会很熟悉。
 
 ## 安装
 
 ### 前置条件
 
-- 已安装支持 profile 插件机制的 DeepSeek Harness 与 `dsh` CLI
-- 拥有私有包 `@canglongcl/dsh-web-review` 的读取权限
+- `dsh`
 
-在用户级 `~/.npmrc` 中配置私有包认证：
-
-```ini
-@deepseek-ai:registry=https://registry.npmjs.org/
-@canglongcl:registry=https://registry.npmjs.org/
-//registry.npmjs.org/:_authToken=${NPM_TOKEN}
-```
-
-使用只读令牌安装并启动：
+安装并启动：
 
 ```sh
-export NPM_TOKEN='你的只读令牌'
 dsh plugin --profile web add @canglongcl/dsh-web-review
-unset NPM_TOKEN
-
 dsh web
 ```
 
@@ -51,9 +31,6 @@ dsh web
 ```sh
 dsh plugin --profile web remove @canglongcl/dsh-web-review
 ```
-
-> [!IMPORTANT]
-> 本项目及其 npm 包均为私有内容，请勿公开仓库、安装包、截图或构建产物，也不要把访问令牌写入仓库文件。
 
 ## 使用方法
 
@@ -126,4 +103,4 @@ dsh plugin --profile web remove @canglongcl/dsh-web-review
 
 ## 参与开发
 
-开发环境、架构说明、验证流程与私有发布约束见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
+开发环境、架构说明与验证流程见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
