@@ -1,0 +1,36 @@
+{
+  "sessionId": "session-2385b420-960f-4954-b516-80a2dac38ab6",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:62760/",
+    "title": "个人主页"
+  },
+  "comments": [
+    {
+      "id": "75eaeb6a-24e0-4a29-9ce0-5fb5ca5ab0e0",
+      "comment": "把简介文案改成“热爱前端工程与界面设计”",
+      "tagName": "p",
+      "role": "",
+      "label": "一名专注于产品体验的前端工程师",
+      "cssPath": ".bio",
+      "fullPath": "html > body > div#root > div.profile > div.info > p.bio",
+      "stableClasses": [
+        "bio"
+      ],
+      "textContent": "一名专注于产品体验的前端工程师",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App",
+        "file": "src/App.tsx",
+        "line": 28
+      },
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

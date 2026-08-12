@@ -1,4 +1,4 @@
-import type { EvalArm, EvalTask } from '../types.ts'
+import type { EvalArm, LoadedEvalTask } from '../types.ts'
 
 export interface RunnerTaskPayload {
   taskId: string
@@ -11,7 +11,7 @@ export interface RunnerTaskPayload {
 }
 
 /** Preserve scenario round order while selecting one diagnostic arm. */
-export function runnerTaskPayload(task: EvalTask, arm: EvalArm): RunnerTaskPayload {
+export function runnerTaskPayload(task: LoadedEvalTask, arm: EvalArm): RunnerTaskPayload {
   if (!task.arms.includes(arm)) throw new Error(`task ${task.id} does not declare arm ${arm}`)
   return {
     taskId: task.id,

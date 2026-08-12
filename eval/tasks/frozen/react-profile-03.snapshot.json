@@ -1,0 +1,36 @@
+{
+  "sessionId": "session-3b90c161-1fe5-4919-a46d-48ddf417dceb",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:60744/",
+    "title": "个人主页"
+  },
+  "comments": [
+    {
+      "id": "2ffdb8b0-f288-4c7a-a57c-1b36d6572476",
+      "comment": "把头像尺寸改成 96px",
+      "tagName": "img",
+      "role": "img",
+      "label": "",
+      "cssPath": ".avatar",
+      "fullPath": "html > body > div#root > div.profile > div.info > img.avatar",
+      "stableClasses": [
+        "avatar"
+      ],
+      "textContent": "",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App",
+        "file": "src/App.tsx",
+        "line": 26
+      },
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "sessionId": "session-63a94bb3-9e34-41e3-8536-63c2ab5dcbe7",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:62402/",
+    "title": "魔法商店"
+  },
+  "comments": [
+    {
+      "id": "86ddbfe0-88ad-4f97-aaea-932c035a46b9",
+      "comment": "把价格文字的颜色改成 #e8590c",
+      "tagName": "p",
+      "role": "",
+      "label": "¥129",
+      "cssPath": "article:nth-of-type(1) .price",
+      "fullPath": "html > body > div#root > div.page > main.products > article.product-card > p.price",
+      "stableClasses": [
+        "price"
+      ],
+      "textContent": "¥129",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App",
+        "file": "src/App.tsx",
+        "line": 46
+      },
+      "changes": [
+        {
+          "property": "color",
+          "before": "rgb(73, 80, 87)",
+          "after": "#e8590c"
+        }
+      ],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

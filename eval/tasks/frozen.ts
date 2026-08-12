@@ -26,3 +26,11 @@ export function loadFrozenRound(taskId: string, round: number, moduleUrl: string
     captureMeta: JSON.parse(readFileSync(metaPath, 'utf8')) as CaptureMeta,
   }
 }
+
+/** Compatibility loader for imported one-comment smoke definitions. */
+export function loadFrozen(taskId: string, moduleUrl: string): {
+  snapshot: FrozenSnapshot | undefined
+  captureMeta: CaptureMeta | undefined
+} {
+  return loadFrozenRound(taskId, 1, moduleUrl)
+}

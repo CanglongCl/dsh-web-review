@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Browser, type Page } from 'playwright'
-import type { CodeAssertion, DomAssertion, EvalTask, GraderOutcome } from './types.ts'
+import type { CodeAssertion, DomAssertion, GraderOutcome, LoadedEvalTask } from './types.ts'
 import { FIXTURES_ROOT, REPO_ROOT } from './runner/runner.ts'
 
 const SERVE_SCRIPT = fileURLToPath(new URL('./fixtures/serve.ts', import.meta.url))
@@ -53,7 +53,7 @@ export interface ServedFixture {
 }
 
 /** Serve a fixture directory (static file server or Vite dev server). */
-export async function serveFixtureDir(task: EvalTask, dir: string): Promise<ServedFixture> {
+export async function serveFixtureDir(task: LoadedEvalTask, dir: string): Promise<ServedFixture> {
   const port = await probeFreePort()
   if (task.fixtureKind === 'static') {
     const child = spawn(process.execPath, ['--import', 'tsx', SERVE_SCRIPT, dir, String(port)], {
@@ -79,7 +79,7 @@ export async function serveFixtureDir(task: EvalTask, dir: string): Promise<Serv
 }
 
 /** Apply a git patch variant into a temp copy; html-dir variants return their dir. */
-export function prepareVariant(task: EvalTask, variant: 'baseline' | 'golden'): string {
+export function prepareVariant(task: LoadedEvalTask, variant: 'baseline' | 'golden'): string {
   const base = join(FIXTURES_ROOT, task.fixture)
   // Static apps serve the committed dirs read-only; Vite apps always run from
   // a temp copy so the dep optimizer (node_modules/.vite) can never pollute
@@ -286,7 +286,7 @@ function checkNegative(workspaceDir: string, negatives: string[]): { ok: boolean
  * code assertions; `evidenceDir` receives the failure screenshot.
  */
 export async function grade(
-  task: EvalTask,
+  task: LoadedEvalTask,
   servedUrl: string,
   workspaceDir: string,
   evidenceDir: string,
@@ -338,7 +338,7 @@ export async function grade(
 
 /** Convenience: prepare, serve, grade, and clean up one variant. */
 export async function gradeVariant(
-  task: EvalTask,
+  task: LoadedEvalTask,
   variant: 'baseline' | 'golden',
   evidenceDir: string,
 ): Promise<GraderOutcome & { variantDir: string }> {

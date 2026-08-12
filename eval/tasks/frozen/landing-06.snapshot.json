@@ -1,0 +1,31 @@
+{
+  "sessionId": "session-7cbf1e73-3050-4438-a8ce-a74ba210f0c0",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:52054/",
+    "title": "魔法 UI 演示页"
+  },
+  "comments": [
+    {
+      "id": "05bccbdd-ec5e-4c3f-913b-b7fa0fc2bff3",
+      "comment": "给卡片增加更明显的阴影",
+      "tagName": "div",
+      "role": "",
+      "label": "主按钮 用于提交表单的主要操作。 提交",
+      "cssPath": "div:nth-of-type(1).card",
+      "fullPath": "html > body > main.cards > div.card",
+      "stableClasses": [
+        "card"
+      ],
+      "textContent": "\n      主按钮\n      用于提交表单的主要操作。\n      提交\n    ",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

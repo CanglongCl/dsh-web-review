@@ -15,6 +15,11 @@ export type Category =
   | 'protocol-smoke' | 'multi-target' | 'scope-resolution' | 'anchor-fallback'
   | 'responsive' | 'semantics' | 'iterative' | 'tool-ownership' | 'trust'
 
+/** Historical frontend taxonomy retained only while loading smoke tasks. */
+export type LegacyFrontendCategory =
+  | 'text' | 'accessibility' | 'color' | 'spacing' | 'layout'
+  | 'interaction' | 'effects' | 'typography' | 'batch' | 'size' | 'anchor'
+
 export type Difficulty = 'easy' | 'medium' | 'hard' | 'long'
 
 /** One controlled context condition for a plugin capability comparison. */
@@ -128,15 +133,27 @@ export interface EvalTask {
   id: string
   fixture: FixtureName
   fixtureKind: FixtureKind
-  category: Category
+  category: Category | LegacyFrontendCategory
   difficulty: Difficulty
   title: string
   /** Context conditions this scenario is designed to compare. */
-  arms: EvalArm[]
+  arms?: EvalArm[]
   /** Ordered turns sharing one agent and one staged workspace. */
-  rounds: EvalRound[]
+  rounds?: EvalRound[]
+  /** Legacy smoke-task fields, normalized by the registry and never sent verbatim. */
+  instruction?: string
+  capture?: CaptureSpec
+  snapshot?: FrozenSnapshot | undefined
+  captureMeta?: CaptureMeta | undefined
   grader: GraderSpec
   golden: GoldenPatch
+}
+
+/** Runtime task after the registry has normalized legacy smoke definitions. */
+export interface LoadedEvalTask extends Omit<EvalTask, 'category' | 'arms' | 'rounds'> {
+  category: Category
+  arms: EvalArm[]
+  rounds: EvalRound[]
 }
 
 export interface ModelSelectionRecord {

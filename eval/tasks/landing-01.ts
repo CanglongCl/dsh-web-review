@@ -22,7 +22,7 @@ export const task: EvalTask = {
   }],
   grader: {
     pass: [{ kind: 'dom', selector: 'button.btn-primary', style: { 'background-color': '#224466' } }],
-    noRegression: [{ kind: 'dom', selector: 'button.btn-ghost', style: { 'background-color': '#eef0f3' } }],
+    noRegression: [{ kind: 'dom', selector: '.card:nth-of-type(3) button.btn-ghost', style: { 'background-color': '#eef0f3' } }],
   },
   golden: { kind: 'html-dir', dir: 'golden' },
 }

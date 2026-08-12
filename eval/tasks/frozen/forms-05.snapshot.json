@@ -1,0 +1,29 @@
+{
+  "sessionId": "session-9ab6f401-a302-4118-9894-a3e5bb53910c",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:64589/",
+    "title": "用户信息表单"
+  },
+  "comments": [
+    {
+      "id": "1bc9579e-c2fe-4bf6-bb65-cde30694a6c5",
+      "comment": "让表单容器水平居中并限制最大宽度为 480px",
+      "tagName": "input",
+      "role": "textbox",
+      "label": "请输入邮箱",
+      "cssPath": "#email",
+      "fullPath": "html > body > form.form > div.form-field:nth-of-type(2) > input#email",
+      "stableClasses": [],
+      "textContent": "",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

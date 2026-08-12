@@ -1,0 +1,6 @@
+body { margin: 0; font-family: system-ui, sans-serif; background: #f6f7f9; color: #24292f; }
+.profile { max-width: 560px; margin: 48px auto; padding: 32px; background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }
+.info { display: flex; align-items: center; gap: 16px; }
+.avatar { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; }
+.name { margin: 0; font-size: 18px; }
+.bio { margin: 0; font-size: 14px; color: #57606a; }

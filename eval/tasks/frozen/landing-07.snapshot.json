@@ -1,0 +1,37 @@
+{
+  "sessionId": "session-996b2a06-219a-4f00-9300-a0cd9ac5919c",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:51831/",
+    "title": "魔法 UI 演示页"
+  },
+  "comments": [
+    {
+      "id": "4c02d5b7-a238-4781-a92b-3a9293088dfa",
+      "comment": "把“取消”按钮的背景改成浅灰色 #d7dbe0",
+      "tagName": "button",
+      "role": "button",
+      "label": "取消",
+      "cssPath": "div:nth-of-type(2) .btn-ghost",
+      "fullPath": "html > body > main.cards > div.card:nth-of-type(2) > button.btn-ghost",
+      "stableClasses": [
+        "btn-ghost"
+      ],
+      "textContent": "取消",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [
+        {
+          "property": "background-color",
+          "before": "rgba(65, 118, 230, 0.1)",
+          "after": "#d7dbe0"
+        }
+      ],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

@@ -30,7 +30,7 @@ import { resolveHarnessRoot } from '../../scripts/harness-path.ts'
 import { materializeProfilePluginLink } from '../../scripts/profile-plugin-link.ts'
 import { loadTask, loadTasks } from '../tasks/register.ts'
 import { hashDir, baselineDir, FIXTURES_ROOT, REPO_ROOT, repoCommit, harnessCommit, probeFreePort } from '../runner/runner.ts'
-import type { AdjustAction, CaptureMeta, EvalRound, EvalTask, FrozenSnapshot } from '../types.ts'
+import type { AdjustAction, CaptureMeta, EvalRound, FrozenSnapshot, LoadedEvalTask } from '../types.ts'
 
 const CAPTURE_VIEWPORT = { width: 1680, height: 1000 }
 
@@ -59,7 +59,7 @@ async function waitFor(check: () => Promise<boolean> | boolean, timeoutMs: numbe
   throw new Error(`waitFor(${label}) timed out${lastError === undefined ? '' : `: ${String(lastError)}`}`)
 }
 
-async function startFixtureServer(task: EvalTask): Promise<{ url: string; stop: () => void }> {
+async function startFixtureServer(task: LoadedEvalTask): Promise<{ url: string; stop: () => void }> {
   const port = await probeFreePort()
   if (task.fixtureKind === 'static') {
     const child = spawn(process.execPath, ['--import', 'tsx', join(REPO_ROOT, 'eval', 'fixtures', 'serve.ts'), baselineDir(task.fixture), String(port)], {
@@ -245,7 +245,7 @@ async function selectSkills(page: Page, editor: import('playwright').Locator, na
 }
 
 /** Drive one round through the real GUI and return the exact intercepted POST body. */
-async function captureOnce(task: EvalTask, round: EvalRound, roundIndex: number): Promise<{ snapshot: FrozenSnapshot; meta: Omit<CaptureMeta, 'fixtureRevision'> }> {
+async function captureOnce(task: LoadedEvalTask, round: EvalRound, roundIndex: number): Promise<{ snapshot: FrozenSnapshot; meta: Omit<CaptureMeta, 'fixtureRevision'> }> {
   const fixture = await startFixtureServer(task)
   const gui = await bootGui()
   const browser: Browser = await chromium.launch()
@@ -340,7 +340,7 @@ function frozenPath(taskId: string, round: number, suffix: string): string {
   return join(REPO_ROOT, 'eval', 'tasks', 'frozen', `${stem}.${suffix}`)
 }
 
-function writeFrozen(task: EvalTask, round: number, snapshot: FrozenSnapshot, meta: Omit<CaptureMeta, 'fixtureRevision'>): void {
+function writeFrozen(task: LoadedEvalTask, round: number, snapshot: FrozenSnapshot, meta: Omit<CaptureMeta, 'fixtureRevision'>): void {
   const dir = dirname(frozenPath(task.id, round, 'x'))
   mkdirSync(dir, { recursive: true })
   writeFileSync(frozenPath(task.id, round, 'snapshot.json'), JSON.stringify(snapshot, null, 2))

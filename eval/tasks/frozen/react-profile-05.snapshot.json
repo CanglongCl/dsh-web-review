@@ -1,0 +1,36 @@
+{
+  "sessionId": "session-18b2ce60-6f54-4731-879d-961fcb5ad3db",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:60871/",
+    "title": "个人主页"
+  },
+  "comments": [
+    {
+      "id": "c55170a8-4a67-4c0a-b68c-0d081b398a55",
+      "comment": "让个人信息行改为上下排列并居中",
+      "tagName": "p",
+      "role": "",
+      "label": "一名专注于产品体验的前端工程师",
+      "cssPath": ".bio",
+      "fullPath": "html > body > div#root > div.profile > div.info > p.bio",
+      "stableClasses": [
+        "bio"
+      ],
+      "textContent": "一名专注于产品体验的前端工程师",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App",
+        "file": "src/App.tsx",
+        "line": 28
+      },
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

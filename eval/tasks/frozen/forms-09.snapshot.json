@@ -1,0 +1,35 @@
+{
+  "sessionId": "session-f8a09fd2-ec43-41a4-b2f8-870e9f88aabe",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:64797/",
+    "title": "用户信息表单"
+  },
+  "comments": [
+    {
+      "id": "f2c6fd36-eea3-46c4-92ae-65694488cdbd",
+      "comment": "把表单标签的字号加大到 15px 并加粗到 600",
+      "tagName": "label",
+      "role": "",
+      "label": "姓名",
+      "cssPath": "div:nth-of-type(1).form-field label",
+      "fullPath": "html > body > form.form > div.form-field > label",
+      "stableClasses": [],
+      "textContent": "姓名",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [
+        {
+          "property": "font-size",
+          "before": "13px",
+          "after": "15px"
+        }
+      ],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

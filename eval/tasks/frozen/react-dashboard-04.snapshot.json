@@ -1,0 +1,36 @@
+{
+  "sessionId": "session-2a7bd704-0beb-4ff2-abf2-d318e2b170a1",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:64661/",
+    "title": "数据看板"
+  },
+  "comments": [
+    {
+      "id": "a50b2bdb-0c27-4ffa-bd57-bd2457683176",
+      "comment": "窗口宽度小于 768px 时统计卡片堆叠成单列",
+      "tagName": "section",
+      "role": "",
+      "label": "12,480今日访问3,219活跃用户24.6%转化率¥86,400总收入",
+      "cssPath": ".stats",
+      "fullPath": "html > body > div#root > div.dashboard > section.stats",
+      "stableClasses": [
+        "stats"
+      ],
+      "textContent": "12,480今日访问3,219活跃用户24.6%转化率¥86,400总收入",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App",
+        "file": "src/App.tsx",
+        "line": 46
+      },
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

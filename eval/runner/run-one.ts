@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { analyzeSession } from '../process-stats.ts'
 import { grade, gradeVariant, serveFixtureDir } from '../grader.ts'
-import type { EvalTask, FailureAttribution, RunRecord, RunStatus } from '../types.ts'
+import type { FailureAttribution, LoadedEvalTask, RunRecord, RunStatus } from '../types.ts'
 import {
   ARTIFACTS_ROOT,
   collectSessionLog,
@@ -31,7 +31,7 @@ export interface RunOneOptions extends RunOptions {
   skipLaunch?: boolean
 }
 
-export function runDirFor(taskId: string, arm: EvalTask['arms'][number], repetition: number): string {
+export function runDirFor(taskId: string, arm: LoadedEvalTask['arms'][number], repetition: number): string {
   return join(ARTIFACTS_ROOT, `${taskId}-${arm}-r${repetition}-${Date.now()}`)
 }
 
@@ -39,7 +39,7 @@ export function runDirFor(taskId: string, arm: EvalTask['arms'][number], repetit
  * Execute one full task run. Returns the assembled record; writes all
  * artifacts under the run dir.
  */
-export async function runTaskOnce(task: EvalTask, options: RunOneOptions): Promise<RunRecord> {
+export async function runTaskOnce(task: LoadedEvalTask, options: RunOneOptions): Promise<RunRecord> {
   const startedAt = new Date().toISOString()
   const runDir = options.runDir ?? runDirFor(task.id, options.arm, options.repetition)
   const workspaceDir = join(runDir, 'workspace')
@@ -137,7 +137,7 @@ export async function runTaskOnce(task: EvalTask, options: RunOneOptions): Promi
 }
 
 /** Verify a task's grader separately: baseline must fail, golden must pass. */
-export async function verifyTaskGrader(task: EvalTask): Promise<{ ok: boolean; details: string[] }> {
+export async function verifyTaskGrader(task: LoadedEvalTask): Promise<{ ok: boolean; details: string[] }> {
   const details: string[] = []
   const baseline = await gradeVariant(task, 'baseline', join(ARTIFACTS_ROOT, 'smoke-evidence', task.id))
   if (baseline.pass) {

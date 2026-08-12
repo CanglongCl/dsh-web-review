@@ -14,7 +14,7 @@ import { resolveHarnessRoot } from '../../scripts/harness-path.ts'
 import { loadTasks } from '../tasks/register.ts'
 import { runTaskOnce } from './run-one.ts'
 import { ARTIFACTS_ROOT, RESULTS_PATH } from './runner.ts'
-import type { EvalArm, EvalTask, RunRecord } from '../types.ts'
+import type { EvalArm, LoadedEvalTask, RunRecord } from '../types.ts'
 
 interface Flags {
   taskIds: string[]
@@ -80,7 +80,7 @@ function parseFlags(argv: string[]): Flags {
   return flags
 }
 
-function matches(task: EvalTask, flags: Flags): boolean {
+function matches(task: LoadedEvalTask, flags: Flags): boolean {
   if (flags.taskIds.length > 0 && !flags.taskIds.includes(task.id)) return false
   if (flags.category !== undefined && task.category !== flags.category) return false
   if (flags.difficulty !== undefined && task.difficulty !== flags.difficulty) return false

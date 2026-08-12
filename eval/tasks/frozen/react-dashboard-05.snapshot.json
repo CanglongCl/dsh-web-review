@@ -1,0 +1,36 @@
+{
+  "sessionId": "session-639525bf-207c-4288-8144-a75a1785be5b",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:64717/",
+    "title": "数据看板"
+  },
+  "comments": [
+    {
+      "id": "89874272-b047-40d0-bac3-66851acfee34",
+      "comment": "给统计卡片加上更明显的阴影",
+      "tagName": "div",
+      "role": "",
+      "label": "12,480今日访问",
+      "cssPath": "div:nth-of-type(1).stat-card",
+      "fullPath": "html > body > div#root > div.dashboard > section.stats > div.stat-card",
+      "stableClasses": [
+        "stat-card"
+      ],
+      "textContent": "12,480今日访问",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App › StatCard",
+        "file": "src/App.tsx",
+        "line": 22
+      },
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

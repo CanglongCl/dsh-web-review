@@ -23,7 +23,7 @@ import { join, relative } from 'node:path'
 import { createServer } from 'node:net'
 import { fileURLToPath } from 'node:url'
 import { resolveHarnessCli } from '../../scripts/harness-path.ts'
-import type { EvalArm, EvalTask, FixtureKind, ModelSelectionRecord } from '../types.ts'
+import type { EvalArm, FixtureKind, LoadedEvalTask, ModelSelectionRecord } from '../types.ts'
 import { runnerTaskPayload } from './payload.ts'
 
 export const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
@@ -77,7 +77,7 @@ export function hashDir(dir: string): string {
 }
 
 /** Stage a clean workspace copy of the fixture baseline. */
-export function stageWorkspace(task: EvalTask, workspaceDir: string): void {
+export function stageWorkspace(task: LoadedEvalTask, workspaceDir: string): void {
   const source = baselineDir(task.fixture)
   mkdirSync(workspaceDir, { recursive: true })
   cpSync(source, workspaceDir, {
@@ -151,7 +151,7 @@ export interface RunOptions {
 /** Write the per-run headless overlay into the run dir. */
 export function writeOverlay(
   runDir: string,
-  task: EvalTask,
+  task: LoadedEvalTask,
   options: RunOptions,
 ): string {
   const taskJson = JSON.stringify(runnerTaskPayload(task, options.arm))
@@ -193,7 +193,7 @@ export interface LaunchResult {
 export async function launchHeadless(
   runDir: string,
   overlayPath: string,
-  task: EvalTask,
+  task: LoadedEvalTask,
   dshHome: string,
   options: RunOptions,
 ): Promise<LaunchResult> {
@@ -263,7 +263,7 @@ export interface WorkspaceDiff {
 }
 
 /** Diff the workspace copy against the fixture baseline (capped text). */
-export function diffWorkspace(task: EvalTask, workspaceDir: string): WorkspaceDiff {
+export function diffWorkspace(task: LoadedEvalTask, workspaceDir: string): WorkspaceDiff {
   const baseline = baselineDir(task.fixture)
   const modified: string[] = []
   const lines: string[] = []

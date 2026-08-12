@@ -50,7 +50,11 @@ product chain (environment → repo `.env` → `~/.dsh/.env` → staged
 Headline scenarios compare `full`, `text-only`, and `oracle` arms. All arms
 use the same generic ordinary prompt; concrete requirements live only in real
 plugin-generated annotation snapshots. Protocol-smoke scenarios declare only
-the `full` arm.
+the `full` arm. Historical one-comment task definitions are normalized at
+load time: their duplicated `instruction` is ignored, while their real frozen
+snapshot becomes a generic-prompt round. The smoke gate also validates every
+snapshot with the production parser and checks fixture revision, comment order,
+and selected skills before grading.
 
 ## Per-run artifacts
 

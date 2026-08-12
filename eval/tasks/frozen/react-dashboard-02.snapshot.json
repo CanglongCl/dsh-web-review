@@ -1,0 +1,42 @@
+{
+  "sessionId": "session-704682b9-1c48-420e-bece-cbe6fa5ef373",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:64325/",
+    "title": "数据看板"
+  },
+  "comments": [
+    {
+      "id": "aa720b94-e8f9-4ea2-8d28-8ecfbcc4c209",
+      "comment": "把统计卡片的背景改成 #f1f5ff",
+      "tagName": "div",
+      "role": "",
+      "label": "12,480今日访问",
+      "cssPath": "div:nth-of-type(1).stat-card",
+      "fullPath": "html > body > div#root > div.dashboard > section.stats > div.stat-card",
+      "stableClasses": [
+        "stat-card"
+      ],
+      "textContent": "12,480今日访问",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App › StatCard",
+        "file": "src/App.tsx",
+        "line": 22
+      },
+      "changes": [
+        {
+          "property": "background-color",
+          "before": "rgba(65, 118, 230, 0.1)",
+          "after": "#f1f5ff"
+        }
+      ],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "sessionId": "session-566b6df4-8146-414c-b130-a3a25b4edda4",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:64760/",
+    "title": "用户信息表单"
+  },
+  "comments": [
+    {
+      "id": "d625dca8-6b06-4385-ae8a-5658d5f8360f",
+      "comment": "给输入框聚焦时增加淡蓝色阴影",
+      "tagName": "input",
+      "role": "textbox",
+      "label": "请输入姓名",
+      "cssPath": "#name",
+      "fullPath": "html > body > form.form > div.form-field > input#name",
+      "stableClasses": [],
+      "textContent": "",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

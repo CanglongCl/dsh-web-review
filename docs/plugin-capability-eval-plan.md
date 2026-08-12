@@ -10,6 +10,8 @@ The existing frontend modification suite remains useful as a protocol smoke suit
 
 This branch delivers the experimental foundation and the first two long scenarios: the three diagnostic arms, ordered-round payloads, multi-target real-GUI capture, per-comment viewports, UI-skill selection, production parsing/formatting, arm/repetition run identities, paired report deltas, and automatic baseline-fail/golden-pass grading. `react-operations-01` contributes six React/source-anchor comments; `static-catalog-01` contributes five production-style fallback comments with no source anchors. Both frozen snapshots were generated and re-verified through the real Preview picker, host editor, acknowledgement, and `/webview-annotations` POST.
 
+The follow-up work from the original eval worktree is retained as 38 additional `protocol-smoke` tasks across forms, landing, dashboard, profile, shop, and todo fixtures. The registry normalizes their historical single-comment schema into one generic-prompt Full-arm round, so their old duplicated `instruction` field never reaches the model. Their original frontend category is deliberately not used as a plugin capability claim. All imported snapshots retain their real capture metadata and must pass the production parser, fixture-revision, comment-order, and selected-skill integrity checks in `pnpm eval:smoke`.
+
 The remaining named scenarios are an expansion roadmap, not implied coverage. In particular, iterative correction is not considered implemented until a composed two-round runner test and per-round grading exist.
 
 ## Questions the eval must answer

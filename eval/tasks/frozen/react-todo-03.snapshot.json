@@ -1,0 +1,36 @@
+{
+  "sessionId": "session-34aa63ca-31e1-41d5-bf09-661d3f06de5b",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:59276/",
+    "title": "待办清单"
+  },
+  "comments": [
+    {
+      "id": "c2376b04-8bc7-4eac-8c63-b45ffa39e273",
+      "comment": "把\"添加任务\"按钮文案改成\"新建任务\"",
+      "tagName": "button",
+      "role": "button",
+      "label": "添加任务",
+      "cssPath": ".add-button",
+      "fullPath": "html > body > div#root > div.layout > main.content > button.add-button",
+      "stableClasses": [
+        "add-button"
+      ],
+      "textContent": "添加任务",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App",
+        "file": "src/App.tsx",
+        "line": 42
+      },
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}
