@@ -35,12 +35,13 @@ import type { AdjustAction, CaptureMeta, EvalTask, FrozenSnapshot } from '../typ
 const CAPTURE_VIEWPORT = { width: 1680, height: 1000 }
 
 /** Inspector control mapping for the Adjust actions the bank uses. */
-const ADJUST_CONTROLS: Record<string, { kind: 'hex' | 'spinbutton' | 'text'; label: string }> = {
+const ADJUST_CONTROLS: Record<string, { kind: 'hex' | 'spinbutton' | 'text' | 'menu'; label: string }> = {
   'background-color': { kind: 'hex', label: 'Background' },
   color: { kind: 'hex', label: 'Text color' },
   'font-size': { kind: 'spinbutton', label: 'Font size' },
   width: { kind: 'spinbutton', label: 'Width' },
   gap: { kind: 'spinbutton', label: 'Gap' },
+  'text-align': { kind: 'menu', label: 'Alignment' },
   text: { kind: 'text', label: 'Text content' },
 }
 
@@ -224,6 +225,9 @@ async function driveAdjusts(page: Page, editor: import('playwright').Locator, ad
       await page.getByRole('spinbutton', { name: `${control.label} · 透明度` }).fill('100')
     } else if (control.kind === 'spinbutton') {
       await editor.getByRole('spinbutton', { name: control.label, exact: true }).fill(adjust.after)
+    } else if (control.kind === 'menu') {
+      await editor.getByRole('button', { name: control.label, exact: true }).click()
+      await page.getByRole('menuitem', { name: adjust.after, exact: true }).click()
     } else {
       await editor.getByLabel(control.label).fill(adjust.after)
     }

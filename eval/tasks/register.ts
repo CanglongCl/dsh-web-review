@@ -11,17 +11,24 @@ import type { EvalTask } from '../types.ts'
 const TASKS_DIR = dirname(fileURLToPath(import.meta.url))
 
 /** Load every committed task module, sorted by id. */
-export async function loadTasks(): Promise<EvalTask[]> {
+export async function loadTasks(options: { tolerant?: boolean } = {}): Promise<EvalTask[]> {
   const files = readdirSync(TASKS_DIR)
     .filter(name => name.endsWith('.ts') && name !== 'register.ts' && name !== 'frozen.ts')
     .sort()
   const tasks: EvalTask[] = []
   for (const file of files) {
-    const module = await import(pathToFileURL(join(TASKS_DIR, file)).href) as { task?: EvalTask }
-    if (module.task === undefined) {
-      throw new Error(`eval task module ${file} does not export "task"`)
+    try {
+      const module = await import(pathToFileURL(join(TASKS_DIR, file)).href) as { task?: EvalTask }
+      if (module.task === undefined) {
+        throw new Error(`eval task module ${file} does not export "task"`)
+      }
+      tasks.push(module.task)
+    } catch (error) {
+      // Tolerant mode tolerates in-flight modules authored concurrently by
+      // workflow agents (frozen captures may not exist yet).
+      if (options.tolerant !== true) throw error
+      console.warn(`[register] skipping in-flight task module ${file}: ${String(error)}`)
     }
-    tasks.push(module.task)
   }
   tasks.sort((a, b) => a.id.localeCompare(b.id))
   return tasks

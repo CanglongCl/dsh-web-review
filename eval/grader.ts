@@ -185,8 +185,28 @@ async function runDomAssertion(page: Page, assertion: DomAssertion, url: string)
   if (assertion.viewport !== undefined) await page.setViewportSize(viewport)
   else await page.setViewportSize(DEFAULT_VIEWPORT)
   await page.goto(url, { waitUntil: 'load' })
+  if (assertion.all === true) {
+    const matches = page.locator(assertion.selector)
+    const count = await matches.count()
+    await matches.first().waitFor({ timeout: 10_000 })
+    if (count === 0) return { ok: false, expected: `${assertion.selector} matches`, measured: 'no matches' }
+    const failures: string[] = []
+    for (let index = 0; index < count; index += 1) {
+      const single = await runSingleDom(page, matches.nth(index), assertion)
+      if (!single.ok) failures.push(`[${index + 1}/${count}] ${single.measured}`)
+    }
+    return {
+      ok: failures.length === 0,
+      expected: `all ${count} matches of ${assertion.selector}: ${assertion.style !== undefined ? JSON.stringify(assertion.style) : assertion.text ?? assertion.attr?.name ?? ''}`,
+      measured: failures.length === 0 ? 'all match' : failures.join('; '),
+    }
+  }
   const locator = page.locator(assertion.selector).first()
   await locator.waitFor({ timeout: 10_000 })
+  return runSingleDom(page, locator, assertion)
+}
+
+async function runSingleDom(page: Page, locator: import('playwright').Locator, assertion: DomAssertion): Promise<{ ok: boolean; expected: string; measured: string }> {
   if (assertion.hover === true) await locator.hover()
   if (assertion.focus === true) await locator.focus()
 

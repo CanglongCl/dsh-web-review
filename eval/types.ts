@@ -76,6 +76,8 @@ export interface DomAssertion {
   viewport?: { width: number; height: number }
   /** Numeric style tolerance in CSS px (default 0.5). */
   tolerance?: number
+  /** Assert the check against EVERY matching element (batch tasks). */
+  all?: boolean
 }
 
 /** A source-code assertion executed against the workspace files. */

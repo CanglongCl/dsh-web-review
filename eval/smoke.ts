@@ -13,7 +13,7 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   const withCapture = argv.includes('--capture')
   const taskIds = argv.filter(arg => arg !== '--' && !arg.startsWith('--'))
-  const tasks = (await loadTasks()).filter(task => taskIds.length === 0 || taskIds.includes(task.id))
+  const tasks = (await loadTasks({ tolerant: true })).filter(task => taskIds.length === 0 || taskIds.includes(task.id))
   console.log(`smoke: ${tasks.length} task(s)${withCapture ? ' with capture verification' : ' (grader checks only)'}`)
   let failures = 0
   for (const task of tasks) {
