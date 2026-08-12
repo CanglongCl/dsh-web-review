@@ -6,8 +6,8 @@
  * outside the harness without a local node_modules).
  *
  * Browser half: compiles the same `src/client/index.ts` twice as closure-
- * factory artifacts. `lib/client.js` uses the generated absolute-path id for
- * the source-checkout development channel; `lib/client-official.js` uses the
+ * factory artifacts. `lib/client.js` uses the generated profile-local alias
+ * for the source-checkout development channel; `lib/client-official.js` uses the
  * stable npm package name for the official DSH bundle tarball. Externals
  * resolve through the browser module table and everything else is inlined.
  *
@@ -17,7 +17,8 @@
  */
 import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { basename, dirname, resolve as resolvePath } from 'node:path'
+import { basename, dirname, relative, resolve as resolvePath } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { UserConfig } from 'tsdown'
 import { transform } from 'lightningcss'
 
@@ -27,10 +28,11 @@ const ENTRY_NAME = (
 const PACKAGE_ID = (
   JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { name: string }
 ).name
+const PACKAGE_ROOT = dirname(fileURLToPath(import.meta.url))
 
 /** The shell's shared platform module table (mirror of packages/client/web/src/platform.ts). */
 const PLATFORM_MODULES = [
-  'react', 'react/jsx-runtime', 'react-dom', 'react-dom/client', 'cordis',
+  'react', 'react/jsx-runtime', 'react-dom', 'react-dom/client', '@deepseek-ai/cordis',
   '@deepseek-ai/dsh-client-ui-slots',
   '@deepseek-ai/dsh-client-web-react',
   '@deepseek-ai/dsh-client-ui-primitives',
@@ -51,6 +53,7 @@ const CLIENT_BUNDLED_DEPENDENCIES = ['clsx', 'css-selector-generator'] as const
 
 /** Build one client artifact for an install channel and its loader id. */
 function clientBundle(pluginId: string, entryFile: string): UserConfig {
+  const cssFiles = new Map<string, string>()
   return {
     entry: { client: 'src/client/index.ts' },
     tsconfig: 'tsconfig.client.json',
@@ -75,11 +78,18 @@ function clientBundle(pluginId: string, entryFile: string): UserConfig {
       resolveId(source: string, importer: string | undefined) {
         if (!source.endsWith('.module.css')) return null
         const absolute = importer === undefined ? source : resolvePath(dirname(importer), source)
-        return `${CSS_VIRTUAL_PREFIX}${absolute}${CSS_VIRTUAL_SUFFIX}`
+        const packageRelative = relative(PACKAGE_ROOT, absolute).replaceAll('\\', '/')
+        if (packageRelative === '..' || packageRelative.startsWith('../')) {
+          throw new Error(`CSS module escapes the package root: ${absolute}`)
+        }
+        const virtualId = `${CSS_VIRTUAL_PREFIX}${packageRelative}${CSS_VIRTUAL_SUFFIX}`
+        cssFiles.set(virtualId, absolute)
+        return virtualId
       },
       async load(virtualId: string) {
         if (!virtualId.startsWith(CSS_VIRTUAL_PREFIX)) return null
-        const fileId = virtualId.slice(CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+        const fileId = cssFiles.get(virtualId)
+        if (fileId === undefined) throw new Error(`Unresolved CSS virtual module: ${virtualId}`)
         this.addWatchFile(fileId)
         const source = await readFile(fileId)
         const { code, exports: cssExports } = transform({

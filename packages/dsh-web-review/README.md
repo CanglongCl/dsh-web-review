@@ -1,4 +1,4 @@
-# @dsh-external/dsh-web-review
+# @deepseek-ai/dsh-web-review
 
 External `dsh web` plugin that adds a Preview conversation tab, same-origin
 page proxy, in-frame element picker, and browser-comment context injection.
@@ -19,7 +19,7 @@ with the researched control grammar in
 
 ```bash
 pnpm install
-pnpm gen-config      # regenerate machine-specific launch files after moving the repo
+pnpm gen-config      # regenerate the stable 0811 development-alias launch files
 pnpm dev             # dsh web + the external client-bundle watcher
 pnpm dev:acceptance  # persistent isolated profile/history + demo + bundle watcher
 pnpm demo            # optional fixture page on port 5173
@@ -139,8 +139,10 @@ capsule visible for retry.
   injected `<base>`; dev-server HMR WebSockets do not.
 - Server-side proxy fetches carry no browser cookies, so login-gated pages
   cannot be annotated.
-- The generated launch entry is machine-specific. Run `pnpm gen-config` after
-  moving the checkout, then restart the web process.
+- Source-checkout launches materialize the development-only
+  `@dsh-web-review-dev/plugin` alias in the active Web profile. Use the repo's
+  `pnpm dev`/`pnpm dev:acceptance` launchers so that link follows the current
+  checkout; direct CLI launches do not prepare it.
 - One page is active at a time; navigating clears its annotations.
 - Rich edits are temporary inline/text previews. Reset, Cancel, remove, clear,
   successful send, navigation, and unmount restore the original DOM. Text is

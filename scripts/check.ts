@@ -5,8 +5,9 @@
  *  2. typecheck — source/scripts solution plus every unit/component/E2E test;
  *  3. build — tsdown produces the node half plus both client channels;
  *  4. unit suite — vitest, including the real directory-entry load;
- *  5. config/package contracts — generated config is deterministic, current
- *     dsh.client shape, both banner ids, and the forwarding entry;
+ *  5. config/package contracts — generated config is deterministic, 0811
+ *     Cordis/CLI names, current dsh.client shape, both banner ids, and the
+ *     native-ESM package entry;
  *  6. official package — stable bundle id, dsh.bundle declaration, exact
  *     staging allowlist, tarball output, and checksum.
  * Flags: --fast skips official-package assembly; --e2e additionally runs the
@@ -17,11 +18,15 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { DEVELOPMENT_ENTRY_NAME } from './development-entry.ts'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const PKG = join(ROOT, 'packages', 'dsh-web-review')
 const DIST = join(ROOT, 'dist')
 const OFFICIAL = join(DIST, 'package')
+const EXPECTED_PACKAGE_NAME = '@deepseek-ai/dsh-web-review'
+const EXPECTED_REGISTRY = 'https://registry.npmjs.org/'
+const EXPECTED_REPOSITORY = 'git+https://github.com/dsh-external/dsh-web-review.git'
 const runE2e = process.argv.includes('--e2e')
 const fast = process.argv.includes('--fast')
 
@@ -79,8 +84,13 @@ function esmImports(source: string): string[] {
   return specifiers.flatMap(match => match[1] === undefined ? [] : [match[1]])
 }
 
+/** npm's deterministic tarball basename for one package identity. */
+function tarballName(name: string, version: string): string {
+  return `${name.replace(/^@/u, '').replaceAll('/', '-')}-${version}.tgz`
+}
+
 // Bootstrap is deliberately part of the gate: a clean git worktree carries
-// neither generated absolute-path config nor built bundles, and pnpm's
+// neither generated launch config nor built bundles, and pnpm's
 // checkout-relative link targets need rematerializing in secondary worktrees.
 run('Harness dependency links', process.execPath, [
   '--import', 'tsx', join(ROOT, 'scripts/link-harness-deps.ts'),
@@ -95,7 +105,7 @@ assert(
   'gen-config deterministic (entry-name.json + cordis.yml unchanged)',
   () => readFileSync(join(PKG, 'entry-name.json'), 'utf8') === entryBefore
     && readFileSync(join(ROOT, 'cordis.yml'), 'utf8') === cordisBefore,
-  () => 'generated absolute-path config changed across two consecutive runs',
+  () => 'generated development config changed across two consecutive runs',
 )
 
 run('source + scripts typecheck (tsc -b --force)', process.execPath, [
@@ -106,11 +116,24 @@ run('test typecheck (unit + component + E2E)', process.execPath, [
   join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc'),
   '-p', join(ROOT, 'tsconfig.tests.json'),
 ])
-run('build (tsdown)', 'pnpm', ['--filter', '@dsh-external/dsh-web-review', 'build'])
+run('release identity', process.execPath, ['--import', 'tsx', join(ROOT, 'scripts/verify-release.ts')])
+run('build (tsdown)', 'pnpm', ['--filter', './packages/dsh-web-review', 'build'])
 run('unit suite (vitest)', 'pnpm', ['vitest', 'run'])
 
-// Bundle contract: banner id == entry name; directory-import entry exists.
+// Bundle contract: banner id == entry name; package main is built for native ESM.
 const entryName = (JSON.parse(entryBefore) as { name: string }).name
+assert(
+  'development launch uses the profile-local package alias',
+  () => entryName === DEVELOPMENT_ENTRY_NAME
+    && cordisBefore.includes(`name: ${JSON.stringify(DEVELOPMENT_ENTRY_NAME)}`)
+    && [
+      join(ROOT, 'scripts', 'dev.ts'),
+      join(ROOT, 'scripts', 'acceptance.ts'),
+      join(PKG, 'tests', 'e2e-scaffold.ts'),
+    ].map(file => readFileSync(file, 'utf8')).every(source =>
+      source.includes('materializeProfilePluginLink')),
+  () => 'entry-name.json, cordis.yml, and every launcher must share and materialize the 0811 development alias',
+)
 assert(
   'client package declares dsh.client',
   () => {
@@ -126,13 +149,53 @@ const repositoryManifest = JSON.parse(readFileSync(join(ROOT, 'package.json'), '
 const packageManifest = JSON.parse(readFileSync(join(PKG, 'package.json'), 'utf8')) as {
   name: string
   version: string
+  private?: boolean
+  publishConfig?: { access?: string; registry?: string }
+  repository?: { type?: string; url?: string }
+  devDependencies?: Record<string, string>
   exports?: Record<string, unknown>
 }
+assert(
+  'source package keeps the private publication boundary',
+  () => packageManifest.name === EXPECTED_PACKAGE_NAME
+    && packageManifest.private === true
+    && packageManifest.publishConfig?.access === 'restricted'
+    && packageManifest.publishConfig.registry === EXPECTED_REGISTRY
+    && packageManifest.repository?.type === 'git'
+    && packageManifest.repository.url === EXPECTED_REPOSITORY,
+  () => `source manifest must be private ${EXPECTED_PACKAGE_NAME} with the reviewed registry and repository metadata`,
+)
 assert(
   'source package exposes only runtime entrypoints',
   () => JSON.stringify(Object.keys(packageManifest.exports ?? {}).sort())
     === JSON.stringify(['.', './client', './package.json'].sort()),
   () => 'package.json exports must not expose private src/* modules or missing declaration artifacts',
+)
+assert(
+  'source package uses the 0811 scoped Cordis runtime',
+  () => {
+    const dependencies = packageManifest.devDependencies ?? {}
+    return dependencies['@deepseek-ai/cordis']?.endsWith('/vendor/cordis') === true
+      && dependencies['@deepseek-ai/cordis-plugin-loader']?.endsWith('/vendor/loader') === true
+      && dependencies['@deepseek-ai/cordis-plugin-include']?.endsWith('/vendor/include') === true
+      && dependencies.cordis === undefined
+      && dependencies['@cordisjs/plugin-loader'] === undefined
+      && dependencies['@cordisjs/plugin-include'] === undefined
+      && readFileSync(join(PKG, 'tsdown.config.ts'), 'utf8').includes("'@deepseek-ai/cordis'")
+  },
+  () => 'package links and browser platform externals must use the 0811 @deepseek-ai Cordis package names',
+)
+assert(
+  'launchers use the 0811 app-owned CLI',
+  () => [
+    join(ROOT, 'scripts', 'dev.ts'),
+    join(ROOT, 'scripts', 'acceptance.ts'),
+    join(PKG, 'tests', 'e2e-scaffold.ts'),
+  ].map(file => readFileSync(file, 'utf8')).every(source =>
+    source.includes('resolveHarnessCli')
+      && !source.includes("join(harness, 'bin', 'dsh')")
+      && !source.includes("'--dev'")),
+  () => '0811 launches apps/cli/lib/bin.js with --patch before app flags and has no --dev option',
 )
 assert(
   'bundle banner id matches the entry name',
@@ -147,9 +210,10 @@ assert(
   () => 'lib/client.js missing or its banner id drifted from entry-name.json — run `pnpm build`',
 )
 assert(
-  'directory-import forwarding entry (index.ts) exists',
-  () => existsSync(join(PKG, 'index.ts')),
-  () => 'packages/dsh-web-review/index.ts missing — the Loader cannot import the package directory without it',
+  'native-ESM package entry exists',
+  () => packageManifest.exports?.['.'] === './lib/index.js'
+    && existsSync(join(PKG, 'lib', 'index.js')),
+  () => 'package.json must export the built lib/index.js entry used by the 0811 profile-local alias',
 )
 assert(
   'built node half is self-contained',
@@ -198,13 +262,25 @@ if (!fast) {
       const manifest = JSON.parse(readFileSync(join(OFFICIAL, 'package.json'), 'utf8')) as {
         name: string
         version: string
+        private?: boolean
         main: string
+        publishConfig?: { access?: string; registry?: string }
+        repository?: { type?: string; url?: string }
+        dependencies?: unknown
+        devDependencies?: unknown
         exports?: { './client'?: string }
         dsh?: { bundle?: { patch?: string }; client?: { platform?: string } }
       }
       return manifest.name === packageManifest.name
         && manifest.version === repositoryManifest.version
         && manifest.version === packageManifest.version
+        && manifest.private === undefined
+        && manifest.publishConfig?.access === 'restricted'
+        && manifest.publishConfig.registry === EXPECTED_REGISTRY
+        && manifest.repository?.type === 'git'
+        && manifest.repository.url === EXPECTED_REPOSITORY
+        && manifest.dependencies === undefined
+        && manifest.devDependencies === undefined
         && manifest.dsh?.bundle?.patch === './cordis.patch.yml'
         && manifest.dsh?.client?.platform === 'web'
         && existsSync(join(OFFICIAL, manifest.main))
@@ -212,17 +288,27 @@ if (!fast) {
         && existsSync(join(OFFICIAL, manifest.exports['./client']))
         && existsSync(join(OFFICIAL, manifest.dsh.bundle.patch))
     },
-    () => 'staged package.json must declare dsh.bundle/dsh.client and point at existing entries',
+    () => 'staged package.json must be publishable only as a restricted package and declare valid dsh.bundle/dsh.client entries',
   )
   assert(
+    'official package text contains no credentials or machine paths',
+    () => expectedOfficialFiles
+      .filter(file => /\.(?:js|json|map|md|yml)$/u.test(file))
+      .map(file => readFileSync(join(OFFICIAL, file), 'utf8'))
+      .every(source => !/\bnpm_[0-9A-Za-z]{20,}\b/u.test(source)
+        && !/_authToken\s*=\s*(?!\$\{[A-Z][A-Z0-9_]*\})\S+/u.test(source)
+        && !source.includes(ROOT)),
+    () => 'dist/package contains credential configuration or this checkout absolute path',
+  )
+  const packageName = tarballName(packageManifest.name, packageManifest.version)
+  assert(
     'official tarball exists',
-    () => existsSync(join(DIST, `dsh-external-dsh-web-review-${packageManifest.version}.tgz`)),
+    () => existsSync(join(DIST, packageName)),
     () => 'pnpm pack did not produce the expected dist/*.tgz file',
   )
   assert(
     'official tarball checksum is current',
     () => {
-      const packageName = `dsh-external-dsh-web-review-${packageManifest.version}.tgz`
       const packagePath = join(DIST, packageName)
       if (!existsSync(packagePath) || !existsSync(join(DIST, 'SHA256SUMS'))) return false
       const checksum = createHash('sha256').update(readFileSync(packagePath)).digest('hex')

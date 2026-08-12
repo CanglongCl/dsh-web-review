@@ -56,22 +56,31 @@
 
 ### 前置条件
 
-- 支持官方 profile 插件机制的 DeepSeek Harness；已验证基线为 `snapshot-20260810T155924Z-8ec407cd64`
+- 支持官方 profile 插件机制的 DeepSeek Harness；已验证基线为 `snapshot-20260811T152241Z-da262ec14c`
 - 已安装 `dsh` 与 pnpm
 
-### 使用官方 bundle 安装
+### 从私有 npm 安装
 
-从 GitHub Release 下载 `dsh-external-dsh-web-review-<版本>.tgz` 和 `SHA256SUMS`。将两个文件放在同一目录，先校验安装包完整性：
+包发布在 npmjs 的私有 `@deepseek-ai` scope。仓库内的 `.npmrc` 只固定 registry；pnpm 11 不会展开已提交项目配置中的认证变量，因此请把令牌插值放在可信的用户级 `~/.npmrc`，不要写入真实令牌：
 
-```sh
-sha256sum -c SHA256SUMS       # Linux
-shasum -a 256 -c SHA256SUMS  # macOS
+```ini
+@deepseek-ai:registry=https://registry.npmjs.org/
+//registry.npmjs.org/:_authToken=${NPM_TOKEN}
 ```
 
-然后通过 DSH 官方的 profile 插件命令安装到 `web` profile：
+仅在当前 Shell 中导出具备读取权限的短期令牌，然后按精确版本安装首个候选版本：
 
 ```sh
-dsh plugin --profile web add ./dsh-external-dsh-web-review-0.0.2.tgz
+export NPM_TOKEN='你的只读令牌'
+dsh plugin --profile web add @deepseek-ai/dsh-web-review@0.0.4-rc.1
+unset NPM_TOKEN
+```
+
+稳定版发布后可省略版本；更新和卸载仍由 DSH profile 插件命令管理：
+
+```sh
+dsh plugin --profile web add @deepseek-ai/dsh-web-review
+dsh plugin --profile web remove @deepseek-ai/dsh-web-review
 ```
 
 安装命令会把插件加入 `web` profile 的依赖，并根据包内 `dsh.bundle.patch` 声明自动启用配置层。可先检查最终配置，再启动 DSH：
@@ -81,11 +90,19 @@ dsh --profile web --dump-config
 dsh web
 ```
 
-更新时下载新版本并再次执行 `add`；卸载使用 `remove`：
+### 使用官方 bundle tarball
+
+GitHub Actions 的 `Release (npm)` 运行会保留 `deepseek-ai-dsh-web-review-<版本>.tgz` 和 `SHA256SUMS` artifact。下载并放在同一目录后先校验：
 
 ```sh
-dsh plugin --profile web add ./dsh-external-dsh-web-review-0.0.2.tgz
-dsh plugin --profile web remove @dsh-external/dsh-web-review
+sha256sum -c SHA256SUMS       # Linux
+shasum -a 256 -c SHA256SUMS  # macOS
+```
+
+再通过 DSH 官方的 profile 插件命令安装到 `web` profile：
+
+```sh
+dsh plugin --profile web add ./deepseek-ai-dsh-web-review-0.0.4-rc.1.tgz
 ```
 
 ### 从源码生成官方安装包
@@ -101,24 +118,41 @@ pnpm setup:harness
 pnpm package:official
 ```
 
-产物位于 `dist/dsh-external-dsh-web-review-<版本>.tgz`。其中只包含自包含的 Node bundle、使用稳定包名注册的浏览器 bundle、官方 `cordis.patch.yml` 和 README，不包含源码、本机 `node_modules` 或开发用绝对路径配置。
+产物位于 `dist/deepseek-ai-dsh-web-review-<版本>.tgz`。其中只包含自包含的 Node bundle、使用稳定包名注册的浏览器 bundle、官方 `cordis.patch.yml` 和 README，不包含源码、本机 `node_modules`、`.npmrc` 或开发用 profile 链接与配置。
 
-### 维护者本地发布 Release
+### 维护者通过 GitHub Actions 发布
 
-正式包在已配置 Harness 的开发机上构建和验证，不依赖 GitHub Runner 访问 Harness 源码。发布前先同步根目录与插件包的版本，然后执行完整本地门禁：
+`.github/workflows/release-npm.yml` 是唯一正式发布入口：PR 与 `main` 运行固定 Harness 快照上的完整构建、E2E、包白名单和校验和门禁；`v<package.json version>` Tag 额外进入受保护的 `npm-publish` Environment。发布 Job 只下载前一 Job 的 tarball，不重新构建。
+
+仓库需要以下 GitHub 配置：
+
+- Secret `NPM_READ_TOKEN`：只读 `@deepseek-ai` 包，仅用于安装与 registry 完整性查询。
+- Variable `HARNESS_REPOSITORY`：0811 快照所在的 GitHub 仓库；当前已验证远端为 `dsh2026/test-CanglongCl`，其 tag 解引用到 Workflow 固定的 `c0c02980…`提交。
+- Secret `HARNESS_REPO_TOKEN`：上述 Harness 私有仓库的只读访问令牌。
+- Environment `npm-publish`：配置 required reviewers，并仅允许受保护的 `v*` Tag。
+- Variable `NPM_PUBLISH_MODE`：首次创建包时临时设为 `bootstrap`；完成后设为 `trusted`。
+- Secret `NPM_BOOTSTRAP_TOKEN`：只在 `bootstrap` 模式存在，必须是最小 scope、短有效期、包/作用域级别 `Read and write` 且开启 `Bypass 2FA` 的 granular token；否则非交互式首发会被拒绝。
+
+首次 bootstrap 成功后，在 npm 包 Settings 中把 GitHub 仓库 `dsh-external/dsh-web-review`、Workflow 文件名 `release-npm.yml`、Environment `npm-publish` 注册为 Trusted Publisher，并明确允许 `npm publish`。然后删除 `NPM_BOOTSTRAP_TOKEN`、将包的 publishing access 改为禁止传统 token，并将 `NPM_PUBLISH_MODE` 改为 `trusted`。正常发布使用 GitHub-hosted Runner 和 OIDC，不保存 npm 写令牌。
+
+发布前仍建议在本地先运行：
 
 ```sh
-pnpm check
+pnpm check --e2e
 ```
 
-`pnpm check` 会重新生成并验证 `dist/dsh-external-dsh-web-review-<版本>.tgz` 与 `dist/SHA256SUMS`。检查通过后提交版本修改，创建与包版本一致的 Tag 并推送：
+候选版本使用 prerelease 后缀，Workflow 自动发布到 `next`；验证通过后再提交稳定版本，由 Workflow 发布到 `latest`：
 
 ```sh
-git tag -a v0.0.3 -m "dsh-web-review v0.0.3"
-git push origin main v0.0.3
+git tag -a v0.0.4-rc.1 -m "dsh-web-review v0.0.4-rc.1"
+git push origin v0.0.4-rc.1
+
+# 候选版本验收完成后，将两处 package.json 升到 0.0.4，再创建：
+git tag -a v0.0.4 -m "dsh-web-review v0.0.4"
+git push origin v0.0.4
 ```
 
-最后在 GitHub Releases 中选择该 Tag，上传 `.tgz` 与 `SHA256SUMS`。带预发布后缀的版本（例如 `v0.1.0-rc.1`）应标记为 prerelease。
+同一 name/version 已存在时，Workflow 只有在 registry integrity 与本次 tarball 完全一致时才按幂等重跑跳过；内容不同会失败，必须调查或升级版本。常规回滚不 unpublish：保留问题版本、标记 deprecated，并发布下一个修复版本。
 
 ## 使用方法
 

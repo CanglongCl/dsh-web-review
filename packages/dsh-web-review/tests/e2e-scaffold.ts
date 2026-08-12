@@ -22,7 +22,8 @@ import {
   WELCOME_NOTICE_SETTINGS_NAMESPACE,
   WELCOME_NOTICE_VERSION,
 } from '@deepseek-ai/dsh-client-ui-settings-general'
-import { resolveHarnessRoot } from '../../../scripts/harness-path.ts'
+import { resolveHarnessCli, resolveHarnessRoot } from '../../../scripts/harness-path.ts'
+import { materializeProfilePluginLink } from '../../../scripts/profile-plugin-link.ts'
 
 /** Repo root (dsh-web-review). */
 export const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
@@ -68,8 +69,8 @@ export async function waitFor(check: () => Promise<boolean> | boolean, timeoutMs
 }
 
 /**
- * Start the dev instance (`dsh web --dev --patch ./cordis.yml`, no bundle
- * watch — the e2e asserts the built bundle) and the demo page server on
+ * Start the dev instance (`dsh web --patch ./cordis.yml`, no bundle watch —
+ * the e2e asserts the built bundle) and the demo page server on
  * free ports. Returns the URLs plus a stopper.
  */
 export async function startServices(): Promise<E2EServices> {
@@ -109,6 +110,7 @@ export async function startServices(): Promise<E2EServices> {
     `  ${WELCOME_NOTICE_ACK_FIELD}: ${WELCOME_NOTICE_VERSION}`,
     '',
   ].join('\n'))
+  materializeProfilePluginLink(REPO_ROOT, dshHome)
   const logs: string[] = []
   const capture = (label: string) => (chunk: Buffer) => {
     for (const line of chunk.toString('utf8').split('\n')) {
@@ -148,13 +150,13 @@ export async function startServices(): Promise<E2EServices> {
   ].join('\n'))
 
   const harness = resolveHarnessRoot(REPO_ROOT)
-  const bin = join(harness, 'bin', 'dsh')
-  const web = spawn(bin, [
+  const bin = resolveHarnessCli(harness)
+  const web = spawn(process.execPath, [
+    bin,
     'web',
-    '--dev',
+    '--patch', overlayPath,
     '--host', '127.0.0.1',
     '--port', String(webPort),
-    '--patch', overlayPath,
   ], {
     cwd: REPO_ROOT,
     stdio: ['ignore', 'pipe', 'pipe'],

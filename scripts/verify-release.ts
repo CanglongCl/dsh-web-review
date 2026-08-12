@@ -1,0 +1,101 @@
+/** Verify the immutable identity and GitHub ref used by the npm release workflow. */
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const root = dirname(dirname(fileURLToPath(import.meta.url)))
+const repositoryManifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
+  version?: unknown
+  packageManager?: unknown
+}
+const packageManifest = JSON.parse(readFileSync(
+  join(root, 'packages', 'dsh-web-review', 'package.json'),
+  'utf8',
+)) as {
+  name?: unknown
+  version?: unknown
+  private?: unknown
+  publishConfig?: { access?: unknown; registry?: unknown }
+  repository?: { type?: unknown; url?: unknown }
+}
+
+const EXPECTED_NAME = '@deepseek-ai/dsh-web-review'
+const EXPECTED_REGISTRY = 'https://registry.npmjs.org/'
+const EXPECTED_REPOSITORY = 'git+https://github.com/dsh-external/dsh-web-review.git'
+const EXPECTED_GITHUB_REPOSITORY = 'dsh-external/dsh-web-review'
+const EXPECTED_PACKAGE_MANAGER = 'pnpm@11.20.0'
+const NPMRC = [
+  '@deepseek-ai:registry=https://registry.npmjs.org/',
+  '',
+].join('\n')
+
+function fail(message: string): never {
+  throw new Error(`release verify: ${message}`)
+}
+
+const version = packageManifest.version
+if (typeof version !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(version)) {
+  fail(`package version must be publishable semver, got ${String(version)}`)
+}
+if (repositoryManifest.version !== version) fail('root and package versions differ')
+if (repositoryManifest.packageManager !== EXPECTED_PACKAGE_MANAGER) {
+  fail(`packageManager must be pinned to ${EXPECTED_PACKAGE_MANAGER}`)
+}
+if (packageManifest.name !== EXPECTED_NAME) fail(`package name must be ${EXPECTED_NAME}`)
+if (packageManifest.private !== true) fail('source package must remain private')
+if (
+  packageManifest.publishConfig?.access !== 'restricted'
+  || packageManifest.publishConfig.registry !== EXPECTED_REGISTRY
+) {
+  fail('publishConfig must pin the restricted npmjs registry')
+}
+if (
+  packageManifest.repository?.type !== 'git'
+  || packageManifest.repository.url !== EXPECTED_REPOSITORY
+) {
+  fail(`repository metadata must be ${EXPECTED_REPOSITORY}`)
+}
+if (readFileSync(join(root, '.npmrc'), 'utf8') !== NPMRC) {
+  fail('.npmrc must contain only the scoped registry; authentication belongs in trusted user/CI config')
+}
+
+const workflow = readFileSync(join(root, '.github', 'workflows', 'release-npm.yml'), 'utf8')
+for (const required of [
+  'environment: npm-publish',
+  'id-token: write',
+  'secrets.NPM_READ_TOKEN',
+  'secrets.HARNESS_REPO_TOKEN',
+  'HARNESS_REPOSITORY: ${{ vars.HARNESS_REPOSITORY }}',
+  'secrets.NPM_BOOTSTRAP_TOKEN',
+  'vars.NPM_PUBLISH_MODE',
+  'HARNESS_COMMIT: c0c02980f5fae2ade5a551bc4875765ed6cecda2',
+  "NPM_VERSION: '11.19.0'",
+  'node scripts/relocate-harness-declarations.ts',
+]) {
+  if (!workflow.includes(required)) fail(`release workflow is missing ${required}`)
+}
+if (workflow.includes('pull_request_target')) fail('release workflow must never use pull_request_target')
+if (workflow.includes('secrets.NPM_TOKEN')) fail('release workflow must use distinct read/bootstrap token names')
+const actionRefs = [...workflow.matchAll(/^\s*uses:\s+\S+@([^\s#]+)/gmu)].map(match => match[1])
+if (actionRefs.length === 0 || actionRefs.some(ref => !/^[0-9a-f]{40}$/u.test(ref ?? ''))) {
+  fail('every third-party action must be pinned to a full commit SHA')
+}
+
+const publishing = process.env.RELEASE_PUBLISH === 'true'
+if (publishing) {
+  const expectedRef = `refs/tags/v${version}`
+  if (process.env.GITHUB_REF !== expectedRef) {
+    fail(`publishing requires ${expectedRef}, got ${process.env.GITHUB_REF ?? '(unset)'}`)
+  }
+  if (process.env.GITHUB_REPOSITORY !== EXPECTED_GITHUB_REPOSITORY) {
+    fail(
+      `publishing requires GitHub repository ${EXPECTED_GITHUB_REPOSITORY}, got `
+      + `${process.env.GITHUB_REPOSITORY ?? '(unset)'}`,
+    )
+  }
+  if (process.env.NPM_PUBLISH_MODE !== 'bootstrap' && process.env.NPM_PUBLISH_MODE !== 'trusted') {
+    fail(`publishing requires NPM_PUBLISH_MODE=bootstrap or trusted, got ${process.env.NPM_PUBLISH_MODE ?? '(unset)'}`)
+  }
+}
+
+console.log(`release verify: ${EXPECTED_NAME}@${version}${publishing ? ', publish ref accepted' : ''}`)

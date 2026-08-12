@@ -13,8 +13,9 @@ import { createServer } from 'node:net'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { resolveHarnessRoot } from './harness-path.ts'
+import { resolveHarnessCli, resolveHarnessRoot } from './harness-path.ts'
 import { ensureAcceptanceHistory } from './acceptance-history.ts'
+import { materializeProfilePluginLink } from './profile-plugin-link.ts'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const harness = resolveHarnessRoot(root)
@@ -120,6 +121,7 @@ if (!existsSync(join(root, 'packages', 'dsh-web-review', 'lib', 'client.js'))
 }
 
 prepareProfile()
+materializeProfilePluginLink(root, dshHome)
 const entryName = JSON.parse(
   readFileSync(join(root, 'packages', 'dsh-web-review', 'entry-name.json'), 'utf8'),
 ) as { name: string }
@@ -166,8 +168,8 @@ console.log(`acceptance: demo page: http://${host}:${demoPort}`)
 console.log(`acceptance: mock history: ${seededHistory ? 'created' : 'reused'} (网页批注验收)`)
 console.log('acceptance: open 网页批注验收 and click its Demo link')
 
-const web = start(join(harness, 'bin', 'dsh'), [
-  'web', '--dev', '--host', host, '--port', webPort, '--patch', overlayPath,
+const web = start(process.execPath, [
+  resolveHarnessCli(harness), 'web', '--patch', overlayPath, '--host', host, '--port', webPort,
 ], root)
 start('pnpm', ['run', 'build:watch'], root)
 start(process.execPath, ['--import', 'tsx', join(root, 'demo/server.ts'), demoPort], root, process.env)

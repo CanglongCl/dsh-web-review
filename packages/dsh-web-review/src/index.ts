@@ -17,7 +17,7 @@
  * annotation-context.ts; this route remains a transport shell.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import type { Context } from 'cordis'
+import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { MAX_ANNOTATION_BODY } from './annotation-contract.ts'
