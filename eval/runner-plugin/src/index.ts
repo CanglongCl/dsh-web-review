@@ -3,11 +3,9 @@
  * evaluation. Modeled on the harness headless bundle
  * (packages/bundle/headless/src/index.ts) with two replacements:
  *
- * - the message set: the task instruction is queued as the ordinary turn
- *   while the plugin's real pre-step product (skill injections, the rendered
- *   Browser comments context, and — when needed — the loaded-skill reminder)
- *   is queued through agent.inject(), the same mechanism the real web flow's
- *   pre-step waterfall relies on, with the same message sources and order;
+ * - the message set: each generic prompt is queued as an ordinary turn while
+ *   the corresponding skill and Browser-comments messages are appended by a
+ *   one-shot pre-step waterfall batch with the same sources and order;
  * - the model selection: provider/model/reasoning effort come from the
  *   per-run overlay config and are installed through the real
  *   installModelSelection hook.
@@ -36,6 +34,8 @@ import {
 } from '../../../packages/dsh-web-review/src/annotation-context.ts'
 import { isUiSkillName, type UiSkillName } from '../../../packages/dsh-web-review/src/ui-skills.ts'
 import { skillBody } from '../../../packages/dsh-web-review/src/skill-provider.ts'
+import type { EvalArm } from '../../types.ts'
+import { armContextTexts } from '../../arm-context.ts'
 
 /** Stable Cordis plugin name (the overlay row id). */
 export const name = 'dsh-web-review-eval-runner'
@@ -45,7 +45,7 @@ export const inject = ['agentDefaultModel', 'agents', 'sessions']
 
 /** Plugin config, populated by the per-run overlay. */
 export interface Config {
-  /** JSON string of { taskId, instruction, snapshot } (single task). */
+  /** JSON string containing one scenario arm and its ordered rounds. */
   taskJson: string
   /** Absolute path of packages/dsh-web-review/skills (bundled UI skills). */
   skillRoot: string
@@ -65,8 +65,12 @@ export const Config: z<Config> = z.object({
 /** Payload shape the runner script embeds in the overlay taskJson. */
 interface RunnerTaskPayload {
   taskId: string
-  instruction: string
-  snapshot: unknown
+  arm: EvalArm
+  rounds: {
+    prompt: string
+    snapshot: unknown
+    oracleContext?: string
+  }[]
 }
 
 /** Process-facing effects of one run (mirrors the headless bundle). */
@@ -119,6 +123,13 @@ function fail(io: RunnerIo, message: string): void {
   io.exit(1)
 }
 
+function contextMessage(plugin: string, text: string): UserMessage {
+  return createUserMessage({
+    source: { kind: 'plugin', plugin, snapshotId: randomUUID() },
+    content: [{ type: 'text', text }],
+  })
+}
+
 /**
  * Run one task through a freshly created Agent and request process exit.
  * @param ctx - plugin context carrying the Agent, Session, and launcher IO services.
@@ -139,13 +150,20 @@ async function run(ctx: Context, config: Config, io: RunnerIo): Promise<void> {
     fail(io, `invalid taskJson: ${config.taskJson.slice(0, 80)}…`)
     return
   }
-  // The frozen snapshot crosses the real wire validator before rendering.
-  const snapshot = parseAnnotationBody(JSON.stringify(payload.snapshot))
-  if (snapshot === undefined) {
-    fail(io, `task ${payload.taskId}: frozen snapshot failed parseAnnotationBody`)
+  if (!['full', 'text-only', 'oracle'].includes(payload.arm) || !Array.isArray(payload.rounds) || payload.rounds.length === 0) {
+    fail(io, `task ${payload.taskId}: invalid arm or empty rounds`)
     return
   }
-  const contextText = formatAnnotationContext(snapshot)
+  // Every round crosses the production wire validator before any model turn.
+  const rounds = payload.rounds.map((round, index) => {
+    const snapshot = parseAnnotationBody(JSON.stringify(round.snapshot))
+    if (snapshot === undefined) throw new Error(`task ${payload.taskId} round ${index + 1}: frozen snapshot failed parseAnnotationBody`)
+    if (typeof round.prompt !== 'string' || round.prompt.trim() === '') throw new Error(`task ${payload.taskId} round ${index + 1}: empty prompt`)
+    if (payload.arm === 'oracle' && (typeof round.oracleContext !== 'string' || round.oracleContext.trim() === '')) {
+      throw new Error(`task ${payload.taskId} round ${index + 1}: oracle arm needs source hints`)
+    }
+    return { ...round, snapshot }
+  })
 
   const current: ModelSelectionRef['current'] = {
     provider: config.provider ?? 'deepseek-official',
@@ -155,51 +173,52 @@ async function run(ctx: Context, config: Config, io: RunnerIo): Promise<void> {
       : { reasoningEffort: config.reasoningEffort as ReasoningEffortId }),
   }
   const selection: ModelSelectionRef = { current, assembled: undefined }
-  // Skill injections first, then the Browser comments context — the exact
-  // order the real web pre-step appends them after the claimed user message.
-  const injections: UserMessage[] = []
-  for (const skillName of snapshot.selectedSkills) {
-    if (!isUiSkillName(skillName)) {
-      fail(io, `task ${payload.taskId}: unknown selected skill "${skillName}"`)
-      return
-    }
-    injections.push(createUserMessage({
-      source: { kind: 'skill-invocation', name: skillName, form: 'instructions' },
-      content: [{ type: 'text', text: renderSkillContent(loadSkill(skillName, config.skillRoot)) }],
-    }))
-  }
-  injections.push(createUserMessage({
-    source: { kind: 'plugin', plugin: 'dsh-web-review', snapshotId: randomUUID() },
-    content: [{ type: 'text', text: contextText }],
-  }))
+  let setRoundInjections: ((messages: UserMessage[]) => void) | undefined
   const { agent } = await agents.create({
     sessionId: SessionId(`session-${randomUUID()}`),
     meta: { cwd: process.cwd() },
     agentOptions: { provider: current.provider, model: current.model },
     setup: (agentCtx) => {
       installModelSelection(agentCtx, selection)
-      // The same mechanism as the plugin's node half: append the context
-      // messages to the enter decision of the pre-step waterfall, after the
-      // claimed ordinary message (the task instruction). Like the real flow
-      // (pending snapshot consumed by admission), the injections enter once.
-      let appended = false
+      // Each round arms exactly one pending injection batch. The waterfall
+      // delegates first and appends only to an enter decision, matching the
+      // production plugin's admission semantics.
+      let pendingInjections: UserMessage[] | undefined
+      setRoundInjections = (messages): void => {
+        if (pendingInjections !== undefined) throw new Error('previous eval round injections were not admitted')
+        pendingInjections = messages
+      }
       agentCtx.on('agent/pre-step', async (_payload, next) => {
         const decision: PreStepDecision = await next()
-        if (decision.kind !== 'enter' || appended) return decision
-        appended = true
-        return { kind: 'enter', messages: [...decision.messages, ...injections] }
+        if (decision.kind !== 'enter' || pendingInjections === undefined) return decision
+        const messages = pendingInjections
+        pendingInjections = undefined
+        return { kind: 'enter', messages: [...decision.messages, ...messages] }
       })
     },
   })
   await agent.whenIdle()
 
-  // The instruction is the ordinary claimed message of this one turn.
+  if (setRoundInjections === undefined) throw new Error('eval round injection controller was not installed')
   const firstSeq = agent.session.seq
-  agent.followup(createUserMessage({
-    source: { kind: 'user' },
-    content: [{ type: 'text', text: payload.instruction }],
-  }))
-  await agent.whenIdle()
+  for (const round of rounds) {
+    const injections: UserMessage[] = []
+    for (const skillName of round.snapshot.selectedSkills) {
+      if (!isUiSkillName(skillName)) throw new Error(`task ${payload.taskId}: unknown selected skill "${skillName}"`)
+      injections.push(createUserMessage({
+        source: { kind: 'skill-invocation', name: skillName, form: 'instructions' },
+        content: [{ type: 'text', text: renderSkillContent(loadSkill(skillName, config.skillRoot)) }],
+      }))
+    }
+    injections.push(...armContextTexts(payload.arm, round.snapshot, formatAnnotationContext(round.snapshot), round.oracleContext)
+      .map(context => contextMessage(context.plugin, context.text)))
+    setRoundInjections(injections)
+    agent.followup(createUserMessage({
+      source: { kind: 'user' },
+      content: [{ type: 'text', text: round.prompt }],
+    }))
+    await agent.whenIdle()
+  }
   await sessions.flush(agent.session)
 
   const outcome = summarize(agent.session.events, firstSeq)

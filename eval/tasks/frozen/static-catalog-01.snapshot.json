@@ -1,0 +1,125 @@
+{
+  "sessionId": "session-d4c7f5f3-d1d3-4f78-b728-9a51dbc88795",
+  "selectedSkills": [
+    "better-accessibility"
+  ],
+  "page": {
+    "url": "http://127.0.0.1:63043/",
+    "title": "春季产品目录"
+  },
+  "comments": [
+    {
+      "id": "6425fc6f-737c-4bcd-af68-6a071242d078",
+      "comment": "只有缺货商品的按钮文案改成“到货提醒”，其余三个商品按钮保持原样。",
+      "tagName": "button",
+      "role": "button",
+      "label": "暂时缺货",
+      "cssPath": ".sold-out .a1b2c3_action",
+      "fullPath": "html > body > main > section.a1b2c3_catalogGrid > article.a1b2c3_productCard.sold-out:nth-of-type(3) > button.a1b2c3_action:nth-of-type(2)",
+      "stableClasses": [
+        "a1b2c3_action"
+      ],
+      "textContent": "暂时缺货",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [],
+      "textChange": {
+        "before": "暂时缺货",
+        "after": "到货提醒"
+      },
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    },
+    {
+      "id": "c95cbcaf-4abc-4bd3-8819-4221ef1a1e9e",
+      "comment": "所有商品价格都提升到 18px，不要改商品标题和描述字号。",
+      "tagName": "strong",
+      "role": "",
+      "label": "¥329",
+      "cssPath": ".featured .a1b2c3_price",
+      "fullPath": "html > body > main > section.a1b2c3_catalogGrid > article.a1b2c3_productCard.featured > strong.a1b2c3_price",
+      "stableClasses": [
+        "a1b2c3_price"
+      ],
+      "textContent": "¥329",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [
+        {
+          "property": "font-size",
+          "before": "15px",
+          "after": "18px"
+        }
+      ],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 694
+      }
+    },
+    {
+      "id": "999e3388-0182-4923-8678-0ff3969aa59b",
+      "comment": "这些心形按钮没有可访问名称。每张卡都按“收藏 + 商品名”补上 aria-label，图标继续对读屏隐藏。",
+      "tagName": "span",
+      "role": "",
+      "label": "♡",
+      "cssPath": ".featured span",
+      "fullPath": "html > body > main > section.a1b2c3_catalogGrid > article.a1b2c3_productCard.featured > button.a1b2c3_favorite > span",
+      "stableClasses": [],
+      "textContent": "♡",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 694
+      }
+    },
+    {
+      "id": "a3766624-00f4-4734-a625-d90513222f33",
+      "comment": "只给精选的第一张卡增加 2px 的 #7a5af8 边框，其他产品卡不变。",
+      "tagName": "article",
+      "role": "",
+      "label": "♡A弧光台灯柔和漫反射，三档色温¥329加入购物袋",
+      "cssPath": ".featured",
+      "fullPath": "html > body > main > section.a1b2c3_catalogGrid > article.a1b2c3_productCard.featured",
+      "stableClasses": [
+        "a1b2c3_productCard",
+        "featured"
+      ],
+      "textContent": "♡A弧光台灯柔和漫反射，三档色温¥329加入购物袋",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 694
+      }
+    },
+    {
+      "id": "b36e354e-8bbe-4348-91a6-68646974a341",
+      "comment": "手机端一行只显示一张产品卡；桌面端仍然保持四列。",
+      "tagName": "section",
+      "role": "",
+      "label": "产品列表",
+      "cssPath": ".a1b2c3_catalogGrid",
+      "fullPath": "html > body > main > section.a1b2c3_catalogGrid",
+      "stableClasses": [
+        "a1b2c3_catalogGrid"
+      ],
+      "textContent": "\n      ♡A弧光台灯柔和漫反射，三档色温¥329加入购物袋\n      ♡B软木收纳盘桌面小物分区整理¥128加入购物袋\n      ♡C折叠脚凳轻量结构，随手收纳¥459到货提醒\n      ♡D羊毛桌垫保护桌面，触感温暖¥268加入购物袋\n    ",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 326,
+        "height": 538
+      }
+    }
+  ]
+}

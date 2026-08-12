@@ -1,8 +1,10 @@
 # Eval suite
 
-Local question bank plus runner/grader/report scripts measuring whether the
-dsh-web-review annotation channel helps an AI complete frontend modification
-tasks. Full design: `docs/frontend-eval-suite-plan.md`.
+Local scenario bank plus runner/grader/report scripts measuring whether the
+dsh-web-review annotation channel supplies the evidence a coding model needs.
+The plugin-centered design is `docs/plugin-capability-eval-plan.md`; the
+original broad frontend bank plan is retained as historical input in
+`docs/frontend-eval-suite-plan.md`.
 
 ## Layout
 
@@ -33,7 +35,7 @@ pnpm eval:smoke [-- --capture]
 
 # Full run (real model): filter by task/category/difficulty/fixture,
 # 4-6-way concurrency, resumable via eval/results/results.jsonl
-DSH_HARNESS=<abs harness root> pnpm eval:run [-- --task landing-01 --concurrency 4]
+DSH_HARNESS=<abs harness root> pnpm eval:run [-- --task react-operations-01 --arm all --repeat 3 --concurrency 3]
 
 # Single-file HTML report with per-task process detail
 pnpm eval:report
@@ -44,6 +46,11 @@ override with `EVAL_PROVIDER`, `EVAL_MODEL`, `EVAL_REASONING` or the
 `--provider/--model/--reasoning` flags. Credentials resolve through the
 product chain (environment → repo `.env` → `~/.dsh/.env` → staged
 `~/.dsh/.credentials.yaml`); without any credential the run fails loudly.
+
+Headline scenarios compare `full`, `text-only`, and `oracle` arms. All arms
+use the same generic ordinary prompt; concrete requirements live only in real
+plugin-generated annotation snapshots. Protocol-smoke scenarios declare only
+the `full` arm.
 
 ## Per-run artifacts
 

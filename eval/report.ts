@@ -40,13 +40,13 @@ function main(): void {
     console.error(`no results at ${resultsFile}; run pnpm eval:run first`)
     process.exit(2)
   }
-  // Keep only the latest record per task (repeat runs accumulate).
+  // Keep the latest record per scenario arm and repetition.
   const parsed = readFileSync(resultsFile, 'utf8').split('\n')
     .filter(line => line.trim() !== '')
     .map(line => JSON.parse(line) as RunRecord)
-  const latestByTask = new Map<string, RunRecord>()
-  for (const record of parsed) latestByTask.set(record.taskId, record)
-  const records = [...latestByTask.values()].sort((a, b) => a.taskId.localeCompare(b.taskId))
+  const latestByRun = new Map<string, RunRecord>()
+  for (const record of parsed) latestByRun.set(`${record.taskId}:${record.arm ?? 'full'}:${record.repetition ?? 1}`, record)
+  const records = [...latestByRun.values()].sort((a, b) => `${a.taskId}:${a.arm}:${a.repetition}`.localeCompare(`${b.taskId}:${b.arm}:${b.repetition}`))
   const details = records.map(record => runDetails(record))
   const summaryFile = join(RESULTS_PATH, 'run-summary.json')
   const summary = existsSync(summaryFile)
@@ -103,12 +103,15 @@ function main(): void {
   details { margin:10px 0; }
   summary { cursor:pointer; font-weight:600; font-size:13px; }
   h3 { margin:18px 0 8px; font-size:15px; }
+  h2.section { margin:24px 0 10px; font-size:16px; }
+  .delta-positive { color:var(--ok); font-weight:600; }
+  .delta-negative { color:var(--bad); font-weight:600; }
 </style>
 </head>
 <body>
 <header>
-  <h1>dsh-web-review · frontend modification eval</h1>
-  <div class="meta">model: <span id="model"></span> · tasks: <span id="taskCount"></span> · generated: <span id="generatedAt"></span></div>
+  <h1>dsh-web-review · plugin capability eval</h1>
+  <div class="meta">model: <span id="model"></span> · runs: <span id="taskCount"></span> · generated: <span id="generatedAt"></span></div>
 </header>
 <div class="cards">
   <div class="stat"><div class="value" id="passRate"></div><div class="label">pass rate</div></div>
@@ -121,14 +124,21 @@ function main(): void {
 <main>
   <div class="filters">
     <select id="fCategory"><option value="">全部类别</option></select>
-    <select id="fDifficulty"><option value="">全部难度</option><option value="easy">easy</option><option value="medium">medium</option><option value="hard">hard</option></select>
+    <select id="fDifficulty"><option value="">全部难度</option><option value="easy">easy</option><option value="medium">medium</option><option value="hard">hard</option><option value="long">long</option></select>
     <select id="fFixture"><option value="">全部应用</option></select>
+    <select id="fArm"><option value="">全部实验臂</option><option value="full">full</option><option value="text-only">text-only</option><option value="oracle">oracle</option></select>
     <select id="fStatus"><option value="">全部状态</option><option value="pass">pass</option><option value="fail">fail</option><option value="timeout">timeout</option><option value="error">error</option></select>
     <button id="fReset">重置</button>
   </div>
+  <h2 class="section">Paired plugin diagnosis</h2>
+  <table>
+    <thead><tr><th>task</th><th>run</th><th>Text-only</th><th>Full</th><th>Oracle</th><th>Full − Text</th><th>Oracle − Full</th><th>step deltas</th><th>duration deltas</th></tr></thead>
+    <tbody id="pairBody"></tbody>
+  </table>
+  <h2 class="section">Individual runs</h2>
   <table>
     <thead><tr>
-      <th>task</th><th>title</th><th>category</th><th>difficulty</th><th>fixture</th><th>status</th>
+      <th>task</th><th>arm</th><th>run</th><th>title</th><th>category</th><th>difficulty</th><th>fixture</th><th>status</th>
       <th>steps</th><th>tools</th><th>first write</th><th>tokens in/out</th><th>duration</th><th>attribution</th>
     </tr></thead>
     <tbody id="tbody"></tbody>
@@ -158,20 +168,50 @@ const fixtures = [...new Set(DATA.map(d => d.fixture))].sort();
 for (const c of categories) { const o = document.createElement('option'); o.value = c; o.textContent = c; document.getElementById('fCategory').appendChild(o); }
 for (const f of fixtures) { const o = document.createElement('option'); o.value = f; o.textContent = f; document.getElementById('fFixture').appendChild(o); }
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const statusScore = d => d?.status === 'pass' ? 1 : 0;
+const signed = n => n === undefined || Number.isNaN(n) ? '—' : (n > 0 ? '+' : '') + n;
+const paired = new Map();
+for (const d of DATA) {
+  const key = d.taskId + ':' + d.repetition;
+  const row = paired.get(key) ?? { taskId:d.taskId, repetition:d.repetition };
+  row[d.arm] = d;
+  paired.set(key, row);
+}
+function armBadge(d) { return d ? '<span class="badge ' + d.status + '">' + esc(d.status) + '</span>' : '—'; }
+function renderPairs(rows) {
+  document.getElementById('pairBody').innerHTML = rows.map(row => {
+    const text = row['text-only'], full = row.full, oracle = row.oracle;
+    const fullLift = text && full ? statusScore(full) - statusScore(text) : undefined;
+    const oracleGap = full && oracle ? statusScore(oracle) - statusScore(full) : undefined;
+    const stepLift = text?.process && full?.process ? full.process.steps - text.process.steps : undefined;
+    const stepGap = full?.process && oracle?.process ? oracle.process.steps - full.process.steps : undefined;
+    const durationLift = text && full ? Math.round((full.durationMs - text.durationMs) / 1000) : undefined;
+    const durationGap = full && oracle ? Math.round((oracle.durationMs - full.durationMs) / 1000) : undefined;
+    const deltaClass = n => n > 0 ? 'delta-positive' : n < 0 ? 'delta-negative' : '';
+    return '<tr><td>' + esc(row.taskId) + '</td><td>' + esc(row.repetition) + '</td><td>' + armBadge(text) + '</td><td>' + armBadge(full) + '</td><td>' + armBadge(oracle) + '</td>'
+      + '<td class="' + deltaClass(fullLift) + '">' + signed(fullLift) + '</td><td class="' + deltaClass(oracleGap) + '">' + signed(oracleGap) + '</td>'
+      + '<td>F−T ' + signed(stepLift) + ' · O−F ' + signed(stepGap) + '</td><td>F−T ' + signed(durationLift) + 's · O−F ' + signed(durationGap) + 's</td></tr>';
+  }).join('');
+}
 function render() {
   const fCategory = document.getElementById('fCategory').value;
   const fDifficulty = document.getElementById('fDifficulty').value;
   const fFixture = document.getElementById('fFixture').value;
+  const fArm = document.getElementById('fArm').value;
   const fStatus = document.getElementById('fStatus').value;
   const rows = DATA.filter(d =>
     (!fCategory || d.category === fCategory) &&
     (!fDifficulty || d.difficulty === fDifficulty) &&
     (!fFixture || d.fixture === fFixture) &&
+    (!fArm || d.arm === fArm) &&
     (!fStatus || d.status === fStatus));
+  const visiblePairs = [...paired.values()].filter(row => rows.some(d => d.taskId === row.taskId && d.repetition === row.repetition));
+  renderPairs(visiblePairs);
   document.getElementById('tbody').innerHTML = rows.map(d => {
     const tokens = d.process?.tokens;
-    return '<tr class="row" onclick="openDetail(' + JSON.stringify(d.taskId) + ')">'
-      + '<td>' + esc(d.taskId) + '</td><td>' + esc(d.title) + '</td><td>' + esc(d.category) + '</td><td>' + esc(d.difficulty) + '</td><td>' + esc(d.fixture) + '</td>'
+    const runKey = d.taskId + ':' + d.arm + ':' + d.repetition;
+    return '<tr class="row" onclick="openDetail(' + JSON.stringify(runKey) + ')">'
+      + '<td>' + esc(d.taskId) + '</td><td>' + esc(d.arm) + '</td><td>' + esc(d.repetition) + '</td><td>' + esc(d.title) + '</td><td>' + esc(d.category) + '</td><td>' + esc(d.difficulty) + '</td><td>' + esc(d.fixture) + '</td>'
       + '<td><span class="badge ' + d.status + '">' + d.status + '</span></td>'
       + '<td>' + (d.process?.steps ?? '—') + '</td>'
       + '<td>' + Object.values(d.process?.toolCalls ?? {}).reduce((a,b)=>a+b,0) + '</td>'
@@ -184,16 +224,17 @@ function render() {
 document.getElementById('fCategory').onchange = render;
 document.getElementById('fDifficulty').onchange = render;
 document.getElementById('fFixture').onchange = render;
+document.getElementById('fArm').onchange = render;
 document.getElementById('fStatus').onchange = render;
-document.getElementById('fReset').onclick = () => { for (const id of ['fCategory','fDifficulty','fFixture','fStatus']) document.getElementById(id).value=''; render(); };
-function openDetail(taskId) {
-  const d = DATA.find(x => x.taskId === taskId);
+document.getElementById('fReset').onclick = () => { for (const id of ['fCategory','fDifficulty','fFixture','fArm','fStatus']) document.getElementById(id).value=''; render(); };
+function openDetail(runKey) {
+  const d = DATA.find(x => x.taskId + ':' + x.arm + ':' + x.repetition === runKey);
   if (!d) return;
   const tokens = d.process?.tokens;
   const toolLines = Object.entries(d.process?.toolCalls ?? {}).map(([name,count]) => name + ' × ' + count).join(', ');
   const graderLines = (d.grader?.results ?? []).map(r => '<li>' + esc(r.ok ? '✓' : '✗') + ' ' + esc(r.expected) + ' → ' + esc(r.measured) + '</li>').join('');
   document.getElementById('detailBody').innerHTML =
-    '<h2>' + esc(d.taskId) + ' · ' + esc(d.title) + '</h2>'
+    '<h2>' + esc(d.taskId) + ' · ' + esc(d.arm) + ' · run ' + esc(d.repetition) + ' · ' + esc(d.title) + '</h2>'
     + '<p class="meta">' + esc(d.fixture) + ' / ' + esc(d.category) + ' / ' + esc(d.difficulty)
     + ' · <span class="badge ' + d.status + '">' + d.status + '</span>'
     + ' · ' + esc(d.attribution ?? '') + ' · ' + (d.durationMs/1000).toFixed(1) + 's · exit ' + d.exitCode + '</p>'

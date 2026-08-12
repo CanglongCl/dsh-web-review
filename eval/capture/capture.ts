@@ -30,7 +30,7 @@ import { resolveHarnessRoot } from '../../scripts/harness-path.ts'
 import { materializeProfilePluginLink } from '../../scripts/profile-plugin-link.ts'
 import { loadTask, loadTasks } from '../tasks/register.ts'
 import { hashDir, baselineDir, FIXTURES_ROOT, REPO_ROOT, repoCommit, harnessCommit, probeFreePort } from '../runner/runner.ts'
-import type { AdjustAction, CaptureMeta, EvalTask, FrozenSnapshot } from '../types.ts'
+import type { AdjustAction, CaptureMeta, EvalRound, EvalTask, FrozenSnapshot } from '../types.ts'
 
 const CAPTURE_VIEWPORT = { width: 1680, height: 1000 }
 
@@ -212,7 +212,6 @@ async function clickWhenStable(page: Page, locator: import('playwright').Locator
 }
 
 async function driveAdjusts(page: Page, editor: import('playwright').Locator, adjusts: AdjustAction[]): Promise<void> {
-  await editor.getByRole('button', { name: 'Adjust' }).click()
   for (const adjust of adjusts) {
     const control = ADJUST_CONTROLS[adjust.property]
     if (control === undefined) throw new Error(`unsupported adjust property "${adjust.property}"`)
@@ -234,8 +233,19 @@ async function driveAdjusts(page: Page, editor: import('playwright').Locator, ad
   }
 }
 
-/** Drive the real GUI once and return the exact intercepted POST body. */
-async function captureOnce(task: EvalTask): Promise<{ snapshot: FrozenSnapshot; meta: Omit<CaptureMeta, 'fixtureRevision'> }> {
+async function selectSkills(page: Page, editor: import('playwright').Locator, names: string[]): Promise<void> {
+  if (names.length === 0) return
+  const skills = editor.locator('[data-webview-ui-skills]')
+  await skills.getByRole('button', { name: 'Built-in Skills' }).click()
+  const field = skills.getByRole('button', { name: 'Choose Skills for this adjustment' })
+  await field.click()
+  const popover = page.locator('[data-webview-ui-skill-popover]')
+  for (const name of names) await popover.getByRole('checkbox', { name: new RegExp(name, 'u') }).check()
+  await field.click()
+}
+
+/** Drive one round through the real GUI and return the exact intercepted POST body. */
+async function captureOnce(task: EvalTask, round: EvalRound, roundIndex: number): Promise<{ snapshot: FrozenSnapshot; meta: Omit<CaptureMeta, 'fixtureRevision'> }> {
   const fixture = await startFixtureServer(task)
   const gui = await bootGui()
   const browser: Browser = await chromium.launch()
@@ -257,27 +267,49 @@ async function captureOnce(task: EvalTask): Promise<{ snapshot: FrozenSnapshot; 
     await urlInput.fill(fixture.url)
     await urlInput.press('Enter')
     const frame = page.frameLocator('iframe[title="Web preview"]')
-    await frame.locator(task.capture.target).first().waitFor({ timeout: 30_000 })
+    const firstCapture = round.capture[0]
+    if (firstCapture === undefined) throw new Error(`task ${task.id} round ${roundIndex + 1} has no captures`)
+    await frame.locator(firstCapture.target).first().waitFor({ timeout: 30_000 })
 
     const pick = page.getByRole('button', { name: 'Add page comments' })
     await expectEnabled(pick)
     await pick.click()
-    await frame.locator(task.capture.target).first().click()
-    const editor = page.locator('[data-webview-annotation-editor]')
-    await editor.waitFor({ timeout: 10_000 })
-    await editor.getByPlaceholder('Describe these changes…').fill(task.capture.comment)
-    if (task.capture.adjusts !== undefined && task.capture.adjusts.length > 0) {
-      await driveAdjusts(page, editor, task.capture.adjusts)
+    const selectedSkills = [...new Set(round.capture.flatMap(capture => capture.selectedSkills ?? []))]
+    for (let index = 0; index < round.capture.length; index += 1) {
+      const capture = round.capture[index]!
+      if (capture.viewport !== undefined) await page.setViewportSize(capture.viewport)
+      const target = frame.locator(capture.target).first()
+      await target.waitFor({ timeout: 30_000 })
+      if (capture.targetPosition === undefined) {
+        await target.click()
+      } else {
+        const box = await target.boundingBox()
+        if (box === null) throw new Error(`target ${capture.target} has no layout box`)
+        await target.click({ position: {
+          x: box.width * capture.targetPosition.xRatio,
+          y: box.height * capture.targetPosition.yRatio,
+        } })
+      }
+      const editor = page.locator('[data-webview-annotation-editor]')
+      await editor.waitFor({ timeout: 10_000 })
+      await editor.getByPlaceholder('Describe these changes…').fill(capture.comment)
+      if ((capture.adjusts?.length ?? 0) > 0 || (index === 0 && selectedSkills.length > 0)) {
+        await editor.getByRole('button', { name: 'Adjust' }).click()
+      }
+      if (index === 0) await selectSkills(page, editor, selectedSkills)
+      if (capture.adjusts !== undefined && capture.adjusts.length > 0) {
+        await driveAdjusts(page, editor, capture.adjusts)
+      }
+      await editor.getByRole('button', { name: 'Confirm annotation' }).click()
+      await editor.waitFor({ state: 'detached', timeout: 10_000 })
+      const capsule = page.locator('[data-webview-annotation-capsule]')
+      await capsule.waitFor({ timeout: 10_000 })
+      await waitFor(
+        async () => await capsule.getAttribute('data-sync-status') === 'synced',
+        15_000,
+        `annotation ${index + 1} acknowledged`,
+      )
     }
-    await editor.getByRole('button', { name: 'Confirm annotation' }).click()
-    await editor.waitFor({ state: 'detached', timeout: 10_000 })
-    const capsule = page.locator('[data-webview-annotation-capsule]')
-    await capsule.waitFor({ timeout: 10_000 })
-    await waitFor(
-      async () => await capsule.getAttribute('data-sync-status') === 'synced',
-      15_000,
-      'annotation acknowledged',
-    )
     const confirmed = bodies
       .map(body => JSON.parse(body) as FrozenSnapshot)
       .filter(snapshot => snapshot.comments.length > 0)
@@ -303,15 +335,16 @@ async function expectEnabled(locator: import('playwright').Locator): Promise<voi
   await waitFor(async () => locator.isEnabled(), 15_000, 'picker enabled')
 }
 
-function frozenPath(taskId: string, suffix: string): string {
-  return join(REPO_ROOT, 'eval', 'tasks', 'frozen', `${taskId}.${suffix}`)
+function frozenPath(taskId: string, round: number, suffix: string): string {
+  const stem = round === 1 ? taskId : `${taskId}.round-${round}`
+  return join(REPO_ROOT, 'eval', 'tasks', 'frozen', `${stem}.${suffix}`)
 }
 
-function writeFrozen(task: EvalTask, snapshot: FrozenSnapshot, meta: Omit<CaptureMeta, 'fixtureRevision'>): void {
-  const dir = dirname(frozenPath(task.id, 'x'))
+function writeFrozen(task: EvalTask, round: number, snapshot: FrozenSnapshot, meta: Omit<CaptureMeta, 'fixtureRevision'>): void {
+  const dir = dirname(frozenPath(task.id, round, 'x'))
   mkdirSync(dir, { recursive: true })
-  writeFileSync(frozenPath(task.id, 'snapshot.json'), JSON.stringify(snapshot, null, 2))
-  writeFileSync(frozenPath(task.id, 'meta.json'), JSON.stringify({
+  writeFileSync(frozenPath(task.id, round, 'snapshot.json'), JSON.stringify(snapshot, null, 2))
+  writeFileSync(frozenPath(task.id, round, 'meta.json'), JSON.stringify({
     ...meta,
     fixtureRevision: hashDir(baselineDir(task.fixture)),
   }, null, 2))
@@ -335,13 +368,14 @@ function diffCaptures(frozen: FrozenSnapshot, live: FrozenSnapshot): string[] {
   const issues: string[] = []
   const frozenComments = frozen.comments as Record<string, unknown>[]
   const liveComments = live.comments as Record<string, unknown>[]
+  if (frozen.selectedSkills.join('\0') !== live.selectedSkills.join('\0')) issues.push('selectedSkills drifted')
   if (frozenComments.length !== liveComments.length) {
     issues.push(`comment count ${frozenComments.length} -> ${liveComments.length}`)
     return issues
   }
   frozenComments.forEach((frozenComment, index) => {
     const liveComment = liveComments[index]!
-    for (const field of ['tagName', 'role', 'label', 'cssPath', 'fullPath', 'inToolChrome']) {
+    for (const field of ['comment', 'tagName', 'role', 'label', 'cssPath', 'fullPath', 'textContent', 'inToolChrome']) {
       if (frozenComment[field] !== liveComment[field]) {
         issues.push(`comment ${index + 1} ${field}: ${JSON.stringify(frozenComment[field])} -> ${JSON.stringify(liveComment[field])}`)
       }
@@ -349,6 +383,9 @@ function diffCaptures(frozen: FrozenSnapshot, live: FrozenSnapshot): string[] {
     const frozenClasses = (frozenComment.stableClasses as string[]).join(' ')
     const liveClasses = (liveComment.stableClasses as string[]).join(' ')
     if (frozenClasses !== liveClasses) issues.push(`comment ${index + 1} stableClasses drifted`)
+    if (JSON.stringify(frozenComment.anchor) !== JSON.stringify(liveComment.anchor)) issues.push(`comment ${index + 1} anchor drifted`)
+    if (JSON.stringify(frozenComment.viewport) !== JSON.stringify(liveComment.viewport)) issues.push(`comment ${index + 1} viewport drifted`)
+    if (JSON.stringify(frozenComment.textChange) !== JSON.stringify(liveComment.textChange)) issues.push(`comment ${index + 1} textChange drifted`)
     const frozenChanges = (frozenComment.changes ?? []) as { property: string; before: string; after: string }[]
     const liveChanges = (liveComment.changes ?? []) as { property: string; before: string; after: string }[]
     if (frozenChanges.length !== liveChanges.length) {
@@ -375,26 +412,29 @@ async function main(): Promise<void> {
     ? await Promise.all(taskIds.map(id => loadTask(id)))
     : await loadTasks()
   for (const task of tasks) {
-    console.log(`[capture] ${task.id} (${verify ? 'verify' : 'freeze'})`)
-    const live = await captureOnce(task)
-    if (verify) {
-      if (!existsSync(frozenPath(task.id, 'snapshot.json'))) {
-        console.error(`[capture] ${task.id} has no frozen snapshot to verify against; run capture without --verify first`)
-        process.exitCode = 1
-        continue
-      }
-      const frozen = JSON.parse(readFileSync(frozenPath(task.id, 'snapshot.json'), 'utf8')) as FrozenSnapshot
-      const issues = diffCaptures(frozen, live.snapshot)
-      if (issues.length === 0) {
-        console.log(`[capture] ${task.id} verify OK`)
+    for (let index = 0; index < task.rounds.length; index += 1) {
+      const roundNumber = index + 1
+      console.log(`[capture] ${task.id} round ${roundNumber} (${verify ? 'verify' : 'freeze'})`)
+      const live = await captureOnce(task, task.rounds[index]!, index)
+      if (verify) {
+        if (!existsSync(frozenPath(task.id, roundNumber, 'snapshot.json'))) {
+          console.error(`[capture] ${task.id} round ${roundNumber} has no frozen snapshot to verify against; run capture without --verify first`)
+          process.exitCode = 1
+          continue
+        }
+        const frozen = JSON.parse(readFileSync(frozenPath(task.id, roundNumber, 'snapshot.json'), 'utf8')) as FrozenSnapshot
+        const issues = diffCaptures(frozen, live.snapshot)
+        if (issues.length === 0) {
+          console.log(`[capture] ${task.id} round ${roundNumber} verify OK`)
+        } else {
+          console.error(`[capture] ${task.id} round ${roundNumber} DRIFT:`)
+          for (const issue of issues) console.error(`  - ${issue}`)
+          process.exitCode = 1
+        }
       } else {
-        console.error(`[capture] ${task.id} DRIFT:`)
-        for (const issue of issues) console.error(`  - ${issue}`)
-        process.exitCode = 1
+        writeFrozen(task, roundNumber, live.snapshot, live.meta)
+        console.log(`[capture] ${task.id} round ${roundNumber} frozen (${live.snapshot.comments.length} comment(s), ${live.snapshot.selectedSkills.length} skill(s))`)
       }
-    } else {
-      writeFrozen(task, live.snapshot, live.meta)
-      console.log(`[capture] ${task.id} frozen (${live.snapshot.comments.length} comment(s), ${live.snapshot.selectedSkills.length} skill(s))`)
     }
   }
 }

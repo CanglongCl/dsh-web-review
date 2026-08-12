@@ -188,7 +188,7 @@ async function runDomAssertion(page: Page, assertion: DomAssertion, url: string)
   if (assertion.all === true) {
     const matches = page.locator(assertion.selector)
     const count = await matches.count()
-    await matches.first().waitFor({ timeout: 10_000 })
+    await matches.first().waitFor({ state: 'attached', timeout: 10_000 })
     if (count === 0) return { ok: false, expected: `${assertion.selector} matches`, measured: 'no matches' }
     const failures: string[] = []
     for (let index = 0; index < count; index += 1) {
@@ -202,7 +202,7 @@ async function runDomAssertion(page: Page, assertion: DomAssertion, url: string)
     }
   }
   const locator = page.locator(assertion.selector).first()
-  await locator.waitFor({ timeout: 10_000 })
+  await locator.waitFor({ state: 'attached', timeout: 10_000 })
   return runSingleDom(page, locator, assertion)
 }
 

@@ -1,5 +1,7 @@
 # Frontend modification capability eval suite
 
+> This document describes the original broad frontend task-bank plan. The plugin-centered diagnostic design superseding its single-arm assumptions is [Browser annotation plugin capability eval](./plugin-capability-eval-plan.md). The existing tasks remain protocol smoke coverage; new long scenarios are selected and scored by the plugin evidence they demand rather than by frontend topic quotas.
+
 ## Goal
 
 Measure whether the dsh-web-review plugin's annotation channel helps an AI

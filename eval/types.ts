@@ -5,17 +5,20 @@
  */
 
 export type FixtureName =
-  | 'landing' | 'forms'
-  | 'react-todo' | 'react-shop' | 'react-dashboard' | 'react-profile'
+  | 'landing' | 'forms' | 'static-catalog'
+  | 'react-todo' | 'react-shop' | 'react-dashboard' | 'react-profile' | 'react-operations'
   | 'vue-blog' | 'vue-kanban' | 'vue-chat' | 'vue-settings'
 
 export type FixtureKind = 'static' | 'react' | 'vue'
 
 export type Category =
-  | 'text' | 'color' | 'typography' | 'size' | 'spacing' | 'layout'
-  | 'interaction' | 'accessibility' | 'effects' | 'batch' | 'responsive' | 'anchor'
+  | 'protocol-smoke' | 'multi-target' | 'scope-resolution' | 'anchor-fallback'
+  | 'responsive' | 'semantics' | 'iterative' | 'tool-ownership' | 'trust'
 
-export type Difficulty = 'easy' | 'medium' | 'hard'
+export type Difficulty = 'easy' | 'medium' | 'hard' | 'long'
+
+/** One controlled context condition for a plugin capability comparison. */
+export type EvalArm = 'full' | 'text-only' | 'oracle'
 
 /** One inspector edit driven through the real property controls at capture time. */
 export interface AdjustAction {
@@ -35,6 +38,10 @@ export interface CaptureSpec {
   adjusts?: AdjustAction[]
   /** UI optimization skills checked for this annotation. */
   selectedSkills?: string[]
+  /** Viewport applied immediately before this target is picked. */
+  viewport?: { width: number; height: number }
+  /** Relative point used when the target is a container with child content. */
+  targetPosition?: { xRatio: number; yRatio: number }
 }
 
 /** Exact wire shape the browser POSTs to /webview-annotations (frozen capture). */
@@ -52,6 +59,21 @@ export interface CaptureMeta {
   pluginCommit: string
   harnessCommit: string
   capturedAt: string
+}
+
+/** One admitted browser-comment snapshot and ordinary user turn. */
+export interface EvalRound {
+  /** Ordinary composer message. Requirements belong in the annotations. */
+  prompt: string
+  /** Ordered targets captured into one production snapshot. */
+  capture: CaptureSpec[]
+  /** Frozen REAL capture produced by eval/capture.ts. */
+  snapshot: FrozenSnapshot | undefined
+  captureMeta: CaptureMeta | undefined
+  /** Source-localization help used only by the oracle arm. */
+  oracleContext?: string
+  /** Assertions that must hold after this round in an iterative scenario. */
+  afterRound?: Assertion[]
 }
 
 /** A rendered-DOM assertion executed against the fixture dev server. */
@@ -109,12 +131,10 @@ export interface EvalTask {
   category: Category
   difficulty: Difficulty
   title: string
-  /** Canonical user intent; also the headless positional argument. */
-  instruction: string
-  capture: CaptureSpec
-  /** Frozen REAL capture produced by eval/capture.ts; never hand-authored. */
-  snapshot: FrozenSnapshot | undefined
-  captureMeta: CaptureMeta | undefined
+  /** Context conditions this scenario is designed to compare. */
+  arms: EvalArm[]
+  /** Ordered turns sharing one agent and one staged workspace. */
+  rounds: EvalRound[]
   grader: GraderSpec
   golden: GoldenPatch
 }
@@ -181,6 +201,8 @@ export interface RunRecord {
   category: Category
   difficulty: Difficulty
   title: string
+  arm: EvalArm
+  repetition: number
   status: RunStatus
   attribution?: FailureAttribution
   grader?: GraderOutcome

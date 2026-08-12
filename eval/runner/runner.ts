@@ -23,7 +23,8 @@ import { join, relative } from 'node:path'
 import { createServer } from 'node:net'
 import { fileURLToPath } from 'node:url'
 import { resolveHarnessCli } from '../../scripts/harness-path.ts'
-import type { EvalTask, FixtureKind, ModelSelectionRecord } from '../types.ts'
+import type { EvalArm, EvalTask, FixtureKind, ModelSelectionRecord } from '../types.ts'
+import { runnerTaskPayload } from './payload.ts'
 
 export const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
 export const FIXTURES_ROOT = join(REPO_ROOT, 'eval', 'fixtures')
@@ -34,10 +35,12 @@ export const RESULTS_PATH = join(REPO_ROOT, 'eval', 'results')
 const FIXTURE_KINDS: Record<string, FixtureKind> = {
   landing: 'static',
   forms: 'static',
+  'static-catalog': 'static',
   'react-todo': 'react',
   'react-shop': 'react',
   'react-dashboard': 'react',
   'react-profile': 'react',
+  'react-operations': 'react',
   'vue-blog': 'vue',
   'vue-kanban': 'vue',
   'vue-chat': 'vue',
@@ -141,6 +144,8 @@ export interface RunOptions {
   reasoningEffort?: string
   timeoutMs: number
   harnessRoot: string
+  arm: EvalArm
+  repetition: number
 }
 
 /** Write the per-run headless overlay into the run dir. */
@@ -149,11 +154,7 @@ export function writeOverlay(
   task: EvalTask,
   options: RunOptions,
 ): string {
-  const taskJson = JSON.stringify({
-    taskId: task.id,
-    instruction: task.instruction,
-    snapshot: task.snapshot,
-  })
+  const taskJson = JSON.stringify(runnerTaskPayload(task, options.arm))
   const overlay = [
     '- id: headless-runner',
     '  disabled: true',
@@ -213,7 +214,7 @@ export async function launchHeadless(
     bin,
     '--profile', 'headless',
     '--patch', overlayPath,
-    task.instruction,
+    task.rounds[0]?.prompt ?? '请根据页面批注修改前端实现。',
   ], { cwd: join(runDir, 'workspace'), env, stdio: ['ignore', 'pipe', 'pipe'] })
   let stdout = ''
   let stderr = ''

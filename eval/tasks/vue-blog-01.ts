@@ -1,22 +1,24 @@
-import { loadFrozen } from './frozen.ts'
+import { loadFrozenRound } from './frozen.ts'
 import type { EvalTask } from '../types.ts'
 
-const { snapshot, captureMeta } = loadFrozen('vue-blog-01', import.meta.url)
+const frozen = loadFrozenRound('vue-blog-01', 1, import.meta.url)
 
 export const task: EvalTask = {
   id: 'vue-blog-01',
   fixture: 'vue-blog',
   fixtureKind: 'vue',
-  category: 'text',
+  category: 'protocol-smoke',
   difficulty: 'easy',
   title: 'Rename the blog heading',
-  instruction: '把博客主标题 My Blog 改成 Daily Notes',
-  capture: {
-    target: 'h1.title',
-    comment: '把博客主标题 My Blog 改成 Daily Notes',
-  },
-  snapshot,
-  captureMeta,
+  arms: ['full'],
+  rounds: [{
+    prompt: '请根据页面批注修改前端实现。',
+    capture: [{
+      target: 'h1.title',
+      comment: '把博客主标题 My Blog 改成 Daily Notes',
+    }],
+    ...frozen,
+  }],
   grader: {
     pass: [{ kind: 'dom', selector: 'h1.title', text: 'Daily Notes' }],
   },

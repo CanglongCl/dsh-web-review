@@ -31,8 +31,8 @@ export interface RunOneOptions extends RunOptions {
   skipLaunch?: boolean
 }
 
-export function runDirFor(taskId: string): string {
-  return join(ARTIFACTS_ROOT, `${taskId}-${Date.now()}`)
+export function runDirFor(taskId: string, arm: EvalTask['arms'][number], repetition: number): string {
+  return join(ARTIFACTS_ROOT, `${taskId}-${arm}-r${repetition}-${Date.now()}`)
 }
 
 /**
@@ -41,11 +41,11 @@ export function runDirFor(taskId: string): string {
  */
 export async function runTaskOnce(task: EvalTask, options: RunOneOptions): Promise<RunRecord> {
   const startedAt = new Date().toISOString()
-  const runDir = options.runDir ?? runDirFor(task.id)
+  const runDir = options.runDir ?? runDirFor(task.id, options.arm, options.repetition)
   const workspaceDir = join(runDir, 'workspace')
   const dshHome = join(runDir, 'dsh-home')
-  if (!options.skipLaunch && task.snapshot === undefined) {
-    throw new Error(`task ${task.id} has no frozen snapshot; run pnpm eval:capture first`)
+  if (!options.skipLaunch && task.rounds.some(round => round.snapshot === undefined)) {
+    throw new Error(`task ${task.id} has an unfrozen round; run pnpm eval:capture first`)
   }
   mkdirSync(dshHome, { recursive: true })
   if (!existsSync(workspaceDir)) stageWorkspace(task, workspaceDir)
@@ -119,6 +119,8 @@ export async function runTaskOnce(task: EvalTask, options: RunOneOptions): Promi
     category: task.category,
     difficulty: task.difficulty,
     title: task.title,
+    arm: options.arm,
+    repetition: options.repetition,
     status,
     attribution,
     ...(grader === undefined ? {} : { grader }),

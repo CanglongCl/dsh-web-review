@@ -14,7 +14,7 @@ import { resolveHarnessRoot } from '../../scripts/harness-path.ts'
 import { loadTasks } from '../tasks/register.ts'
 import { runTaskOnce } from './run-one.ts'
 import { ARTIFACTS_ROOT, RESULTS_PATH } from './runner.ts'
-import type { EvalTask, RunRecord } from '../types.ts'
+import type { EvalArm, EvalTask, RunRecord } from '../types.ts'
 
 interface Flags {
   taskIds: string[]
@@ -29,6 +29,8 @@ interface Flags {
   force: boolean
   skipLaunch: boolean
   skipGrading: boolean
+  arms: EvalArm[]
+  repeat: number
 }
 
 function parseFlags(argv: string[]): Flags {
@@ -42,6 +44,8 @@ function parseFlags(argv: string[]): Flags {
     force: false,
     skipLaunch: false,
     skipGrading: false,
+    arms: ['full'],
+    repeat: 1,
   }
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]!
@@ -64,8 +68,15 @@ function parseFlags(argv: string[]): Flags {
     else if (arg === '--force') flags.force = true
     else if (arg === '--skip-launch') flags.skipLaunch = true
     else if (arg === '--skip-grading') flags.skipGrading = true
+    else if (arg === '--arm') {
+      const value = next()
+      flags.arms = value === 'all' ? ['full', 'text-only', 'oracle'] : [value as EvalArm]
+    }
+    else if (arg === '--repeat') flags.repeat = Number(next())
     else throw new Error(`unknown flag ${arg}`)
   }
+  if (flags.arms.some(arm => !['full', 'text-only', 'oracle'].includes(arm))) throw new Error(`invalid --arm ${flags.arms.join(',')}`)
+  if (!Number.isInteger(flags.repeat) || flags.repeat < 1) throw new Error('--repeat must be a positive integer')
   return flags
 }
 
@@ -93,10 +104,13 @@ async function main(): Promise<void> {
     for (const line of readFileSync(RESULTS_FILE, 'utf8').split('\n')) {
       if (line.trim() === '') continue
       const record = JSON.parse(line) as RunRecord
-      finished.add(record.taskId)
+      finished.add(`${record.taskId}:${record.arm ?? 'full'}:${record.repetition ?? 1}`)
     }
   }
-  const queue = selected.filter(task => !finished.has(task.id))
+  const queue = selected.flatMap(task => flags.arms
+    .filter(arm => task.arms.includes(arm))
+    .flatMap(arm => Array.from({ length: flags.repeat }, (_, index) => ({ task, arm, repetition: index + 1 }))))
+    .filter(run => !finished.has(`${run.task.id}:${run.arm}:${run.repetition}`))
   console.log(`${selected.length} task(s) selected, ${queue.length} to run, ${flags.concurrency} concurrent`)
   mkdirSync(ARTIFACTS_ROOT, { recursive: true })
   mkdirSync(RESULTS_PATH, { recursive: true })
@@ -107,10 +121,11 @@ async function main(): Promise<void> {
     while (true) {
       const index = cursor
       cursor += 1
-      const task = queue[index]
-      if (task === undefined) return
+      const queued = queue[index]
+      if (queued === undefined) return
+      const { task, arm, repetition } = queued
       const started = Date.now()
-      console.log(`[run] ${task.id} start (${task.fixtureKind}/${task.category}/${task.difficulty})`)
+      console.log(`[run] ${task.id}/${arm}/r${repetition} start (${task.fixtureKind}/${task.category}/${task.difficulty})`)
       try {
         const record = await runTaskOnce(task, {
           harnessRoot,
@@ -120,11 +135,13 @@ async function main(): Promise<void> {
           timeoutMs: flags.timeoutMs,
           skipLaunch: flags.skipLaunch,
           skipGrading: flags.skipGrading,
+          arm,
+          repetition,
         })
         appendFileSync(RESULTS_FILE, `${JSON.stringify(record)}\n`)
         const tokens = record.process?.tokens
         console.log(
-          `[run] ${task.id} ${record.status}`,
+          `[run] ${task.id}/${arm}/r${repetition} ${record.status}`,
           tokens === undefined
             ? ''
             : `(in ${tokens.input} / out ${tokens.output} / reasoning ${tokens.reasoning}, ${record.process?.steps ?? 0} steps, ${Math.round((Date.now() - started) / 1000)}s)`,
@@ -138,6 +155,8 @@ async function main(): Promise<void> {
           category: task.category,
           difficulty: task.difficulty,
           title: task.title,
+          arm,
+          repetition,
           status: 'error',
           attribution: 'runtime-error',
           model: { provider: flags.provider, model: flags.model, ...(flags.reasoningEffort === undefined ? {} : { reasoningEffort: flags.reasoningEffort }) },
