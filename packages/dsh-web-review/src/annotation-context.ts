@@ -144,7 +144,7 @@ function parseComment(value: unknown): AnnotationComment | undefined {
   if (record === undefined) return undefined
   if (!exactKeys(record, [
     'id', 'comment', 'tagName', 'role', 'label', 'cssPath', 'fullPath',
-    'stableClasses', 'anchor', 'changes', 'textChange', 'viewport',
+    'stableClasses', 'textContent', 'inToolChrome', 'anchor', 'changes', 'textChange', 'viewport',
   ])) return undefined
   const id = boundedString(record.id, ANNOTATION_LIMITS.id, false)
   const comment = boundedString(record.comment, ANNOTATION_LIMITS.comment)
@@ -153,6 +153,9 @@ function parseComment(value: unknown): AnnotationComment | undefined {
   const label = boundedString(record.label, ANNOTATION_LIMITS.label)
   const cssPath = boundedString(record.cssPath, ANNOTATION_LIMITS.cssPath, false)
   const fullPath = boundedString(record.fullPath, ANNOTATION_LIMITS.fullPath, false)
+  const textContent = boundedString(record.textContent, ANNOTATION_LIMITS.textContent)
+  if (typeof record.inToolChrome !== 'boolean') return undefined
+  const inToolChrome = record.inToolChrome
   const anchor = parseAnchor(record.anchor)
   const changes = parseChanges(record.changes)
   const textChange = parseTextChange(record.textChange)
@@ -160,8 +163,8 @@ function parseComment(value: unknown): AnnotationComment | undefined {
   if (
     id === undefined || comment === undefined || tagName === undefined ||
     role === undefined || label === undefined || cssPath === undefined ||
-    fullPath === undefined || anchor === undefined || changes === undefined
-    || textChange === undefined || viewport === undefined
+    fullPath === undefined || textContent === undefined || anchor === undefined
+    || changes === undefined || textChange === undefined || viewport === undefined
   ) return undefined
   if (!Array.isArray(record.stableClasses) || record.stableClasses.length > ANNOTATION_LIMITS.stableClasses) {
     return undefined
@@ -176,8 +179,8 @@ function parseComment(value: unknown): AnnotationComment | undefined {
   }
   if (comment.trim() === '' && changes.length === 0 && textChange === null) return undefined
   return {
-    id, comment, tagName, role, label, cssPath, fullPath, stableClasses, anchor,
-    changes, textChange, viewport,
+    id, comment, tagName, role, label, cssPath, fullPath, stableClasses,
+    textContent, inToolChrome, anchor, changes, textChange, viewport,
   }
 }
 
@@ -267,6 +270,13 @@ export function formatAnnotationContext(snapshot: AnnotationSnapshot): string {
       `Target selector: ${evidence(comment.cssPath)}`,
       `Target path: ${evidence(comment.fullPath)}`,
     )
+    if (comment.inToolChrome) {
+      lines.push("Target owner: annotation tool chrome (this plugin's own UI — edit this plugin's source, not the previewed page)")
+    }
+    const targetText = evidence(comment.textContent)
+    if (evidence(comment.label) === '' && targetText !== '') {
+      lines.push(`Target text: ${JSON.stringify(targetText)}`)
+    }
     if (comment.anchor !== null) {
       const source = comment.anchor.line === undefined
         ? evidence(comment.anchor.file)

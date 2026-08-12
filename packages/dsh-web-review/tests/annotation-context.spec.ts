@@ -35,6 +35,8 @@ function snapshot(overrides: Partial<AnnotationSnapshot> = {}): AnnotationSnapsh
       cssPath: 'html > body > div > h1',
       fullPath: 'html > body > div > h1',
       stableClasses: ['hero-title'],
+      textContent: 'Example Domain',
+      inToolChrome: false,
       anchor: null,
       changes: [],
       textChange: null,
@@ -159,6 +161,12 @@ describe('parseAnnotationBody', () => {
     expect(parseAnnotationBody(JSON.stringify(snapshot({
       comments: [{ ...base, stableClasses: Array.from({ length: ANNOTATION_LIMITS.stableClasses + 1 }, () => 'x') }],
     })))).toBeUndefined()
+    expect(parseAnnotationBody(JSON.stringify(snapshot({
+      comments: [{ ...base, textContent: 'x'.repeat(ANNOTATION_LIMITS.textContent + 1) }],
+    })))).toBeUndefined()
+    expect(parseAnnotationBody(JSON.stringify(snapshot({
+      comments: [{ ...base, inToolChrome: 'yes' as never }],
+    })))).toBeUndefined()
   })
 
   it('strictly validates requested style/text changes and viewport evidence', () => {
@@ -230,6 +238,26 @@ describe('formatAnnotationContext', () => {
     const active = snapshot()
     active.comments[0]!.comment = '   '
     expect(formatAnnotationContext(active)).not.toContain('Comment (user-authored):')
+  })
+
+  it('marks targets owned by the annotation tool chrome', () => {
+    const active = snapshot()
+    active.comments[0]!.inToolChrome = true
+    const output = formatAnnotationContext(active)
+    expect(output).toContain("Target owner: annotation tool chrome (this plugin's own UI — edit this plugin's source, not the previewed page)")
+    const regular = formatAnnotationContext(snapshot())
+    expect(regular).not.toContain('Target owner:')
+  })
+
+  it('emits Target text only when the element has no accessible label', () => {
+    const active = snapshot()
+    active.comments[0]!.label = ''
+    active.comments[0]!.role = ''
+    active.comments[0]!.textContent = 'First line\nsecond line'
+    const output = formatAnnotationContext(active)
+    expect(output).toContain('Target: h1')
+    expect(output).toContain('Target text: "First line second line"')
+    expect(formatAnnotationContext(snapshot())).not.toContain('Target text:')
   })
 
   it('formats Figma-style requested changes as user-authored annotation context', () => {

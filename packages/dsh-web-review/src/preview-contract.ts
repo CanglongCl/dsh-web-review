@@ -34,6 +34,8 @@ export interface PreviewElementSnapshot {
   role: string
   stableClasses: string[]
   anchor: import('./annotation-contract.ts').AnnotationAnchor | null
+  /** True when the element sits inside this plugin's own `[data-webview-ui]` chrome. */
+  inToolChrome: boolean
   outerHTML: string
   textContent: string
   rect: { x: number; y: number; width: number; height: number }
@@ -314,8 +316,9 @@ function snapshotOf(value: unknown): PreviewElementSnapshot | undefined {
   const record = recordOf(value)
   if (record === undefined || !exactKeys(record, [
     'tagName', 'id', 'className', 'cssPath', 'fullPath', 'label', 'role',
-    'stableClasses', 'anchor', 'outerHTML', 'textContent', 'rect', 'computed',
+    'stableClasses', 'anchor', 'inToolChrome', 'outerHTML', 'textContent', 'rect', 'computed',
   ])) return undefined
+  if (typeof record.inToolChrome !== 'boolean') return undefined
   const stringCaps = {
     tagName: PREVIEW_ELEMENT_LIMITS.tagName,
     id: PREVIEW_ELEMENT_LIMITS.id,

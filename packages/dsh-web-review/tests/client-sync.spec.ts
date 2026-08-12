@@ -10,7 +10,8 @@ function draft(comment: string): AnnotationDraft {
     selectedSkills: [],
     comments: [{
       id: 'p1', comment, tagName: 'h1', role: 'heading', label: 'Example Domain',
-      cssPath: 'h1', fullPath: 'html > body > h1', stableClasses: [], anchor: null,
+      cssPath: 'h1', fullPath: 'html > body > h1', stableClasses: [], textContent: 'Example Domain',
+      inToolChrome: false, anchor: null,
       changes: [], textChange: null, viewport: { width: 1280, height: 720 },
     }],
   }

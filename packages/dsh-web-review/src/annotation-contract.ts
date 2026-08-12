@@ -31,6 +31,7 @@ export const ANNOTATION_LIMITS = {
   fullPath: 4_000,
   stableClass: 100,
   stableClasses: 20,
+  textContent: 300,
   anchorFile: 1_000,
   anchorComponent: 500,
   styleValue: 500,
@@ -115,6 +116,10 @@ export interface AnnotationComment {
   cssPath: string
   fullPath: string
   stableClasses: string[]
+  /** Bounded visible text (≤ textContent limit); identity when no label exists. */
+  textContent: string
+  /** True when the element sits inside this plugin's own `[data-webview-ui]` chrome. */
+  inToolChrome: boolean
   anchor: AnnotationAnchor | null
   changes: AnnotationStyleChange[]
   textChange: AnnotationTextChange | null

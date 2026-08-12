@@ -82,6 +82,7 @@ function pick(id = 'p1', comment = ''): PickItem {
       tagName: 'h1', id: '', className: 'hero-title', cssPath: 'h1.hero-title',
       fullPath: 'html > body > main > h1.hero-title',
       label: 'Example Domain', role: 'heading', stableClasses: ['hero-title'], anchor: null,
+      inToolChrome: false,
       outerHTML: '<h1 class="hero-title">Example Domain</h1>', textContent: 'Example Domain',
       rect: { x: 0, y: 0, width: 100, height: 50 },
       computed: {

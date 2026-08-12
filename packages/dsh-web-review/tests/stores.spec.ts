@@ -11,7 +11,7 @@ function pick(id: string): PickItem {
     id,
     snapshot: {
       tagName: 'div', id: '', className: '', cssPath: 'div', fullPath: 'html > body > div:nth-of-type(1)',
-      label: '', role: '', stableClasses: [], anchor: null,
+      label: '', role: '', stableClasses: [], anchor: null, inToolChrome: false,
       outerHTML: '<div></div>', textContent: '',
       rect: { x: 0, y: 0, width: 0, height: 0 },
       computed: {

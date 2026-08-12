@@ -16,10 +16,15 @@ export interface ElementSnapshot {
   label: string
   /** Explicit or implicit ARIA role (button, link, heading, …). */
   role: string
-  /** Semantic (non-utility, non-hashed) class names, in document order. */
+  /** Semantic class names in document order. Utility/variant tokens and
+   * fully opaque hashes are filtered; `<hash>_<name>` CSS-module classes are
+   * kept because their semantic suffix is a searchable source anchor. */
   stableClasses: string[]
   /** Framework source anchor (file/line/component) or null. */
   anchor: import('./source-anchor.ts').SourceAnchor | null
+  /** True when the element lives inside this plugin's own chrome (a nested
+   * `[data-webview-ui]` root, e.g. dogfooding a DSH Web GUI in Preview). */
+  inToolChrome: boolean
   /** Truncated to OUTER_HTML_CAP chars. */
   outerHTML: string
   /** Truncated to TEXT_CAP chars. */

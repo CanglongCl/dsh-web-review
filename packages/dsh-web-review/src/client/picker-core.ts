@@ -66,8 +66,11 @@ export function roleOf(el: Element): string {
 /**
  * Semantic class names: filter out utility classes (layout/spacing/type
  * tokens that are assembled at build time and don't exist verbatim in
- * source), state variants (`hover:`/`focus:`), and hashed/opaque tokens
- * (css-*, CSS-module hashes, UUIDs) that are meaningless to search.
+ * source), state variants (`hover:`/`focus:`), and fully opaque tokens
+ * (css-*, whole-class hex hashes, UUIDs) that are meaningless to search.
+ * `<hash>_<name>` CSS-module classes (e.g. `FmkDaG_composeRow`) are kept
+ * deliberately: the hash prefix alone would be dropped, but the semantic
+ * suffix is a verbatim source class name and a searchable anchor.
  */
 export function stableClassesOf(el: Element): string[] {
   return Array.from(el.classList)
@@ -170,6 +173,9 @@ export function snapshotOf(el: Element): {
   role: string
   stableClasses: string[]
   anchor: ReturnType<typeof sourceAnchorOf>
+  /** True when the element lives inside this plugin's own chrome (a nested
+   * `[data-webview-ui]` root, e.g. dogfooding a DSH Web GUI in Preview). */
+  inToolChrome: boolean
   outerHTML: string
   textContent: string
   rect: { x: number; y: number; width: number; height: number }
@@ -200,6 +206,7 @@ export function snapshotOf(el: Element): {
     role: roleOf(el),
     stableClasses: stableClassesOf(el),
     anchor: sourceAnchorOf(el),
+    inToolChrome: el.closest('[data-webview-ui]') !== null,
     outerHTML: truncate(el.outerHTML, OUTER_HTML_CAP),
     textContent: truncate(el.textContent ?? '', TEXT_CAP),
     rect: {

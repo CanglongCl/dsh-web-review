@@ -43,6 +43,8 @@ export function annotationDraft(
       stableClasses: snapshot.stableClasses
         .slice(0, ANNOTATION_LIMITS.stableClasses)
         .map(value => bounded(value, ANNOTATION_LIMITS.stableClass)),
+      textContent: bounded(snapshot.textContent, ANNOTATION_LIMITS.textContent),
+      inToolChrome: snapshot.inToolChrome,
       anchor: snapshot.anchor === null ? null : {
         ...snapshot.anchor,
         file: bounded(snapshot.anchor.file, ANNOTATION_LIMITS.anchorFile),

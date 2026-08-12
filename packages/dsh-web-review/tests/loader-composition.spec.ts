@@ -227,6 +227,8 @@ function annotationSnapshot(sessionId = 'session-1', comments = 1): AnnotationSn
       cssPath: 'html > body > div > h1',
       fullPath: 'html > body > div > h1',
       stableClasses: [],
+      textContent: 'Example Domain',
+      inToolChrome: false,
       anchor: null,
       changes: [],
       textChange: null,

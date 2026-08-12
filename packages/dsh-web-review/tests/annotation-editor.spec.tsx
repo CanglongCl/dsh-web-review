@@ -115,6 +115,7 @@ function AnnotationEditor({ patch, onCancel, onSelectElement, ...props }: TestEd
       role: '',
       stableClasses: [],
       anchor: null,
+      inToolChrome: false,
       outerHTML: patch.element.outerHTML.slice(0, 1_500),
       textContent: (patch.element.textContent ?? '').slice(0, 300),
       rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },

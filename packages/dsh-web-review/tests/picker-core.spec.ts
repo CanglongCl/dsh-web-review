@@ -96,8 +96,13 @@ describe('identity helpers', () => {
   })
 
   it('stableClassesOf drops utility, hashed, variant, and chrome classes', () => {
-    document.body.innerHTML = '<div class="btn-primary m-2 hover:bg-red css-1a2b3c flex text-sm card dsh-wv-mark">x</div>'
+    document.body.innerHTML = '<div class="btn-primary m-2 hover:bg-red css-1a2b3c flex text-sm card dsh-wv-mark a1b2c3d4">x</div>'
     expect(stableClassesOf(document.querySelector('div') as Element)).toEqual(['btn-primary', 'card'])
+  })
+
+  it('stableClassesOf keeps <hash>_<name> CSS-module classes for their searchable suffix', () => {
+    document.body.innerHTML = '<div class="FmkDaG_composeRow x9Kd2L_cardHead">x</div>'
+    expect(stableClassesOf(document.querySelector('div') as Element)).toEqual(['FmkDaG_composeRow', 'x9Kd2L_cardHead'])
   })
 })
 
@@ -126,6 +131,12 @@ describe('snapshotOf', () => {
     expect(snap.computed.display).toBe('block')
     expect(snap.computed.margin).toBe('4px')
     expect(snap.computed.padding).toBe('8px')
+  })
+
+  it('flags elements inside this plugin\'s own chrome via data-webview-ui ancestors', () => {
+    document.body.innerHTML = '<main><div data-webview-ui data-webview-panel=""><div class="FmkDaG_composeRow">x</div></div></main>'
+    expect(snapshotOf(document.querySelector('.FmkDaG_composeRow') as Element).inToolChrome).toBe(true)
+    expect(snapshotOf(document.querySelector('main') as Element).inToolChrome).toBe(false)
   })
 
   it('bounds every page-controlled identity field before it crosses the bridge', () => {

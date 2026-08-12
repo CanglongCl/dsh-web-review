@@ -9,7 +9,7 @@ function pick(overrides: Partial<PickItem> = {}): PickItem {
     snapshot: {
       tagName: 'h1', id: '', className: 'hero', cssPath: 'h1.hero',
       fullPath: 'html > body > h1.hero', label: 'Hero', role: 'heading',
-      stableClasses: ['hero'], anchor: null, outerHTML: '<h1>Hero</h1>', textContent: 'Hero',
+      stableClasses: ['hero'], anchor: null, inToolChrome: false, outerHTML: '<h1>Hero</h1>', textContent: 'Hero',
       rect: { x: 0, y: 0, width: 100, height: 20 },
       computed: {
         display: 'block', position: 'static', fontSize: '16px', color: '#000',
@@ -45,5 +45,20 @@ describe('annotationDraft', () => {
     expect(() => annotationDraft('', '', [pick({
       textChange: { before: 'Hero', after: 'x'.repeat(ANNOTATION_LIMITS.textValue + 1) },
     })])).toThrow(/textChange\.after exceeds/u)
+  })
+
+  it('forwards bounded textContent and the inToolChrome ownership flag', () => {
+    const draft = annotationDraft('http://localhost:5173/', 'Example', [pick({
+      snapshot: {
+        ...pick().snapshot,
+        textContent: 't'.repeat(ANNOTATION_LIMITS.textContent + 50),
+        inToolChrome: true,
+      },
+    })])
+    const comment = draft.comments[0]
+    if (comment === undefined) throw new Error('missing comment')
+    expect(comment.textContent).toHaveLength(ANNOTATION_LIMITS.textContent)
+    expect(comment.textContent.endsWith('…')).toBe(true)
+    expect(comment.inToolChrome).toBe(true)
   })
 })
