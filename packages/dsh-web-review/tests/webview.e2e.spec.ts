@@ -328,7 +328,9 @@ describe('dsh-web-review e2e', () => {
     await editor.press('Tab')
     await expect.poll(async () => frame.locator('.card').nth(1).getAttribute('data-dsh-wv-selected')).not.toBeNull()
     expect(await editor.evaluate(element => getComputedStyle(element).outlineStyle)).toBe('none')
-    expect(await page.locator('[data-webview-navigation-feedback]').getAttribute('data-action')).toBe('next-sibling')
+    await expect.poll(
+      async () => page.locator('[data-webview-navigation-feedback]').getAttribute('data-action'),
+    ).toBe('next-sibling')
     editor = page.locator('[data-webview-annotation-editor]')
     await editor.press('Shift+Tab')
     await expect.poll(async () => frame.locator('.card').first().getAttribute('data-dsh-wv-selected')).not.toBeNull()

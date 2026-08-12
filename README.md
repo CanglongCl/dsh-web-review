@@ -81,7 +81,7 @@
 
 ```sh
 export NPM_TOKEN='你的只读令牌'
-dsh plugin --profile web add @deepseek-ai/dsh-web-review@0.0.4-rc.1
+dsh plugin --profile web add @deepseek-ai/dsh-web-review@0.0.4-rc.2
 unset NPM_TOKEN
 ```
 
@@ -140,8 +140,8 @@ pnpm check --e2e
 候选版本自动发布到私有 `next` dist-tag，稳定版本发布到私有 `latest`：
 
 ```sh
-git tag -a v0.0.4-rc.1 -m "dsh-web-review v0.0.4-rc.1"
-git push origin v0.0.4-rc.1
+git tag -a v0.0.4-rc.2 -m "dsh-web-review v0.0.4-rc.2"
+git push origin v0.0.4-rc.2
 ```
 
 ## 使用方法
