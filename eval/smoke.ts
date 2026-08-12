@@ -10,8 +10,10 @@ import { verifyTaskGrader } from './runner/run-one.ts'
 import { loadTasks } from './tasks/register.ts'
 
 async function main(): Promise<void> {
-  const withCapture = process.argv.includes('--capture')
-  const tasks = await loadTasks()
+  const argv = process.argv.slice(2)
+  const withCapture = argv.includes('--capture')
+  const taskIds = argv.filter(arg => arg !== '--' && !arg.startsWith('--'))
+  const tasks = (await loadTasks()).filter(task => taskIds.length === 0 || taskIds.includes(task.id))
   console.log(`smoke: ${tasks.length} task(s)${withCapture ? ' with capture verification' : ' (grader checks only)'}`)
   let failures = 0
   for (const task of tasks) {
@@ -22,7 +24,7 @@ async function main(): Promise<void> {
   if (withCapture) {
     const result = spawnSync(
       process.execPath,
-      ['--import', 'tsx', 'eval/capture/capture.ts', '--verify'],
+      ['--import', 'tsx', 'eval/capture/capture.ts', '--verify', ...taskIds],
       { cwd: process.cwd(), stdio: 'inherit' },
     )
     if (result.status !== 0) failures += 1

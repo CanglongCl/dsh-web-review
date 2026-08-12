@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-843e7bd4-704c-4738-a649-485828552341",
+  "sessionId": "session-37d3974e-e7eb-4004-98a6-4c659c0e4f8b",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:64325/",
+    "url": "http://127.0.0.1:58570/",
     "title": "魔法 UI 演示页"
   },
   "comments": [
     {
-      "id": "1533a54e-e13c-488c-ab9c-dbdc90c84bee",
+      "id": "b1bbd6c2-3d3e-4dab-8680-fd3ff737b47a",
       "comment": "把首页主按钮的背景颜色改深一点，改成 #224466",
       "tagName": "button",
       "role": "button",
@@ -30,7 +30,7 @@
       "textChange": null,
       "viewport": {
         "width": 1392,
-        "height": 760
+        "height": 736
       }
     }
   ]

@@ -3,8 +3,8 @@
     "width": 1680,
     "height": 1000
   },
-  "pluginCommit": "899efa36f2e7599064ee82e26d2eba9f065ef984",
-  "harnessCommit": "c0c02980f5fae2ade5a551bc4875765ed6cecda2",
-  "capturedAt": "2026-08-12T18:26:00.172Z",
-  "fixtureRevision": "8fc9e4f8ae38c3dad91ba5ea63d91c07238b8060"
+  "pluginCommit": "32f6691d36aad0e198e39908682ba5323a492cc3",
+  "harnessCommit": "7b9644f2b664e46c9518506035aa6c8d5af4d8e8",
+  "capturedAt": "2026-08-12T18:58:28.517Z",
+  "fixtureRevision": "e709b7b3a68eb114e5fc7cf34302f79217c69abd"
 }

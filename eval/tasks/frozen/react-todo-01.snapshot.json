@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-68cc374e-f1e5-49c0-86b8-359c7a967f6c",
+  "sessionId": "session-ec0bd48a-7dd0-4d11-a649-19ca0f7768e4",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:63740/",
+    "url": "http://127.0.0.1:58638/",
     "title": "待办清单"
   },
   "comments": [
     {
-      "id": "babc69f5-9237-433f-ae15-f22d44c08cac",
+      "id": "3c282a19-9e79-4261-af33-0c8bf1c29bf8",
       "comment": "让侧边栏列表项在鼠标悬停时背景高亮为 #eef2ff",
       "tagName": "li",
       "role": "",
@@ -29,7 +29,7 @@
       "textChange": null,
       "viewport": {
         "width": 1392,
-        "height": 760
+        "height": 736
       }
     }
   ]

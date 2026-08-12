@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-4c8ff59f-ab74-486b-9aaf-627444c266ca",
+  "sessionId": "session-a645589f-25ca-49f7-9b0e-b54ec4bd597c",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:63802/",
+    "url": "http://127.0.0.1:58689/",
     "title": "博客"
   },
   "comments": [
     {
-      "id": "ec72b83d-e2ea-42c4-ae70-667584871061",
+      "id": "973ac03a-2a91-4e53-b40b-662af4242b29",
       "comment": "把博客主标题 My Blog 改成 Daily Notes",
       "tagName": "h1",
       "role": "heading",
@@ -28,7 +28,7 @@
       "textChange": null,
       "viewport": {
         "width": 1392,
-        "height": 760
+        "height": 736
       }
     }
   ]

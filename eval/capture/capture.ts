@@ -120,6 +120,8 @@ async function bootGui(): Promise<{ webUrl: string; stop: () => Promise<void> }>
     '- insert:',
     "    - id: directory-picker-browse",
     "      name: '@deepseek-ai/dsh-host-directory-picker-browse'",
+    "    - id: ui-directory-picker-browse",
+    "      name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'",
     '- id: telemetry-otel',
     '  disabled: true',
     // The probe message must fail instantly: dead loopback endpoint and no
@@ -169,8 +171,14 @@ async function bootGui(): Promise<{ webUrl: string; stop: () => Promise<void> }>
 
 async function connectWorkspace(page: Page, root: string, name: string): Promise<void> {
   mkdirSync(join(root, name), { recursive: true })
-  await page.getByRole('button', { name: 'Add workspace' }).click()
+  await page.getByRole('button', { name: 'Choose workspace' }).click()
   const dialog = page.getByRole('dialog', { name: 'Select Workspace Directory' })
+  const addWorkspace = page.getByRole('menuitem', { name: /Add workspace/ })
+  await Promise.race([
+    dialog.waitFor({ timeout: 15_000 }),
+    addWorkspace.waitFor({ timeout: 15_000 }),
+  ])
+  if (!await dialog.isVisible()) await addWorkspace.click()
   await dialog.waitFor({ timeout: 15_000 })
   await dialog.getByRole('button', { name: 'Edit path' }).click()
   const pathInput = dialog.getByRole('textbox', { name: 'Edit path' })
