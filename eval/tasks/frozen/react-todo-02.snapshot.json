@@ -1,0 +1,36 @@
+{
+  "sessionId": "session-149f906c-474c-4987-8718-2286024823b9",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:59196/",
+    "title": "待办清单"
+  },
+  "comments": [
+    {
+      "id": "d1bd528b-c93c-4ce4-a411-9950a60694ad",
+      "comment": "加大待办事项之间的间距",
+      "tagName": "li",
+      "role": "",
+      "label": "写评测用例",
+      "cssPath": "li:nth-of-type(1).todo-item",
+      "fullPath": "html > body > div#root > div.layout > main.content > ul.todos > li.todo-item",
+      "stableClasses": [
+        "todo-item"
+      ],
+      "textContent": "写评测用例",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App",
+        "file": "src/App.tsx",
+        "line": 40
+      },
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

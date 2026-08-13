@@ -1,0 +1,36 @@
+{
+  "sessionId": "session-8a0cd08c-cb09-4aa8-822d-5792e7fb486d",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:59341/",
+    "title": "待办清单"
+  },
+  "comments": [
+    {
+      "id": "88606d4c-d00d-4fe9-ac48-763e2a7634d0",
+      "comment": "给添加按钮加上柔和阴影",
+      "tagName": "button",
+      "role": "button",
+      "label": "添加任务",
+      "cssPath": ".add-button",
+      "fullPath": "html > body > div#root > div.layout > main.content > button.add-button",
+      "stableClasses": [
+        "add-button"
+      ],
+      "textContent": "添加任务",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App",
+        "file": "src/App.tsx",
+        "line": 42
+      },
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

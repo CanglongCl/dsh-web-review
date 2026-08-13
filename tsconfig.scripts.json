@@ -11,6 +11,12 @@
   },
   "include": [
     "scripts",
-    "demo"
+    "demo",
+    "eval"
+  ],
+  "exclude": [
+    "eval/fixtures",
+    "eval/runner-plugin",
+    "eval/results"
   ]
 }

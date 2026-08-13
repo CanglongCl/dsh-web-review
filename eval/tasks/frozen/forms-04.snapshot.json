@@ -1,0 +1,29 @@
+{
+  "sessionId": "session-a1534510-ab6d-4fdb-8238-903d3464b3ea",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:64536/",
+    "title": "用户信息表单"
+  },
+  "comments": [
+    {
+      "id": "f6f257c8-b9e0-4717-a251-a68e05c19d8c",
+      "comment": "加大表单项之间的垂直间距",
+      "tagName": "input",
+      "role": "textbox",
+      "label": "请输入姓名",
+      "cssPath": "#name",
+      "fullPath": "html > body > form.form > div.form-field > input#name",
+      "stableClasses": [],
+      "textContent": "",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

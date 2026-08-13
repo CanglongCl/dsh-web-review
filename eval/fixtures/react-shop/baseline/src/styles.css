@@ -1,0 +1,22 @@
+body { margin: 0; font-family: system-ui, sans-serif; background: #f6f7f9; color: #24292f; }
+.page { min-height: 100vh; }
+.header { padding: 20px 32px; background: #fff; border-bottom: 1px solid #e2e5ea; }
+.shop-title { margin: 0; font-size: 22px; }
+.shop-subtitle { margin: 4px 0 0; font-size: 13px; color: #57606a; }
+.products {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  max-width: 960px;
+  margin: 24px auto;
+  padding: 0 24px;
+}
+.product-card {
+  background: #fff;
+  border: 1px solid #e2e5ea;
+  border-radius: 12px;
+  padding: 20px;
+}
+.product-title { margin: 0 0 8px; font-size: 16px; font-weight: 400; color: #24292f; }
+.price { margin: 0 0 16px; font-size: 18px; font-weight: 600; color: #495057; }
+.buy { padding: 8px 18px; border: 0; border-radius: 6px; background: #4c6ef5; color: #fff; font-size: 14px; cursor: pointer; }

@@ -1,0 +1,37 @@
+{
+  "sessionId": "session-b0f33de4-4d71-4402-a7e3-8cf9db2978e0",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:52360/",
+    "title": "魔法 UI 演示页"
+  },
+  "comments": [
+    {
+      "id": "7f7ec853-4c9b-475b-9c9b-ea0557d36d0c",
+      "comment": "把卡片之间的间距从 16px 加大到 24px",
+      "tagName": "main",
+      "role": "",
+      "label": "主按钮 用于提交表单的主要操作。 提交 次要按钮 用于可逆的辅助操作。 取消 间距示例 卡片间…",
+      "cssPath": ".cards",
+      "fullPath": "html > body > main.cards",
+      "stableClasses": [
+        "cards"
+      ],
+      "textContent": "\n    \n      主按钮\n      用于提交表单的主要操作。\n      提交\n    \n    \n      次要按钮\n      用于可逆的辅助操作。\n      取消\n    \n    \n      间距示例\n      卡片间距为 16px，可尝试调整到 24px。\n      了解更多\n    \n  ",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [
+        {
+          "property": "gap",
+          "before": "16px",
+          "after": "24px"
+        }
+      ],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

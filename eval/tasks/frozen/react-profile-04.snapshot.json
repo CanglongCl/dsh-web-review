@@ -1,0 +1,36 @@
+{
+  "sessionId": "session-3362ab3e-dbc6-4324-8529-83a9cb0de10c",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:62994/",
+    "title": "个人主页"
+  },
+  "comments": [
+    {
+      "id": "33ab4ed5-b836-475f-804f-9b2ab83c5751",
+      "comment": "给头像补充可访问名称“用户头像”",
+      "tagName": "img",
+      "role": "img",
+      "label": "",
+      "cssPath": ".avatar",
+      "fullPath": "html > body > div#root > div.profile > div.info > img.avatar",
+      "stableClasses": [
+        "avatar"
+      ],
+      "textContent": "",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App",
+        "file": "src/App.tsx",
+        "line": 26
+      },
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

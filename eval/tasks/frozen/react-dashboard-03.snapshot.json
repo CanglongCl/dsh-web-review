@@ -1,0 +1,42 @@
+{
+  "sessionId": "session-56598de5-5db8-4b7a-b03f-49a1227546ca",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:64592/",
+    "title": "数据看板"
+  },
+  "comments": [
+    {
+      "id": "797bd9c6-06e9-4f6a-91bc-c967f5ac5dc0",
+      "comment": "把用户头像的尺寸改成 48px",
+      "tagName": "div",
+      "role": "",
+      "label": "用户头像",
+      "cssPath": ".avatar",
+      "fullPath": "html > body > div#root > div.dashboard > header.topbar > div.avatar",
+      "stableClasses": [
+        "avatar"
+      ],
+      "textContent": "李",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App",
+        "file": "src/App.tsx",
+        "line": 40
+      },
+      "changes": [
+        {
+          "property": "width",
+          "before": "32px",
+          "after": "48px"
+        }
+      ],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

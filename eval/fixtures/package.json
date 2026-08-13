@@ -1,0 +1,17 @@
+{
+  "name": "eval-fixtures",
+  "private": true,
+  "type": "module",
+  "description": "Local fixture apps for the dsh-web-review eval suite (question bank home)",
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.5.2",
+    "@vitejs/plugin-vue": "^5.2.4",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "vue": "^3.5.13"
+  }
+}

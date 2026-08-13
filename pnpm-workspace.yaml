@@ -1,5 +1,6 @@
 packages:
   - "packages/*"
+  - "eval/runner-plugin"
 
 allowBuilds:
   esbuild: true

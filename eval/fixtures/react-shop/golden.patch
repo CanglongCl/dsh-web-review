@@ -1,0 +1,25 @@
+diff --git ga/src/styles.css gb/src/styles.css
+index 854257e..3c2a37b 100644
+--- ga/src/styles.css
++++ gb/src/styles.css
+@@ -5,8 +5,8 @@ body { margin: 0; font-family: system-ui, sans-serif; background: #f6f7f9; color
+ .shop-subtitle { margin: 4px 0 0; font-size: 13px; color: #57606a; }
+ .products {
+   display: grid;
+-  grid-template-columns: repeat(2, 1fr);
+-  gap: 16px;
++  grid-template-columns: repeat(3, 1fr);
++  gap: 24px;
+   max-width: 960px;
+   margin: 24px auto;
+   padding: 0 24px;
+@@ -17,6 +17,6 @@ body { margin: 0; font-family: system-ui, sans-serif; background: #f6f7f9; color
+   border-radius: 12px;
+   padding: 20px;
+ }
+-.product-title { margin: 0 0 8px; font-size: 16px; font-weight: 400; color: #24292f; }
+-.price { margin: 0 0 16px; font-size: 18px; font-weight: 600; color: #495057; }
+-.buy { padding: 8px 18px; border: 0; border-radius: 6px; background: #4c6ef5; color: #fff; font-size: 14px; cursor: pointer; }
++.product-title { margin: 0 0 8px; font-size: 16px; font-weight: 700; color: #24292f; }
++.price { margin: 0 0 16px; font-size: 18px; font-weight: 600; color: #e8590c; }
++.buy { padding: 8px 18px; border: 0; border-radius: 999px; background: #4c6ef5; color: #fff; font-size: 14px; cursor: pointer; }

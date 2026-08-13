@@ -1,0 +1,29 @@
+{
+  "sessionId": "session-206b6d2f-ddf4-4403-8f6d-5492fb3f9bb2",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:51977/",
+    "title": "魔法 UI 演示页"
+  },
+  "comments": [
+    {
+      "id": "75df6a26-0124-4c64-a778-739ca1937c52",
+      "comment": "把卡片标题的字重加粗到 600",
+      "tagName": "h3",
+      "role": "heading",
+      "label": "主按钮",
+      "cssPath": "div:nth-of-type(1).card h3",
+      "fullPath": "html > body > main.cards > div.card > h3",
+      "stableClasses": [],
+      "textContent": "主按钮",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

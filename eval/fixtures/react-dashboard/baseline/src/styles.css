@@ -1,0 +1,12 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, sans-serif; background: #f6f7f9; color: #24292f; }
+.dashboard { max-width: 960px; margin: 0 auto; padding: 24px; }
+.topbar { display: flex; align-items: center; gap: 12px; padding: 16px; background: #fff; border-radius: 12px; margin-bottom: 24px; }
+.avatar { width: 32px; height: 32px; border-radius: 50%; background: #4c6ef5; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+.user-info { display: flex; flex-direction: column; }
+.username { font-size: 16px; font-weight: 600; }
+.role { font-size: 12px; color: #8a8f98; }
+.stats { display: flex; justify-content: center; gap: 16px; }
+.stat-card { width: 200px; height: 120px; display: flex; flex-direction: column; justify-content: space-between; background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }
+.stat-value { font-size: 24px; font-weight: 700; color: #1f2937; }
+.stat-label { font-size: 13px; color: #57606a; }

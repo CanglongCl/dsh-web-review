@@ -1,0 +1,36 @@
+{
+  "sessionId": "session-deca98c0-c7d4-48ef-871a-023cf799efc1",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:62583/",
+    "title": "魔法商店"
+  },
+  "comments": [
+    {
+      "id": "34650d09-48e4-4afe-8f61-3567a0fcee38",
+      "comment": "把商品标题的字重加粗到 700",
+      "tagName": "h2",
+      "role": "heading",
+      "label": "星空投影灯",
+      "cssPath": "article:nth-of-type(1) .product-title",
+      "fullPath": "html > body > div#root > div.page > main.products > article.product-card > h2.product-title",
+      "stableClasses": [
+        "product-title"
+      ],
+      "textContent": "星空投影灯",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App",
+        "file": "src/App.tsx",
+        "line": 45
+      },
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

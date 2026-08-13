@@ -1,0 +1,31 @@
+{
+  "sessionId": "session-9378014f-bbf4-4614-b681-ed9e0f26610e",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:51891/",
+    "title": "魔法 UI 演示页"
+  },
+  "comments": [
+    {
+      "id": "dbd48e8b-53dd-4002-bcd9-0f4970eb372b",
+      "comment": "把主按钮的内边距加大到上下 10px、左右 24px",
+      "tagName": "button",
+      "role": "button",
+      "label": "提交",
+      "cssPath": ".btn-primary",
+      "fullPath": "html > body > main.cards > div.card > button.btn-primary",
+      "stableClasses": [
+        "btn-primary"
+      ],
+      "textContent": "提交",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

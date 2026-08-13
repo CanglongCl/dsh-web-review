@@ -1,0 +1,35 @@
+{
+  "sessionId": "session-77bbc6de-1d9b-4174-b77d-4e27f5dbcf5a",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:51787/",
+    "title": "魔法 UI 演示页"
+  },
+  "comments": [
+    {
+      "id": "f47bce15-7fd4-40de-a29b-0ba91e6d29b3",
+      "comment": "把首页主标题的字号从 28px 加大到 32px",
+      "tagName": "h1",
+      "role": "heading",
+      "label": "魔法 UI 演示页",
+      "cssPath": "h1",
+      "fullPath": "html > body > section.hero > h1",
+      "stableClasses": [],
+      "textContent": "魔法 UI 演示页",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [
+        {
+          "property": "font-size",
+          "before": "28px",
+          "after": "32px"
+        }
+      ],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

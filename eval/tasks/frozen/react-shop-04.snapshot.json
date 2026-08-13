@@ -1,0 +1,36 @@
+{
+  "sessionId": "session-34ad9c8c-4aa0-46ea-9647-b361bfda1693",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:63070/",
+    "title": "魔法商店"
+  },
+  "comments": [
+    {
+      "id": "8a8ebe3a-fa3f-4944-845c-22c2be98a920",
+      "comment": "把商品网格改成每行三列",
+      "tagName": "main",
+      "role": "",
+      "label": "星空投影灯¥129加入购物车磁悬浮音箱¥299加入购物车复古机械键盘¥459加入购物车桌面苔藓…",
+      "cssPath": ".products",
+      "fullPath": "html > body > div#root > div.page > main.products",
+      "stableClasses": [
+        "products"
+      ],
+      "textContent": "星空投影灯¥129加入购物车磁悬浮音箱¥299加入购物车复古机械键盘¥459加入购物车桌面苔藓盆栽¥89加入购物车便携咖啡手冲壶¥158加入购物车云朵氛围夜灯¥69加入购物车",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App",
+        "file": "src/App.tsx",
+        "line": 42
+      },
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+diff --git ga/src/App.tsx gb/src/App.tsx
+index 66e118d..7e72848 100644
+--- ga/src/App.tsx
++++ gb/src/App.tsx
+@@ -4,9 +4,9 @@ export function App() {
+   return (
+     <div className="profile">
+       <div className="info">
+-        <img className="avatar" src={AVATAR} />
++        <img className="avatar" src={AVATAR} aria-label="用户头像" />
+         <h1 className="name">李雷</h1>
+-        <p className="bio">一名专注于产品体验的前端工程师</p>
++        <p className="bio">热爱前端工程与界面设计</p>
+       </div>
+     </div>
+   )
+diff --git ga/src/styles.css gb/src/styles.css
+index f3e8459..f7025db 100644
+--- ga/src/styles.css
++++ gb/src/styles.css
+@@ -1,6 +1,6 @@
+ body { margin: 0; font-family: system-ui, sans-serif; background: #f6f7f9; color: #24292f; }
+ .profile { max-width: 560px; margin: 48px auto; padding: 32px; background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }
+-.info { display: flex; align-items: center; gap: 16px; }
+-.avatar { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; }
+-.name { margin: 0; font-size: 18px; }
++.info { display: flex; flex-direction: column; align-items: center; gap: 16px; }
++.avatar { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; }
++.name { margin: 0; font-size: 24px; }
+ .bio { margin: 0; font-size: 14px; color: #57606a; }

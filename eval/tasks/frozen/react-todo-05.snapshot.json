@@ -1,0 +1,36 @@
+{
+  "sessionId": "session-615a563d-510a-4665-9cd0-6a795bf7ec0b",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:59411/",
+    "title": "待办清单"
+  },
+  "comments": [
+    {
+      "id": "01ca26c9-1bfb-4bdd-8356-a1b629b7b6b5",
+      "comment": "把侧边栏\"草稿\"这一项改成\"草稿箱\"",
+      "tagName": "li",
+      "role": "",
+      "label": "草稿",
+      "cssPath": "li:nth-of-type(3).nav-item",
+      "fullPath": "html > body > div#root > div.layout > nav.sidebar > ul.nav-list > li.nav-item:nth-of-type(3)",
+      "stableClasses": [
+        "nav-item"
+      ],
+      "textContent": "草稿",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App › NavItem",
+        "file": "src/App.tsx",
+        "line": 23
+      },
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

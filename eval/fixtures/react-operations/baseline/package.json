@@ -1,0 +1,8 @@
+{
+  "name": "eval-react-operations",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "vite" },
+  "dependencies": { "@vitejs/plugin-react": "latest", "vite": "latest", "typescript": "latest", "react": "^18.2.0", "react-dom": "^18.2.0" },
+  "devDependencies": {}
+}

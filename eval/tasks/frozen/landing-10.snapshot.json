@@ -1,0 +1,31 @@
+{
+  "sessionId": "session-bafdfd1a-cbf1-47ed-82ec-5aad56da9261",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:52302/",
+    "title": "魔法 UI 演示页"
+  },
+  "comments": [
+    {
+      "id": "eb53a9f2-9912-4191-b4e8-c4cdbf884e35",
+      "comment": "把所有卡片的圆角从 12px 改成 8px",
+      "tagName": "div",
+      "role": "",
+      "label": "主按钮 用于提交表单的主要操作。 提交",
+      "cssPath": "div:nth-of-type(1).card",
+      "fullPath": "html > body > main.cards > div.card",
+      "stableClasses": [
+        "card"
+      ],
+      "textContent": "\n      主按钮\n      用于提交表单的主要操作。\n      提交\n    ",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "sessionId": "session-c31013c9-f565-42a2-8cbe-1e857162834e",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:64711/",
+    "title": "用户信息表单"
+  },
+  "comments": [
+    {
+      "id": "cd3868ac-d17a-4b40-bcf9-5853cb0b8a7c",
+      "comment": "把邮箱错误提示文案改成“请填写有效的邮箱地址”",
+      "tagName": "div",
+      "role": "",
+      "label": "邮箱格式不正确",
+      "cssPath": ".error",
+      "fullPath": "html > body > form.form > div.form-field:nth-of-type(2) > div.error",
+      "stableClasses": [
+        "error"
+      ],
+      "textContent": "邮箱格式不正确",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

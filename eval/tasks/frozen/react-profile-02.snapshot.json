@@ -1,0 +1,42 @@
+{
+  "sessionId": "session-1976bb08-c3f5-4d04-bde7-277607498f31",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:60684/",
+    "title": "个人主页"
+  },
+  "comments": [
+    {
+      "id": "10faff0b-4668-41d4-8adb-9b71c30dd50f",
+      "comment": "把名字的字号加大到 24px",
+      "tagName": "h1",
+      "role": "heading",
+      "label": "李雷",
+      "cssPath": ".name",
+      "fullPath": "html > body > div#root > div.profile > div.info > h1.name",
+      "stableClasses": [
+        "name"
+      ],
+      "textContent": "李雷",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App",
+        "file": "src/App.tsx",
+        "line": 27
+      },
+      "changes": [
+        {
+          "property": "font-size",
+          "before": "18px",
+          "after": "24px"
+        }
+      ],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

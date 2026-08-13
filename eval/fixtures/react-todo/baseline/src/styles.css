@@ -1,0 +1,10 @@
+body { margin: 0; font-family: system-ui, sans-serif; background: #f6f7f9; color: #24292f; }
+.layout { display: flex; min-height: 100vh; }
+.sidebar { width: 200px; background: #fff; border-right: 1px solid #e2e5ea; }
+.nav-list { list-style: none; margin: 0; padding: 8px 0; }
+.nav-item { padding: 8px 16px; font-size: 14px; cursor: pointer; }
+.content { padding: 24px; }
+.title { margin: 0 0 16px; font-size: 24px; }
+.todos { padding-left: 20px; }
+.todo-item { margin: 4px 0; }
+.add-button { margin-top: 12px; padding: 6px 14px; border: 0; border-radius: 6px; background: #4c6ef5; color: #fff; cursor: pointer; }

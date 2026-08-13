@@ -1,0 +1,5 @@
+packages:
+  - "react-*"
+  - "vue-*"
+allowBuilds:
+  esbuild: true

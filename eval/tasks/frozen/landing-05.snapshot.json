@@ -1,0 +1,29 @@
+{
+  "sessionId": "session-296c51ca-b77f-46d1-a369-5141516691f9",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:53280/",
+    "title": "魔法 UI 演示页"
+  },
+  "comments": [
+    {
+      "id": "7934b972-6ed2-4836-a546-526c7ca5e046",
+      "comment": "让首页宣传区的内容改为左对齐",
+      "tagName": "h1",
+      "role": "heading",
+      "label": "魔法 UI 演示页",
+      "cssPath": "h1",
+      "fullPath": "html > body > section.hero > h1",
+      "stableClasses": [],
+      "textContent": "魔法 UI 演示页",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

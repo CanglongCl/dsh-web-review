@@ -1,0 +1,38 @@
+diff --git ga/src/App.tsx gb/src/App.tsx
+index ed90ab1..dd54af9 100644
+--- ga/src/App.tsx
++++ gb/src/App.tsx
+@@ -12,7 +12,7 @@ export function App() {
+         <ul className="nav-list">
+           <NavItem label="收件箱" />
+           <NavItem label="已加星标" />
+-          <NavItem label="草稿" />
++          <NavItem label="草稿箱" />
+         </ul>
+       </nav>
+       <main className="content">
+@@ -20,7 +20,7 @@ export function App() {
+         <ul className="todos">
+           {todos.map((todo) => <li key={todo} className="todo-item">{todo}</li>)}
+         </ul>
+-        <button className="add-button" onClick={() => setTodos([...todos, '新任务'])}>添加任务</button>
++        <button className="add-button" onClick={() => setTodos([...todos, '新任务'])}>新建任务</button>
+       </main>
+     </div>
+   )
+diff --git ga/src/styles.css gb/src/styles.css
+index a25ee32..a70cab6 100644
+--- ga/src/styles.css
++++ gb/src/styles.css
+@@ -3,8 +3,9 @@ body { margin: 0; font-family: system-ui, sans-serif; background: #f6f7f9; color
+ .sidebar { width: 200px; background: #fff; border-right: 1px solid #e2e5ea; }
+ .nav-list { list-style: none; margin: 0; padding: 8px 0; }
+ .nav-item { padding: 8px 16px; font-size: 14px; cursor: pointer; }
++.nav-item:hover { background: #eef2ff; }
+ .content { padding: 24px; }
+ .title { margin: 0 0 16px; font-size: 24px; }
+ .todos { padding-left: 20px; }
+-.todo-item { margin: 4px 0; }
+-.add-button { margin-top: 12px; padding: 6px 14px; border: 0; border-radius: 6px; background: #4c6ef5; color: #fff; cursor: pointer; }
++.todo-item { margin: 4px 0 16px; }
++.add-button { margin-top: 12px; padding: 6px 14px; border: 0; border-radius: 6px; background: #4c6ef5; color: #fff; cursor: pointer; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); }

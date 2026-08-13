@@ -1,0 +1,36 @@
+{
+  "sessionId": "session-4bdcad8c-3bed-40fd-971e-fbff495933f5",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:63224/",
+    "title": "魔法商店"
+  },
+  "comments": [
+    {
+      "id": "7b9a0c80-70a4-4ea1-80f6-a551a7c4d05f",
+      "comment": "把所有“加入购物车”按钮的圆角统一改成 999px",
+      "tagName": "button",
+      "role": "button",
+      "label": "加入购物车",
+      "cssPath": "article:nth-of-type(1) .buy",
+      "fullPath": "html > body > div#root > div.page > main.products > article.product-card > button.buy",
+      "stableClasses": [
+        "buy"
+      ],
+      "textContent": "加入购物车",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App",
+        "file": "src/App.tsx",
+        "line": 47
+      },
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}

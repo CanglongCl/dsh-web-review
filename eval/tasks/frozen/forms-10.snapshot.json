@@ -1,0 +1,31 @@
+{
+  "sessionId": "session-2b98eb37-9d27-4345-8243-42db822f2354",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:64843/",
+    "title": "用户信息表单"
+  },
+  "comments": [
+    {
+      "id": "387e1e95-0402-4e76-b750-0db4bf127341",
+      "comment": "把所有输入框的圆角统一改成 8px",
+      "tagName": "input",
+      "role": "textbox",
+      "label": "",
+      "cssPath": ".search-input",
+      "fullPath": "html > body > div.topbar > input.search-input",
+      "stableClasses": [
+        "search-input"
+      ],
+      "textContent": "",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    }
+  ]
+}
