@@ -8,9 +8,9 @@
  * --concurrency N --provider --model --reasoning --timeout-ms N
  * --force --skip-launch --skip-grading
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { resolveHarnessRoot } from '../../scripts/harness-path.ts'
 import { loadTasks } from '../tasks/register.ts'
 import { executionRevision, experimentId, graderRevision, taskRevision } from '../identity.ts'
@@ -33,6 +33,7 @@ interface Flags {
   skipGrading: boolean
   arms: EvalArm[]
   repeat: number
+  dshCli?: string
 }
 
 function parseFlags(argv: string[]): Flags {
@@ -48,6 +49,7 @@ function parseFlags(argv: string[]): Flags {
     skipGrading: false,
     arms: ['full'],
     repeat: 1,
+    ...(process.env.EVAL_DSH_CLI === undefined ? {} : { dshCli: process.env.EVAL_DSH_CLI }),
   }
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]!
@@ -75,6 +77,7 @@ function parseFlags(argv: string[]): Flags {
       flags.arms = value === 'all' ? ['full', 'text-only', 'oracle'] : [value as EvalArm]
     }
     else if (arg === '--repeat') flags.repeat = Number(next())
+    else if (arg === '--dsh-cli') flags.dshCli = next()
     else throw new Error(`unknown flag ${arg}`)
   }
   if (flags.arms.some(arm => !['full', 'text-only', 'oracle'].includes(arm))) throw new Error(`invalid --arm ${flags.arms.join(',')}`)
@@ -94,7 +97,8 @@ const RESULTS_FILE = join(RESULTS_PATH, 'results.jsonl')
 
 async function main(): Promise<void> {
   const flags = parseFlags(process.argv.slice(2))
-  const harnessRoot = resolveHarnessRoot()
+  const dshCli = flags.dshCli === undefined ? undefined : realpathSync(flags.dshCli)
+  const harnessRoot = dshCli === undefined ? resolveHarnessRoot() : undefined
   const tasks = await loadTasks()
   const selected = tasks.filter(task => matches(task, flags))
   if (selected.length === 0) {
@@ -106,7 +110,14 @@ async function main(): Promise<void> {
     execFileSync('pnpm', ['--filter', '@dsh-web-review-dev/eval-runner', 'build'], { cwd: REPO_ROOT, stdio: 'inherit' })
   }
   const currentRepoCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' }).trim()
-  const currentHarnessCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: harnessRoot, encoding: 'utf8' }).trim()
+  const currentHarnessCommit = dshCli === undefined
+    ? execFileSync('git', ['rev-parse', 'HEAD'], { cwd: harnessRoot, encoding: 'utf8' }).trim()
+    : (() => {
+        const manifest = JSON.parse(readFileSync(join(dirname(dirname(dshCli)), 'package.json'), 'utf8')) as { name?: string; version?: string }
+        if (manifest.name !== '@deepseek-ai/dsh' || manifest.version === undefined) throw new Error(`unsupported published DSH CLI at ${dshCli}`)
+        return `${manifest.name}@${manifest.version}`
+      })()
+  console.log(`eval runtime: ${currentHarnessCommit}${dshCli === undefined ? ` (${harnessRoot})` : ` (${dshCli})`}`)
   const model = { provider: flags.provider, model: flags.model, ...(flags.reasoningEffort === undefined ? {} : { reasoningEffort: flags.reasoningEffort }) }
   const finished = new Set<string>()
   if (!flags.force && existsSync(RESULTS_FILE)) {
@@ -137,7 +148,9 @@ async function main(): Promise<void> {
       console.log(`[run] ${task.id}/${arm}/r${repetition} start (${task.fixtureKind}/${task.category}/${task.difficulty})`)
       try {
         const record = await runTaskOnce(task, {
-          harnessRoot,
+          ...(harnessRoot === undefined ? {} : { harnessRoot }),
+          ...(dshCli === undefined ? {} : { dshCli }),
+          runtimeRevision: currentHarnessCommit,
           provider: flags.provider,
           model: flags.model,
           ...(flags.reasoningEffort === undefined ? {} : { reasoningEffort: flags.reasoningEffort }),

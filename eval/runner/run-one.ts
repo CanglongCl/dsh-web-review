@@ -160,7 +160,10 @@ export async function runTaskOnce(task: LoadedEvalTask, options: RunOneOptions):
 
   const model = modelRecord(options)
   const repo = repoCommit()
-  const harness = harnessCommit(options.harnessRoot)
+  const harness = options.runtimeRevision ?? (() => {
+    if (options.harnessRoot === undefined) throw new Error('missing eval runtime revision')
+    return harnessCommit(options.harnessRoot)
+  })()
   const executionStatus = exitCode === 0 && stats?.endReason === 'completed'
     ? 'completed'
     : status === 'timeout' ? 'timeout' : 'error'

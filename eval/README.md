@@ -40,6 +40,9 @@ DSH_HARNESS=<abs harness root> pnpm eval:verify-headline-captures
 # 4-6-way concurrency, resumable via eval/results/results.jsonl
 DSH_HARNESS=<abs harness root> pnpm eval:run [-- --task react-operations-01 --arm all --repeat 3 --concurrency 3]
 
+# Published production DSH instead of a Harness source checkout
+pnpm eval:run -- --dsh-cli /opt/homebrew/bin/dsh --task react-operations-01 --arm all --repeat 3
+
 # Single-file HTML report with per-task process detail
 pnpm eval:report
 

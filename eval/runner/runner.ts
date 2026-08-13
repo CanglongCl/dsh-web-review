@@ -143,7 +143,11 @@ export interface RunOptions {
   model: string
   reasoningEffort?: string
   timeoutMs: number
-  harnessRoot: string
+  harnessRoot?: string
+  /** Published DSH CLI entry; takes precedence over a source checkout. */
+  dshCli?: string
+  /** Source commit or published package version used in experiment identity. */
+  runtimeRevision?: string
   arm: EvalArm
   repetition: number
 }
@@ -198,7 +202,12 @@ export async function launchHeadless(
   dshHome: string,
   options: RunOptions,
 ): Promise<LaunchResult> {
-  const bin = resolveHarnessCli(options.harnessRoot)
+  let bin: string
+  if (options.dshCli !== undefined) bin = options.dshCli
+  else {
+    if (options.harnessRoot === undefined) throw new Error('eval requires harnessRoot or dshCli')
+    bin = resolveHarnessCli(options.harnessRoot)
+  }
   resolveCredentials(dshHome)
   // Headless has no UI to answer approval prompts; the harness-sanctioned
   // (sandbox: danger-full-access, approval: never) preset keeps the composed
