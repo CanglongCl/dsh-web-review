@@ -110,7 +110,7 @@ async function main(): Promise<void> {
 <style>
   :root { --bg:#f6f7f9; --card:#fff; --line:#e2e5ea; --text:#24292f; --muted:#57606a; --ok:#1a7f37; --bad:#cf222e; --warn:#9a6700; }
   * { box-sizing: border-box; }
-  body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  body { margin:0; overflow-x:hidden; font-family: system-ui, sans-serif; background:var(--bg); color:var(--text); }
   header { background:var(--card); border-bottom:1px solid var(--line); padding:20px 28px; }
   header h1 { margin:0 0 6px; font-size:20px; }
   .meta { color:var(--muted); font-size:13px; }
@@ -118,11 +118,15 @@ async function main(): Promise<void> {
   .stat { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
   .stat .value { font-size:22px; font-weight:600; }
   .stat .label { font-size:12px; color:var(--muted); }
-  main { padding:0 28px 40px; }
+  main { width:100%; min-width:0; padding:0 28px 40px; }
   .filters { display:flex; gap:8px; flex-wrap:wrap; margin:14px 0; }
   .filters select, .filters button { padding:6px 10px; border:1px solid var(--line); border-radius:8px; background:var(--card); font-size:13px; }
-  table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .table-scroll { width:100%; max-width:100%; overflow-x:auto; border:1px solid var(--line); border-radius:10px; background:var(--card); overscroll-behavior-inline:contain; }
+  table { width:100%; border-collapse:collapse; background:var(--card); }
+  .pair-table { min-width:1050px; }
+  .runs-table { min-width:1480px; }
   th, td { padding:9px 12px; border-bottom:1px solid var(--line); font-size:13px; text-align:left; }
+  th { white-space:nowrap; }
   th { background:#f0f2f5; font-weight:600; }
   tr:last-child td { border-bottom:0; }
   tr.row { cursor:pointer; }
@@ -178,18 +182,22 @@ async function main(): Promise<void> {
     <button id="fReset">重置</button>
   </div>
   <h2 class="section">插件能力配对诊断</h2>
-  <table>
+  <div class="table-scroll">
+  <table class="pair-table">
     <thead><tr><th>题目</th><th>重复</th><th>仅文本</th><th>完整插件</th><th>Oracle</th><th>完整 − 仅文本</th><th>Oracle − 完整</th><th>步骤差</th><th>耗时差</th></tr></thead>
     <tbody id="pairBody"></tbody>
   </table>
+  </div>
   <h2 class="section">单次运行明细</h2>
-  <table>
+  <div class="table-scroll">
+  <table class="runs-table">
     <thead><tr>
       <th>题目</th><th>实验臂</th><th>重复</th><th>题目名称</th><th>能力类别</th><th>难度</th><th>应用</th><th>状态</th>
       <th>步骤</th><th>工具调用</th><th>首次写入</th><th>Token / 预期</th><th>耗时</th><th>失败归因</th><th>对话日志</th>
     </tr></thead>
     <tbody id="tbody"></tbody>
   </table>
+  </div>
 </main>
 <div id="detail"><article>
   <button class="close" onclick="document.getElementById('detail').classList.remove('open')">✕</button>
