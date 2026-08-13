@@ -26,6 +26,7 @@
     "eval:capture": "tsx eval/capture/capture.ts",
     "eval:smoke": "tsx eval/smoke.ts",
     "eval:run": "tsx eval/runner/batch.ts",
+    "eval:regrade": "tsx eval/regrade.ts",
     "eval:report": "tsx eval/report.ts"
   },
   "devDependencies": {

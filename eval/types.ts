@@ -91,8 +91,12 @@ export interface DomAssertion {
   text?: string
   /** Attribute expectation. */
   attr?: { name: string; value: string }
+  /** Attribute regular expression for semantically equivalent values. */
+  attrPattern?: { name: string; pattern: string }
   /** Accessible-name expectation (aria-label / label[for] / aria-labelledby). */
   accessibleName?: string
+  /** Accessible-name regular expression, e.g. optional natural-language whitespace. */
+  accessibleNamePattern?: string
   /** Implicit/explicit ARIA role expectation. */
   role?: string
   /** Perform :hover before asserting style. */
@@ -103,6 +107,12 @@ export interface DomAssertion {
   viewport?: { width: number; height: number }
   /** Numeric style tolerance in CSS px (default 0.5). */
   tolerance?: number
+  /** Require these computed properties to differ from another element. */
+  styleDiffersFrom?: { selector: string; properties: string[] }
+  /** Require one RGB channel to exceed the other two by this margin. */
+  colorDominance?: { property: string; channel: 'red' | 'green' | 'blue'; margin?: number }
+  /** Accept border, inset shadow, or positioned pseudo-element as a left accent. */
+  leftAccentColor?: string
   /** Assert the check against EVERY matching element (batch tasks). */
   all?: boolean
 }
@@ -193,6 +203,8 @@ export interface GraderOutcome {
 }
 
 export interface ProcessStats {
+  /** Durable Harness session identifier from the persisted session header. */
+  sessionId?: string
   turns: number
   steps: number
   toolCalls: Record<string, number>

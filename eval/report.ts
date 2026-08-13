@@ -6,7 +6,7 @@
  * token usage, workspace diff, and grader evidence.
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative, sep } from 'node:path'
 import { RESULTS_PATH } from './runner/runner.ts'
 import type { RunRecord } from './types.ts'
 
@@ -15,10 +15,15 @@ interface Detail extends RunRecord {
   diff?: string
   stdout?: string
   stderr?: string
+  sessionLogHref?: string
+  traceHref?: string
 }
 
 function runDetails(record: RunRecord): Detail {
   const detail: Detail = { ...record }
+  const linkTo = (file: string): string => relative(RESULTS_PATH, join(record.runDir, file)).split(sep).join('/')
+  if (record.runDir !== '' && existsSync(join(record.runDir, 'session.jsonl'))) detail.sessionLogHref = linkTo('session.jsonl')
+  if (record.runDir !== '' && existsSync(join(record.runDir, 'trace.md'))) detail.traceHref = linkTo('trace.md')
   for (const [field, file] of [
     ['trace', 'trace.md'],
     ['diff', 'diff.txt'],
@@ -70,7 +75,7 @@ function main(): void {
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>dsh-web-review eval report</title>
+<title>dsh-web-review 插件能力评测报告</title>
 <style>
   :root { --bg:#f6f7f9; --card:#fff; --line:#e2e5ea; --text:#24292f; --muted:#57606a; --ok:#1a7f37; --bad:#cf222e; --warn:#9a6700; }
   * { box-sizing: border-box; }
@@ -110,36 +115,36 @@ function main(): void {
 </head>
 <body>
 <header>
-  <h1>dsh-web-review · plugin capability eval</h1>
-  <div class="meta">model: <span id="model"></span> · runs: <span id="taskCount"></span> · generated: <span id="generatedAt"></span></div>
+  <h1>dsh-web-review · 插件能力评测报告</h1>
+  <div class="meta">模型：<span id="model"></span> · 运行次数：<span id="taskCount"></span> · 生成时间：<span id="generatedAt"></span></div>
 </header>
 <div class="cards">
-  <div class="stat"><div class="value" id="passRate"></div><div class="label">pass rate</div></div>
-  <div class="stat"><div class="value" id="totalDuration"></div><div class="label">total wall time</div></div>
-  <div class="stat"><div class="value" id="inputTokens"></div><div class="label">input tokens</div></div>
-  <div class="stat"><div class="value" id="outputTokens"></div><div class="label">output tokens</div></div>
-  <div class="stat"><div class="value" id="cacheTokens"></div><div class="label">cache read/write</div></div>
-  <div class="stat"><div class="value" id="reasoningTokens"></div><div class="label">reasoning tokens</div></div>
+  <div class="stat"><div class="value" id="passRate"></div><div class="label">通过率</div></div>
+  <div class="stat"><div class="value" id="totalDuration"></div><div class="label">累计运行时间</div></div>
+  <div class="stat"><div class="value" id="inputTokens"></div><div class="label">输入 Token</div></div>
+  <div class="stat"><div class="value" id="outputTokens"></div><div class="label">输出 Token</div></div>
+  <div class="stat"><div class="value" id="cacheTokens"></div><div class="label">缓存读取 / 写入</div></div>
+  <div class="stat"><div class="value" id="reasoningTokens"></div><div class="label">推理 Token</div></div>
 </div>
 <main>
   <div class="filters">
     <select id="fCategory"><option value="">全部类别</option></select>
-    <select id="fDifficulty"><option value="">全部难度</option><option value="easy">easy</option><option value="medium">medium</option><option value="hard">hard</option><option value="long">long</option></select>
+    <select id="fDifficulty"><option value="">全部难度</option><option value="easy">简单</option><option value="medium">中等</option><option value="hard">困难</option><option value="long">长任务</option></select>
     <select id="fFixture"><option value="">全部应用</option></select>
-    <select id="fArm"><option value="">全部实验臂</option><option value="full">full</option><option value="text-only">text-only</option><option value="oracle">oracle</option></select>
-    <select id="fStatus"><option value="">全部状态</option><option value="pass">pass</option><option value="fail">fail</option><option value="timeout">timeout</option><option value="error">error</option></select>
+    <select id="fArm"><option value="">全部实验臂</option><option value="full">完整插件</option><option value="text-only">仅文本</option><option value="oracle">理想上下文</option></select>
+    <select id="fStatus"><option value="">全部状态</option><option value="pass">通过</option><option value="fail">未通过</option><option value="timeout">超时</option><option value="error">错误</option></select>
     <button id="fReset">重置</button>
   </div>
-  <h2 class="section">Paired plugin diagnosis</h2>
+  <h2 class="section">插件能力配对诊断</h2>
   <table>
-    <thead><tr><th>task</th><th>run</th><th>Text-only</th><th>Full</th><th>Oracle</th><th>Full − Text</th><th>Oracle − Full</th><th>step deltas</th><th>duration deltas</th></tr></thead>
+    <thead><tr><th>题目</th><th>重复</th><th>仅文本</th><th>完整插件</th><th>Oracle</th><th>完整 − 仅文本</th><th>Oracle − 完整</th><th>步骤差</th><th>耗时差</th></tr></thead>
     <tbody id="pairBody"></tbody>
   </table>
-  <h2 class="section">Individual runs</h2>
+  <h2 class="section">单次运行明细</h2>
   <table>
     <thead><tr>
-      <th>task</th><th>arm</th><th>run</th><th>title</th><th>category</th><th>difficulty</th><th>fixture</th><th>status</th>
-      <th>steps</th><th>tools</th><th>first write</th><th>tokens in/out</th><th>duration</th><th>attribution</th>
+      <th>题目</th><th>实验臂</th><th>重复</th><th>题目名称</th><th>能力类别</th><th>难度</th><th>应用</th><th>状态</th>
+      <th>步骤</th><th>工具调用</th><th>首次写入</th><th>Token 输入 / 输出</th><th>耗时</th><th>失败归因</th><th>对话日志</th>
     </tr></thead>
     <tbody id="tbody"></tbody>
   </table>
@@ -153,11 +158,11 @@ const DATA = ${JSON.stringify(details)};
 const SUMMARY = ${JSON.stringify(summary)};
 const TOTALS = ${JSON.stringify(totals)};
 const model = SUMMARY.model ?? DATA[0]?.model ?? {};
-document.getElementById('model').textContent = [model.provider, model.model, model.reasoningEffort ? '· effort ' + model.reasoningEffort : ''].filter(Boolean).join(' ');
+document.getElementById('model').textContent = [model.provider, model.model, model.reasoningEffort ? '· 推理强度 ' + model.reasoningEffort : ''].filter(Boolean).join(' ');
 document.getElementById('taskCount').textContent = DATA.length;
-document.getElementById('generatedAt').textContent = new Date().toISOString();
+document.getElementById('generatedAt').textContent = new Date().toLocaleString('zh-CN', { hour12:false });
 document.getElementById('passRate').textContent = Math.round(${passed} / Math.max(1, DATA.length) * 100) + '%';
-document.getElementById('totalDuration').textContent = (TOTALS.durationMs / 60000).toFixed(1) + ' min';
+document.getElementById('totalDuration').textContent = (TOTALS.durationMs / 60000).toFixed(1) + ' 分钟';
 const fmt = n => n >= 1000000 ? (n/1000000).toFixed(2)+'M' : n >= 1000 ? (n/1000).toFixed(1)+'k' : String(n);
 document.getElementById('inputTokens').textContent = fmt(TOTALS.input);
 document.getElementById('outputTokens').textContent = fmt(TOTALS.output);
@@ -168,6 +173,11 @@ const fixtures = [...new Set(DATA.map(d => d.fixture))].sort();
 for (const c of categories) { const o = document.createElement('option'); o.value = c; o.textContent = c; document.getElementById('fCategory').appendChild(o); }
 for (const f of fixtures) { const o = document.createElement('option'); o.value = f; o.textContent = f; document.getElementById('fFixture').appendChild(o); }
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const STATUS = { pass:'通过', fail:'未通过', timeout:'超时', error:'运行错误' };
+const ARM = { full:'完整插件', 'text-only':'仅文本', oracle:'Oracle' };
+const CATEGORY = { 'protocol-smoke':'协议冒烟', 'multi-target':'多目标定位', 'scope-resolution':'作用域判断', 'anchor-fallback':'无源码锚点回退', responsive:'响应式', semantics:'语义与无障碍', iterative:'多轮修正', 'tool-ownership':'工具归属', trust:'信任边界' };
+const DIFFICULTY = { easy:'简单', medium:'中等', hard:'困难', long:'长任务' };
+const ATTRIBUTION = { 'not-modified':'未修改', localization:'定位错误', 'wrong-value':'结果不符', timeout:'超时', 'runtime-error':'运行错误', unknown:'—' };
 const statusScore = d => d?.status === 'pass' ? 1 : 0;
 const signed = n => n === undefined || Number.isNaN(n) ? '—' : (n > 0 ? '+' : '') + n;
 const paired = new Map();
@@ -177,7 +187,7 @@ for (const d of DATA) {
   row[d.arm] = d;
   paired.set(key, row);
 }
-function armBadge(d) { return d ? '<span class="badge ' + d.status + '">' + esc(d.status) + '</span>' : '—'; }
+function armBadge(d) { return d ? '<span class="badge ' + d.status + '">' + esc(STATUS[d.status] ?? d.status) + '</span>' : '—'; }
 function renderPairs(rows) {
   document.getElementById('pairBody').innerHTML = rows.map(row => {
     const text = row['text-only'], full = row.full, oracle = row.oracle;
@@ -190,7 +200,7 @@ function renderPairs(rows) {
     const deltaClass = n => n > 0 ? 'delta-positive' : n < 0 ? 'delta-negative' : '';
     return '<tr><td>' + esc(row.taskId) + '</td><td>' + esc(row.repetition) + '</td><td>' + armBadge(text) + '</td><td>' + armBadge(full) + '</td><td>' + armBadge(oracle) + '</td>'
       + '<td class="' + deltaClass(fullLift) + '">' + signed(fullLift) + '</td><td class="' + deltaClass(oracleGap) + '">' + signed(oracleGap) + '</td>'
-      + '<td>F−T ' + signed(stepLift) + ' · O−F ' + signed(stepGap) + '</td><td>F−T ' + signed(durationLift) + 's · O−F ' + signed(durationGap) + 's</td></tr>';
+      + '<td>完整−文本 ' + signed(stepLift) + ' · Oracle−完整 ' + signed(stepGap) + '</td><td>完整−文本 ' + signed(durationLift) + ' 秒 · Oracle−完整 ' + signed(durationGap) + ' 秒</td></tr>';
   }).join('');
 }
 function render() {
@@ -211,14 +221,15 @@ function render() {
     const tokens = d.process?.tokens;
     const runKey = d.taskId + ':' + d.arm + ':' + d.repetition;
     return '<tr class="row" onclick="openDetail(' + JSON.stringify(runKey) + ')">'
-      + '<td>' + esc(d.taskId) + '</td><td>' + esc(d.arm) + '</td><td>' + esc(d.repetition) + '</td><td>' + esc(d.title) + '</td><td>' + esc(d.category) + '</td><td>' + esc(d.difficulty) + '</td><td>' + esc(d.fixture) + '</td>'
-      + '<td><span class="badge ' + d.status + '">' + d.status + '</span></td>'
+      + '<td>' + esc(d.taskId) + '</td><td>' + esc(ARM[d.arm] ?? d.arm) + '</td><td>' + esc(d.repetition) + '</td><td>' + esc(d.title) + '</td><td>' + esc(CATEGORY[d.category] ?? d.category) + '</td><td>' + esc(DIFFICULTY[d.difficulty] ?? d.difficulty) + '</td><td>' + esc(d.fixture) + '</td>'
+      + '<td><span class="badge ' + d.status + '">' + esc(STATUS[d.status] ?? d.status) + '</span></td>'
       + '<td>' + (d.process?.steps ?? '—') + '</td>'
       + '<td>' + Object.values(d.process?.toolCalls ?? {}).reduce((a,b)=>a+b,0) + '</td>'
       + '<td>' + (d.process?.firstWriteStep ?? '—') + '</td>'
       + '<td>' + (tokens ? fmt(tokens.input)+' / '+fmt(tokens.output) : '—') + '</td>'
-      + '<td>' + (d.durationMs/1000).toFixed(0) + 's</td>'
-      + '<td>' + esc(d.attribution ?? '') + '</td></tr>';
+      + '<td>' + (d.durationMs/1000).toFixed(0) + ' 秒</td>'
+      + '<td>' + esc(ATTRIBUTION[d.attribution] ?? d.attribution ?? '') + '</td>'
+      + '<td>' + (d.sessionLogHref ? '<a href="' + esc(d.sessionLogHref) + '" target="_blank" onclick="event.stopPropagation()">打开日志</a>' : '—') + '</td></tr>';
   }).join('');
 }
 document.getElementById('fCategory').onchange = render;
@@ -231,29 +242,30 @@ function openDetail(runKey) {
   const d = DATA.find(x => x.taskId + ':' + x.arm + ':' + x.repetition === runKey);
   if (!d) return;
   const tokens = d.process?.tokens;
-  const toolLines = Object.entries(d.process?.toolCalls ?? {}).map(([name,count]) => name + ' × ' + count).join(', ');
+  const toolLines = Object.entries(d.process?.toolCalls ?? {}).map(([name,count]) => name + ' × ' + count).join('，');
   const graderLines = (d.grader?.results ?? []).map(r => '<li>' + esc(r.ok ? '✓' : '✗') + ' ' + esc(r.expected) + ' → ' + esc(r.measured) + '</li>').join('');
   document.getElementById('detailBody').innerHTML =
-    '<h2>' + esc(d.taskId) + ' · ' + esc(d.arm) + ' · run ' + esc(d.repetition) + ' · ' + esc(d.title) + '</h2>'
-    + '<p class="meta">' + esc(d.fixture) + ' / ' + esc(d.category) + ' / ' + esc(d.difficulty)
-    + ' · <span class="badge ' + d.status + '">' + d.status + '</span>'
-    + ' · ' + esc(d.attribution ?? '') + ' · ' + (d.durationMs/1000).toFixed(1) + 's · exit ' + d.exitCode + '</p>'
-    + '<h3>Model</h3><p class="meta">' + esc([d.model.provider, d.model.model, d.model.reasoningEffort ?? ''].filter(Boolean).join(' · ')) + '</p>'
-    + '<h3>Tokens</h3><p class="meta">in ' + fmt(tokens?.input ?? 0) + ' · out ' + fmt(tokens?.output ?? 0)
-    + ' · cache r/w ' + fmt(tokens?.cacheRead ?? 0) + '/' + fmt(tokens?.cacheWrite ?? 0)
-    + ' · reasoning ' + fmt(tokens?.reasoning ?? 0)
-    + ' · usage reported on ' + (d.process?.stepsWithUsage ?? 0) + '/' + (d.process?.assistantSteps ?? 0) + ' steps</p>'
-    + '<h3>Process</h3><p class="meta">turns ' + (d.process?.turns ?? '—') + ' · steps ' + (d.process?.steps ?? '—')
-    + ' · first tool call at step ' + (d.process?.firstToolCallStep ?? '—') + ' · first write at step ' + (d.process?.firstWriteStep ?? '—')
-    + ' · end reason ' + esc(d.process?.endReason ?? '') + '</p>'
-    + '<p class="meta">tools: ' + esc(toolLines || 'none') + '</p>'
-    + '<p class="meta">files read: ' + esc((d.process?.filesRead ?? []).join(', ') || 'none') + '</p>'
-    + '<p class="meta">modified files: ' + esc(d.modifiedFiles.join(', ') || 'none') + '</p>'
-    + '<h3>Grader</h3>' + (graderLines ? '<ul>' + graderLines + '</ul>' : '<p class="meta">no grader evidence</p>')
-    + '<h3>Final answer</h3><pre>' + esc(d.process?.finalText ?? '') + '</pre>'
-    + (d.trace ? '<h3>Process trace</h3><pre>' + esc(d.trace) + '</pre>' : '')
-    + (d.diff ? '<h3>Workspace diff</h3><pre>' + esc(d.diff) + '</pre>' : '')
-    + (d.stderr ? '<h3>Stderr</h3><pre>' + esc(d.stderr) + '</pre>' : '');
+    '<h2>' + esc(d.taskId) + ' · ' + esc(ARM[d.arm] ?? d.arm) + ' · 第 ' + esc(d.repetition) + ' 次 · ' + esc(d.title) + '</h2>'
+    + '<p class="meta">' + esc(d.fixture) + ' / ' + esc(CATEGORY[d.category] ?? d.category) + ' / ' + esc(DIFFICULTY[d.difficulty] ?? d.difficulty)
+    + ' · <span class="badge ' + d.status + '">' + esc(STATUS[d.status] ?? d.status) + '</span>'
+    + ' · ' + esc(ATTRIBUTION[d.attribution] ?? d.attribution ?? '') + ' · ' + (d.durationMs/1000).toFixed(1) + ' 秒 · 退出码 ' + d.exitCode + '</p>'
+    + (d.sessionLogHref ? '<p><a href="' + esc(d.sessionLogHref) + '" target="_blank">打开对应的 Harness 对话日志</a>' + (d.process?.sessionId ? ' <span class="meta">会话：' + esc(d.process.sessionId) + '</span>' : '') + '</p>' : '')
+    + '<h3>模型</h3><p class="meta">' + esc([d.model.provider, d.model.model, d.model.reasoningEffort ?? ''].filter(Boolean).join(' · ')) + '</p>'
+    + '<h3>Token 用量</h3><p class="meta">输入 ' + fmt(tokens?.input ?? 0) + ' · 输出 ' + fmt(tokens?.output ?? 0)
+    + ' · 缓存读取/写入 ' + fmt(tokens?.cacheRead ?? 0) + '/' + fmt(tokens?.cacheWrite ?? 0)
+    + ' · 推理 ' + fmt(tokens?.reasoning ?? 0)
+    + ' · 有用量记录的步骤 ' + (tokens?.stepsWithUsage ?? 0) + '/' + (tokens?.assistantSteps ?? 0) + '</p>'
+    + '<h3>执行过程</h3><p class="meta">轮次 ' + (d.process?.turns ?? '—') + ' · 步骤 ' + (d.process?.steps ?? '—')
+    + ' · 首次工具调用：第 ' + (d.process?.firstToolCallStep ?? '—') + ' 步 · 首次写入：第 ' + (d.process?.firstWriteStep ?? '—') + ' 步'
+    + ' · 结束原因：' + esc(d.process?.endReason ?? '') + '</p>'
+    + '<p class="meta">工具：' + esc(toolLines || '无') + '</p>'
+    + '<p class="meta">读取文件：' + esc((d.process?.filesRead ?? []).join('，') || '无') + '</p>'
+    + '<p class="meta">修改文件：' + esc(d.modifiedFiles.join('，') || '无') + '</p>'
+    + '<h3>评分证据</h3>' + (graderLines ? '<ul>' + graderLines + '</ul>' : '<p class="meta">无评分证据</p>')
+    + '<h3>模型最终回复</h3><pre>' + esc(d.process?.finalText ?? '') + '</pre>'
+    + (d.trace ? '<h3>执行轨迹</h3>' + (d.traceHref ? '<p><a href="' + esc(d.traceHref) + '" target="_blank">单独打开轨迹文件</a></p>' : '') + '<pre>' + esc(d.trace) + '</pre>' : '')
+    + (d.diff ? '<h3>工作区差异</h3><pre>' + esc(d.diff) + '</pre>' : '')
+    + (d.stderr ? '<h3>标准错误输出</h3><pre>' + esc(d.stderr) + '</pre>' : '');
   document.getElementById('detail').classList.add('open');
 }
 document.getElementById('detail').addEventListener('click', e => { if (e.target === document.getElementById('detail')) document.getElementById('detail').classList.remove('open'); });

@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'react',
   category: 'multi-target',
   difficulty: 'long',
-  title: 'Resolve a six-comment operations dashboard review',
+  title: '处理运营后台的六条关联批注',
   arms: ['full', 'text-only', 'oracle'],
   rounds: [{
     prompt: '请根据页面批注修改前端实现。',
@@ -56,14 +56,18 @@ export const task: EvalTask = {
   }],
   grader: {
     pass: [
-      { kind: 'dom', selector: '.nav-link.active', style: { 'background-color': '#2b3850', 'box-shadow': 'rgb(122, 162, 255) 3px 0px 0px 0px inset' } },
+      {
+        kind: 'dom', selector: '.nav-link.active',
+        styleDiffersFrom: { selector: '.nav-link:not(.active)', properties: ['background-color'] },
+        leftAccentColor: '#7aa2ff',
+      },
       { kind: 'dom', selector: '.filter-bar', style: { 'background-color': '#eef3fb', padding: '20px' } },
       { kind: 'dom', selector: '.metrics', style: { gap: '24px', 'margin-top': '24px', 'margin-bottom': '24px' } },
-      { kind: 'dom', selector: '.cancel-order', style: { 'background-color': '#b4232f' }, all: true },
+      { kind: 'dom', selector: '.actions button:last-child', colorDominance: { property: 'background-color', channel: 'red', margin: 20 }, all: true },
       { kind: 'dom', selector: '.drawer h2', style: { overflow: 'hidden', 'text-overflow': 'ellipsis', 'white-space': 'nowrap' }, viewport: { width: 390, height: 844 } },
       { kind: 'dom', selector: '.filter-bar label', style: { display: 'none' }, viewport: { width: 390, height: 844 }, all: true },
       { kind: 'dom', selector: '.filter-bar > .button', style: { display: 'none' }, viewport: { width: 390, height: 844 } },
-      { kind: 'code', file: 'src/components/OrderTable.tsx', contains: ['button danger cancel-order'] },
+      { kind: 'code', file: 'src/components/OrderTable.tsx', contains: ['danger'] },
     ],
     noRegression: [
       { kind: 'dom', selector: '.page-heading .primary', style: { 'background-color': '#3267d6' } },

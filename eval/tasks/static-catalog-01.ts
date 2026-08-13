@@ -5,7 +5,7 @@ const frozen = loadFrozenRound('static-catalog-01', 1, import.meta.url)
 
 export const task: EvalTask = {
   id: 'static-catalog-01', fixture: 'static-catalog', fixtureKind: 'static', category: 'anchor-fallback', difficulty: 'long',
-  title: 'Resolve repeated catalog targets without framework source anchors',
+  title: '在无框架源码锚点时定位重复商品节点',
   arms: ['full', 'text-only', 'oracle'],
   rounds: [{
     prompt: '请根据页面批注修改前端实现。',
@@ -27,8 +27,8 @@ export const task: EvalTask = {
     pass: [
       { kind: 'dom', selector: '.sold-out .a1b2c3_action', text: '到货提醒' },
       { kind: 'dom', selector: '.a1b2c3_price', style: { 'font-size': '18px' }, all: true },
-      { kind: 'dom', selector: '.a1b2c3_favorite', attr: { name: 'aria-label', value: '收藏弧光台灯' } },
-      { kind: 'dom', selector: '.a1b2c3_favorite:nth-of-type(1)', accessibleName: '收藏弧光台灯' },
+      { kind: 'dom', selector: '.a1b2c3_favorite', accessibleNamePattern: '^收藏\\s*\\S+', all: true },
+      { kind: 'dom', selector: '.a1b2c3_favorite span', attr: { name: 'aria-hidden', value: 'true' }, all: true },
       { kind: 'dom', selector: '.a1b2c3_productCard.featured', style: { 'border-width': '2px', 'border-color': '#7a5af8' } },
       { kind: 'dom', selector: '.a1b2c3_catalogGrid', style: { 'grid-template-columns': '334px' }, viewport: { width: 390, height: 844 }, tolerance: 2 },
     ],

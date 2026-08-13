@@ -39,6 +39,11 @@ DSH_HARNESS=<abs harness root> pnpm eval:run [-- --task react-operations-01 --ar
 
 # Single-file HTML report with per-task process detail
 pnpm eval:report
+
+# Re-apply the current grader and process-stat parser to existing workspaces
+# without spending model tokens, then regenerate the report
+pnpm eval:regrade [-- react-operations-01 static-catalog-01]
+pnpm eval:report
 ```
 
 Model defaults: `deepseek-official` / `deepseek-v4-flash` / reasoning `high`;
@@ -63,3 +68,13 @@ and selected skills before grading.
 chunks, tool calls, per-step token usage), `trace.md`, `process.json`,
 `diff.txt`, `grader` evidence, and the launch stdout/stderr. The report
 embeds the trace, diff, and grader outcomes per task.
+The generated report uses Chinese UI copy. Each run links directly to its
+persisted Harness `session.jsonl` conversation log and shows the durable
+session id, so a score can be audited against the original model/tool events.
+
+Long-task graders assert user-visible intent rather than one golden
+implementation: natural-language whitespace is tolerated, semantic danger
+colors are accepted by color family, and a left accent may be implemented as
+a border, inset shadow, or pseudo-element. Exact values remain exact only when
+the annotation requested them. Missing selectors are ordinary failed
+assertions, not grader runtime errors.

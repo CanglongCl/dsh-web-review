@@ -170,6 +170,19 @@ Interaction sequences, focus/keyboard checks, route or persisted-state checks, c
 
 Process evidence remains first-class: files read before the first write, duplicate reads, searches, tool errors, first correct file touch, unrelated modified files, steps, tokens, and wall time. Reports group paired arms and show Full-minus-Text and Oracle-minus-Full deltas rather than one undifferentiated pass rate.
 
+Grader calibration follows the annotation's semantic precision. Values named
+by the user (for example `20px`, `#7a5af8`, or exact replacement text) remain
+exact. Qualitative requests such as “更深” or “危险样式” accept equivalent
+implementations and must not require a golden-only color, helper class, or
+whitespace choice. Missing target selectors produce a localization/assertion
+failure rather than a grader crash. Existing workspaces can be regraded
+without another model call using `pnpm eval:regrade`.
+
+The HTML report uses Chinese interface copy and provides a direct relative
+link from every run to its persisted Harness `session.jsonl`, alongside the
+durable session id and the derived trace. This keeps every aggregate score
+auditable back to the authoritative conversation log.
+
 ## Implementation sequence
 
 1. Preserve the three existing tasks as `protocol-smoke` scenarios and change their ordinary prompt to the generic product request.

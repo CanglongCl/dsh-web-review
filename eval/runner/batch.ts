@@ -9,11 +9,12 @@
  * --force --skip-launch --skip-grading
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { resolveHarnessRoot } from '../../scripts/harness-path.ts'
 import { loadTasks } from '../tasks/register.ts'
 import { runTaskOnce } from './run-one.ts'
-import { ARTIFACTS_ROOT, RESULTS_PATH } from './runner.ts'
+import { ARTIFACTS_ROOT, REPO_ROOT, RESULTS_PATH } from './runner.ts'
 import type { EvalArm, LoadedEvalTask, RunRecord } from '../types.ts'
 
 interface Flags {
@@ -98,6 +99,10 @@ async function main(): Promise<void> {
   if (selected.length === 0) {
     console.error('no tasks match the filter')
     process.exit(2)
+  }
+  if (!flags.skipLaunch) {
+    console.log('building the self-contained eval runner bundle')
+    execFileSync('pnpm', ['--filter', '@dsh-web-review-dev/eval-runner', 'build'], { cwd: REPO_ROOT, stdio: 'inherit' })
   }
   const finished = new Set<string>()
   if (!flags.force && existsSync(RESULTS_FILE)) {

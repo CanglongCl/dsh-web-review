@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import type { ProcessStats } from './types.ts'
 
 interface EventLine {
+  id?: string
   seq?: number
   type?: string
   time?: number
@@ -31,9 +32,31 @@ function reasoningOfContent(content: unknown): string {
 }
 
 function isWriteishCall(name: string, args: string): boolean {
-  if (name === 'bash') return true
+  if (/^(edit|write|apply_patch|str_replace_editor)$/u.test(name)) return true
+  if (name === 'bash') {
+    let command = args
+    try {
+      const parsed = JSON.parse(args) as { command?: unknown; cmd?: unknown }
+      command = typeof parsed.command === 'string' ? parsed.command : typeof parsed.cmd === 'string' ? parsed.cmd : args
+    } catch {
+      // Fall back to the raw argument string.
+    }
+    return /(^|[;&|]\s*)(sed\s+-i|perl\s+-i|tee\b|cp\b|mv\b|rm\b|mkdir\b|touch\b|git\s+(apply|commit|add)|npm\s+install|pnpm\s+(add|install))\b|(^|\s)(>|>>)\s*\S/iu.test(command)
+  }
   if (name !== 'fs' && name !== 'file') return false
   return /write|create|delete|move|patch/iu.test(args)
+}
+
+function readPaths(name: string, args: string): string[] {
+  if (!/^(read|read_file|fs|file)$/u.test(name)) return []
+  try {
+    const parsed = JSON.parse(args) as Record<string, unknown>
+    return [parsed.file_path, parsed.path, parsed.file]
+      .filter((value): value is string => typeof value === 'string')
+  } catch {
+    const match = /"(?:file_path|path|file)"\s*:\s*"([^"]+)"/u.exec(args)
+    return match?.[1] === undefined ? [] : [match[1]]
+  }
 }
 
 /** Aggregate one session log into statistics plus a folded markdown trace. */
@@ -54,6 +77,7 @@ export function analyzeSession(sessionPath: string, tracePath: string): ProcessS
   let reasoningChars = 0
   let finalText = ''
   let endReason = 'unknown'
+  let sessionId: string | undefined
   const tokens: ProcessStats['tokens'] = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, stepsWithUsage: 0, assistantSteps: 0 }
   const stepUsageShape = (value: unknown): { input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number } | undefined => {
     if (typeof value !== 'object' || value === null) return undefined
@@ -80,6 +104,7 @@ export function analyzeSession(sessionPath: string, tracePath: string): ProcessS
       if (lastTime === undefined || event.time > lastTime) lastTime = event.time
     }
     const data = event.data ?? {}
+    if (event.type === 'session' && typeof event.id === 'string') sessionId = event.id
     switch (event.type) {
       case 'assistant/chunk': {
         const chunk = (data as { chunk?: { type?: string; usage?: { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number; reasoningTokens?: number } } }).chunk
@@ -172,17 +197,16 @@ export function analyzeSession(sessionPath: string, tracePath: string): ProcessS
         toolCalls[name] = (toolCalls[name] ?? 0) + 1
         if (firstToolCallStep === undefined) firstToolCallStep = currentStep
         if (firstWriteStep === undefined && isWriteishCall(name, args)) firstWriteStep = currentStep
-        if ((name === 'fs' || name === 'file') && /read/iu.test(args)) {
-          const match = /"path"\s*:\s*"([^"]+)"/u.exec(args)
-          if (match?.[1] !== undefined) filesRead.add(match[1])
-        }
+        for (const path of readPaths(name, args)) filesRead.add(path)
         trace.push('', `### Turn ${currentTurn} · step ${currentStep} · tool: \`${name}\``)
         trace.push('<details><summary>arguments</summary>', '', '```json', args.slice(0, 2000), '```', '</details>')
         break
       }
       case 'tool/result': {
         const error = data.error as { name?: string; code?: string } | undefined
-        if (error !== undefined) errorResults += 1
+        const message = data.message as { content?: { type?: string; isError?: boolean }[] } | undefined
+        const nestedError = message?.content?.some(block => block.type === 'tool-result' && block.isError === true) ?? false
+        if (error !== undefined || nestedError) errorResults += 1
         const text = textOfContent(data.message)
         trace.push(`<details><summary>result${error !== undefined ? ` (${error.name ?? 'error'})` : ''}</summary>`, '')
         trace.push('```text')
@@ -212,6 +236,7 @@ export function analyzeSession(sessionPath: string, tracePath: string): ProcessS
 
   writeFileSync(tracePath, trace.join('\n'))
   return {
+    ...(sessionId === undefined ? {} : { sessionId }),
     turns,
     steps,
     toolCalls,
