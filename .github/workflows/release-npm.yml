@@ -64,6 +64,10 @@ jobs:
         # published entries solely because they are less than 24 hours old.
         run: pnpm install --frozen-lockfile --trust-lockfile
 
+      - name: Install Chromium for eval grader tests
+        working-directory: plugin
+        run: pnpm exec playwright install --with-deps chromium
+
       - name: Verify release identity
         working-directory: plugin
         env:
