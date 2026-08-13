@@ -12,7 +12,9 @@ const RESULTS_FILE = join(RESULTS_PATH, 'results.jsonl')
 
 async function main(): Promise<void> {
   if (!existsSync(RESULTS_FILE)) throw new Error(`no results at ${RESULTS_FILE}`)
-  const ids = process.argv.slice(2).filter(argument => argument !== '--' && !argument.startsWith('--'))
+  const arguments_ = process.argv.slice(2)
+  const ids = arguments_.filter(argument => argument !== '--' && !argument.startsWith('--'))
+  const eligibleOnly = arguments_.includes('--eligible-only')
   const tasks = new Map((await loadTasks()).map(task => [task.id, task]))
   const latest = new Map<string, RunRecord>()
   const firstStatusByRunDir = new Map<string, RunRecord['status']>()
@@ -22,7 +24,10 @@ async function main(): Promise<void> {
     if (record.runDir !== '' && !firstStatusByRunDir.has(record.runDir)) firstStatusByRunDir.set(record.runDir, record.originalStatus ?? record.status)
     latest.set(record.experimentId ?? `${record.taskId}:${record.arm}:${record.repetition}:${record.model.provider}:${record.model.model}:${record.model.reasoningEffort ?? 'unknown'}:${record.repoCommit}:${record.harnessCommit}`, record)
   }
-  const records = [...latest.values()].filter(record => ids.length === 0 || ids.includes(record.taskId))
+  const records = [...latest.values()].filter(record =>
+    (ids.length === 0 || ids.includes(record.taskId))
+    && (!eligibleOnly || record.diagnosticValidity === 'eligible'),
+  )
   for (const record of records) {
     const task = tasks.get(record.taskId)
     if (task === undefined || record.runDir === '') continue

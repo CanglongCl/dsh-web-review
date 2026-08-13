@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { armContextTexts } from '../../../eval/arm-context.ts'
 import { runnerTaskPayload } from '../../../eval/runner/payload.ts'
-import { runDirFor } from '../../../eval/runner/run-one.ts'
+import { runDirFor, stageIsolatedWorkspace } from '../../../eval/runner/run-one.ts'
 import type { AnnotationSnapshot } from '../src/annotation-contract.ts'
 import { formatAnnotationContext, parseAnnotationBody } from '../src/annotation-context.ts'
 import type { EvalTask } from '../../../eval/types.ts'
@@ -68,6 +68,20 @@ describe('plugin capability eval contexts', () => {
     expect(path).not.toContain('text-only')
     expect(path).not.toContain('-r7-')
     expect(path).toMatch(/\/run-[0-9a-f-]+$/u)
+  })
+
+  it('stages fixture contents inside the isolated model workspace', () => {
+    const task = {
+      id: 'isolation-check', fixture: 'landing', fixtureKind: 'static', category: 'protocol-smoke', difficulty: 'easy', title: 'isolation',
+      arms: ['full'], rounds: [], grader: { pass: [] }, golden: { kind: 'html-dir', dir: 'golden' },
+    } satisfies EvalTask
+    const isolated = stageIsolatedWorkspace(task)
+    try {
+      expect(existsSync(`${isolated.workspaceDir}/index.html`)).toBe(true)
+      expect(isolated.workspaceDir).toBe(`${isolated.liveRoot}/workspace`)
+    } finally {
+      rmSync(isolated.liveRoot, { recursive: true, force: true })
+    }
   })
 
   it('accepts every long-task frozen snapshot through the production parser', () => {

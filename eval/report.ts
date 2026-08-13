@@ -68,7 +68,7 @@ function main(): void {
   }, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, durationMs: 0 })
   const passed = details.filter(record => record.status === 'pass').length
   const diagnostic = details.filter(record => record.category !== 'protocol-smoke')
-  const eligibleDiagnostic = diagnostic.filter(record => record.experimentId !== undefined && record.executionRevision !== undefined && record.model.reasoningEffort !== undefined)
+  const eligibleDiagnostic = diagnostic.filter(record => record.diagnosticValidity === 'eligible' && record.experimentId !== undefined && record.executionRevision !== undefined && record.model.reasoningEffort !== undefined)
   const smoke = details.filter(record => record.category === 'protocol-smoke')
   const diagnosticGroupKey = (record: RunRecord): string => [record.taskId, record.repetition, record.model.provider, record.model.model, record.model.reasoningEffort, record.repoCommit, record.harnessCommit, record.taskRevision, record.executionRevision].join(':')
   const diagnosticGroups = new Map<string, Set<RunRecord['arm']>>()
@@ -207,7 +207,7 @@ const statusScore = d => d?.status === 'pass' ? 1 : 0;
 const executionKey = d => d.experimentId ?? [d.taskId,d.arm,d.repetition,d.model?.provider,d.model?.model,d.model?.reasoningEffort ?? 'unknown',d.repoCommit,d.harnessCommit].join(':');
 const signed = n => n === undefined || Number.isNaN(n) ? '—' : (n > 0 ? '+' : '') + n;
 const paired = new Map();
-for (const d of DATA.filter(d => d.category !== 'protocol-smoke' && d.experimentId && d.executionRevision && d.model?.reasoningEffort)) {
+for (const d of DATA.filter(d => d.category !== 'protocol-smoke' && d.diagnosticValidity === 'eligible' && d.experimentId && d.executionRevision && d.model?.reasoningEffort)) {
   const key = [d.taskId,d.repetition,d.model.provider,d.model.model,d.model.reasoningEffort,d.repoCommit,d.harnessCommit,d.taskRevision,d.executionRevision].join(':');
   const row = paired.get(key) ?? { taskId:d.taskId, repetition:d.repetition };
   row[d.arm] = d;

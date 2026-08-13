@@ -377,6 +377,28 @@ async function runSingleDom(page: Page, locator: Locator, assertion: DomAssertio
     expectedParts.push(`${assertion.colorDominance.property} is ${assertion.colorDominance.channel}-dominant by ${margin}`)
     measuredParts.push(`${assertion.colorDominance.property}=${value}`)
   }
+  if (assertion.dangerStyle !== undefined) {
+    const values = await locator.evaluate(element => {
+      const style = getComputedStyle(element)
+      return {
+        background: style.backgroundColor,
+        foreground: style.color,
+        borderTop: style.borderTopColor,
+        borderRight: style.borderRightColor,
+        borderBottom: style.borderBottomColor,
+        borderLeft: style.borderLeftColor,
+      }
+    })
+    const margin = assertion.dangerStyle.margin ?? 20
+    const redCue = Object.entries(values).find(([, value]) => {
+      const rgb = rgbOf(value)
+      const alpha = alphaOf(value)
+      return rgb !== undefined && alpha !== undefined && alpha >= 0.1 && rgb[0] >= Math.max(rgb[1], rgb[2]) + margin
+    })
+    if (redCue === undefined) ok = false
+    expectedParts.push(`visible red danger cue in background, foreground, or border by ${margin}`)
+    measuredParts.push(Object.entries(values).map(([name, value]) => `${name}=${value}`).join('; '))
+  }
   if (assertion.boxShadow !== undefined) {
     const value = await locator.evaluate(element => getComputedStyle(element).boxShadow)
     const shadows = value === 'none'
@@ -450,15 +472,15 @@ async function runSingleDom(page: Page, locator: Locator, assertion: DomAssertio
     expectedParts.push(`${assertion.itemsPerRow.count} ${assertion.itemsPerRow.childSelector} item(s) per first row`)
     measuredParts.push(`first row=${geometry.firstRow}; total=${geometry.total}`)
   }
-  if (assertion.visible === true || assertion.doesNotOverlap !== undefined) {
+  if (assertion.visible !== undefined || assertion.doesNotOverlap !== undefined) {
     const geometry = await locator.evaluate(element => {
       const rect = element.getBoundingClientRect()
       const style = getComputedStyle(element)
       return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height, display: style.display, visibility: style.visibility, opacity: Number.parseFloat(style.opacity) }
     })
     const visible = geometry.width > 0 && geometry.height > 0 && geometry.display !== 'none' && geometry.visibility !== 'hidden' && geometry.opacity > 0
-    if (assertion.visible === true && !visible) ok = false
-    expectedParts.push('visible')
+    if (assertion.visible !== undefined && visible !== assertion.visible) ok = false
+    expectedParts.push(assertion.visible === false ? 'hidden' : 'visible')
     measuredParts.push(`visible=${visible}`)
     if (assertion.doesNotOverlap !== undefined) {
       const other = page.locator(assertion.doesNotOverlap).first()

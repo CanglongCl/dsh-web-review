@@ -42,6 +42,19 @@ describe('semantic eval grader adversarial boundaries', () => {
     await expect(gradeHtml('<style>#target{background:rgb(180,30,40)}</style><div id="target">危险</div>', assertion)).resolves.toBe(true)
   })
 
+  it('accepts a destructive cue in text or border without requiring a dark red fill', async () => {
+    const assertion: DomAssertion = { kind: 'dom', selector: '#target', dangerStyle: {} }
+    await expect(gradeHtml('<style>#target{background:#eee;color:#222;border:1px solid #ccc}</style><button id="target">Delete</button>', assertion)).resolves.toBe(false)
+    await expect(gradeHtml('<style>#target{background:#fbe9e9;color:#9c3030;border:0}</style><button id="target">Delete</button>', assertion)).resolves.toBe(true)
+    await expect(gradeHtml('<style>#target{background:#fff;color:#222;border:2px solid #b4232f}</style><button id="target">Delete</button>', assertion)).resolves.toBe(true)
+  })
+
+  it('treats descendants of a display-none wrapper as effectively hidden', async () => {
+    const assertion: DomAssertion = { kind: 'dom', selector: '#target', visible: false }
+    await expect(gradeHtml('<div style="display:none"><button id="target">Hidden</button></div>', assertion)).resolves.toBe(true)
+    await expect(gradeHtml('<button id="target">Visible</button>', assertion)).resolves.toBe(false)
+  })
+
   it('requires a focus shadow to differ from the resting state', async () => {
     const assertion: DomAssertion = { kind: 'dom', selector: 'input', focus: true, boxShadow: { minExtentPx: 2, colorDominance: 'blue', requireFocusChange: true } }
     await expect(gradeHtml('<style>input{box-shadow:0 0 0 3px rgba(20,80,255,.3)}</style><input>', assertion)).resolves.toBe(false)

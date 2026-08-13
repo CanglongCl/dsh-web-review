@@ -153,6 +153,7 @@ export function writeOverlay(
   runDir: string,
   task: LoadedEvalTask,
   options: RunOptions,
+  skillRoot = join(REPO_ROOT, 'packages', 'dsh-web-review', 'skills'),
 ): string {
   const taskJson = JSON.stringify(runnerTaskPayload(task, options.arm))
   const overlay = [
@@ -164,7 +165,7 @@ export function writeOverlay(
     '      config:',
     '        taskJson: |-',
     ...taskJson.split('\n').map(line => `          ${line}`),
-    `        skillRoot: ${join(REPO_ROOT, 'packages', 'dsh-web-review', 'skills')}`,
+    `        skillRoot: ${skillRoot}`,
     `        provider: ${options.provider}`,
     `        model: ${options.model}`,
     ...(options.reasoningEffort === undefined ? [] : [`        reasoningEffort: ${options.reasoningEffort}`]),
@@ -236,8 +237,8 @@ export async function launchHeadless(
 }
 
 /** Copy the newest persisted session log from the overlay root into the run dir. */
-export function collectSessionLog(runDir: string): string | undefined {
-  const sessionsRoot = join(runDir, 'sessions')
+export function collectSessionLog(sourceRoot: string, destinationRoot = sourceRoot): string | undefined {
+  const sessionsRoot = join(sourceRoot, 'sessions')
   let newest: { path: string; mtimeMs: number } | undefined
   const walk = (current: string): void => {
     if (!existsSync(current)) return
@@ -252,7 +253,7 @@ export function collectSessionLog(runDir: string): string | undefined {
   }
   walk(sessionsRoot)
   if (newest === undefined) return undefined
-  const destination = join(runDir, 'session.jsonl')
+  const destination = join(destinationRoot, 'session.jsonl')
   cpSync(newest.path, destination)
   return destination
 }

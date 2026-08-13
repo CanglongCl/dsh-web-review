@@ -158,6 +158,8 @@ async function main(): Promise<void> {
         if (record.status !== 'pass') failures.push(task.id)
       } catch (error) {
         const record: RunRecord = {
+          diagnosticValidity: 'invalid',
+          invalidReason: `orchestration-error: ${String(error)}`,
           experimentId: experimentId({ task, arm, repetition, model, repoCommit: currentRepoCommit, harnessCommit: currentHarnessCommit }),
           taskRevision: taskRevision(task),
           executionRevision: executionRevision(),

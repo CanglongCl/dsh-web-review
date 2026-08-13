@@ -121,6 +121,8 @@ export interface DomAssertion {
   colorLuminance?: { property: string; min?: number; max?: number; minAlpha?: number }
   /** Require one RGB channel to exceed the other two by this margin. */
   colorDominance?: { property: string; channel: 'red' | 'green' | 'blue'; margin?: number }
+  /** Accept a visible red cue in background, foreground, or border for destructive actions. */
+  dangerStyle?: { margin?: number }
   /** Require a computed shadow with enough visible extent and optional color character. */
   boxShadow?: { minExtentPx: number; minAlpha?: number; colorDominance?: 'red' | 'green' | 'blue'; margin?: number; requireFocusChange?: boolean }
   /** Require child boxes to span and align across the selected container. */
@@ -129,7 +131,7 @@ export interface DomAssertion {
   centered?: { tolerancePx?: number; maxWidthPx?: number }
   /** Require the rendered number of child items in the first visual row. */
   itemsPerRow?: { childSelector: string; count: number; topTolerancePx?: number }
-  /** Require the element to be rendered and optionally not overlap another target. */
+  /** Require the element to be rendered (true) or effectively hidden (false). */
   visible?: boolean
   doesNotOverlap?: string
   /** Build an accessible-name expectation from text in the nearest ancestor. */
@@ -247,6 +249,9 @@ export interface ProcessStats {
 }
 
 export interface RunRecord {
+  /** Explicit causal-use gate. Missing records are legacy; invalid records stay auditable. */
+  diagnosticValidity?: 'eligible' | 'invalid'
+  invalidReason?: string
   /** Immutable model-execution identity; regrading does not change it. */
   experimentId?: string
   taskRevision?: string
