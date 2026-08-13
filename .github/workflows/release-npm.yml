@@ -1,6 +1,6 @@
 # Build the reviewed DSH bundle once, then publish those exact bytes to the
-# public npm registry. Public dependencies install anonymously; only the
-# publish job receives an npm credential.
+# public npm registry. Public dependencies install anonymously; publishing
+# authenticates with npm Trusted Publishing and a short-lived GitHub OIDC token.
 name: Release (npm)
 
 on:
@@ -104,6 +104,7 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: read
+      id-token: write
     steps:
       - name: Set up Node.js for npm publish
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -147,8 +148,6 @@ jobs:
           ' "$RUNNER_TEMP/dsh-web-review-package.json"
 
       - name: Publish public package
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
         run: >-
           npm publish "${{ steps.artifact.outputs.tarball }}"
           --access public

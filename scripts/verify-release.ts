@@ -62,12 +62,12 @@ if (readFileSync(join(root, '.npmrc'), 'utf8') !== NPMRC) {
 
 const workflow = readFileSync(join(root, '.github', 'workflows', 'release-npm.yml'), 'utf8')
 for (const required of [
-  'secrets.NPM_PUBLISH_TOKEN',
   "NPM_VERSION: '11.19.0'",
   'run: pnpm check',
   'manifest.name !== "@canglongcl/dsh-web-review"',
   'npm publish "${{ steps.artifact.outputs.tarball }}"',
   '--access public',
+  'id-token: write',
 ]) {
   if (!workflow.includes(required)) fail(`release workflow is missing ${required}`)
 }
@@ -83,15 +83,15 @@ for (const forbidden of [
   'npm view "$PACKAGE_IDENTITY"',
   'NPM_BOOTSTRAP_TOKEN',
   'NPM_PUBLISH_MODE',
-  'Trusted Publishing',
   'NPM_READ_TOKEN',
+  'NPM_PUBLISH_TOKEN',
+  'NODE_AUTH_TOKEN',
   '--access restricted',
-  'id-token: write',
 ]) {
   if (workflow.includes(forbidden)) fail(`release workflow must not contain ${forbidden}`)
 }
 if (workflow.includes('pull_request_target')) fail('release workflow must never use pull_request_target')
-if (workflow.includes('secrets.NPM_TOKEN')) fail('release workflow must use distinct read/publish token names')
+if (workflow.includes('secrets.NPM_TOKEN')) fail('release workflow must not use a generic npm token')
 const actionRefs = [...workflow.matchAll(/^\s*uses:\s+\S+@([^\s#]+)/gmu)].map(match => match[1])
 if (actionRefs.length === 0 || actionRefs.some(ref => !/^[0-9a-f]{40}$/u.test(ref ?? ''))) {
   fail('every third-party action must be pinned to a full commit SHA')

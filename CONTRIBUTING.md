@@ -168,7 +168,7 @@ pnpm package:official
 1. PR 与 `main` 运行 npm-only 质量门禁。
 2. 与 `package.json` 版本完全一致的 `v*` tag 才能触发发布。
 3. 发布 Job 使用前一 Job 已校验的 tarball，不重新构建。
-4. 发布 Job 使用职责独立的 `NPM_PUBLISH_TOKEN`，并显式保持 `public`。
+4. 发布 Job 通过 npm Trusted Publishing 使用短期 GitHub OIDC 身份，并显式保持 `public`。
 
 候选版本使用 `next` dist-tag，稳定版本使用 `latest`。创建 tag 前必须单独完成显式 Harness E2E：
 
@@ -178,7 +178,7 @@ git tag -a v<version> -m "dsh-web-review v<version>"
 git push personal v<version>
 ```
 
-发布令牌与 CI 边界的详细配置以 [AGENTS.md](./AGENTS.md) 为准。不要在本文复制真实凭据。
+Trusted Publisher 与 CI 边界的详细配置以 [AGENTS.md](./AGENTS.md) 为准。发布 workflow 不保存 npm 写令牌。
 
 ## 提交变更
 
