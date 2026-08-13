@@ -52,7 +52,7 @@ function describeTask(task: LoadedEvalTask): TaskDescription {
     ...(annotation.viewport === undefined ? {} : { viewport: `${annotation.viewport.width}×${annotation.viewport.height}` }),
   })))
   return {
-    overview: `在 ${task.fixture}（${task.fixtureKind}）中完成 ${task.rounds.length} 轮、${requirements.length} 条真实浏览器批注，重点评估“${task.title}”。`,
+    overview: `模型要在 ${task.fixture} 页面中处理 ${requirements.length} 条由插件真实生成的批注，共 ${task.rounds.length} 轮。主要任务：${task.title}。`,
     requirements,
   }
 }
@@ -141,6 +141,14 @@ async function main(): Promise<void> {
   const fullWins = eligiblePaired.filter(record => record.arm === 'full' && record.status === 'pass').length
   const textWins = eligiblePaired.filter(record => record.arm === 'text-only' && record.status === 'pass').length
   const observedLift = eligiblePaired.length === 0 ? undefined : fullWins - textWins
+  const observedLiftValue = observedLift ?? 0
+  const diagnosticConclusion = eligiblePaired.length === 0
+    ? '正式对比还没有可用结果。需要用当前版本重新运行三种输入方式后，才能判断插件有没有帮助。'
+    : observedLiftValue === 0
+      ? `当前 ${diagnosticScenarios} 道对比题、${pairedGroups} 次重复中，使用插件和只给批注文字的完成数相同，暂时没有观察到插件让模型多完成任务。这说明现有题目还没拉开差距，不代表插件没有价值。`
+      : observedLiftValue > 0
+        ? `当前 ${diagnosticScenarios} 道对比题、${pairedGroups} 次重复中，使用插件比只给批注文字多完成 ${observedLiftValue} 次，观察到了正向帮助。题目数量仍少，结论暂时只适用于这些场景。`
+        : `当前 ${diagnosticScenarios} 道对比题、${pairedGroups} 次重复中，使用插件反而少完成 ${Math.abs(observedLiftValue)} 次，需要先检查失败案例和题目设计，不能据此判断插件有效。`
   const generatedAt = new Date().toISOString()
   const headlineRecords = eligibleDiagnostic.length === 0 ? details : eligibleDiagnostic
   const modelLabels = [...new Set(headlineRecords.map(record => [record.model.provider, record.model.model, record.model.reasoningEffort ?? 'effort 未记录'].join(' / ')))]
@@ -150,7 +158,7 @@ async function main(): Promise<void> {
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>dsh-web-review 插件能力评测报告</title>
+<title>dsh-web-review 评测结果</title>
 <style>
   :root { --bg:#f6f7f9; --card:#fff; --line:#e2e5ea; --text:#24292f; --muted:#57606a; --ok:#1a7f37; --bad:#cf222e; --warn:#9a6700; }
   * { box-sizing: border-box; }
@@ -162,6 +170,11 @@ async function main(): Promise<void> {
   .stat { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
   .stat .value { font-size:22px; font-weight:600; }
   .stat .label { font-size:12px; color:var(--muted); }
+  .plain-summary { margin:20px 28px 0; padding:16px 18px; background:#eef6ff; border:1px solid #b6d7ff; border-radius:10px; line-height:1.6; }
+  .plain-summary strong { display:block; margin-bottom:4px; }
+  .more-data { margin:0 0 20px; padding:12px 14px; background:var(--card); border:1px solid var(--line); border-radius:10px; }
+  .more-data p { margin:8px 0 0; line-height:1.6; }
+  .section-note { margin:-3px 0 12px; line-height:1.55; }
   main { width:100%; min-width:0; padding:0 28px 40px; }
   .filters { display:flex; gap:8px; flex-wrap:wrap; margin:14px 0; }
   .filters select, .filters button { padding:6px 10px; border:1px solid var(--line); border-radius:8px; background:var(--card); font-size:13px; }
@@ -204,48 +217,46 @@ async function main(): Promise<void> {
 </head>
 <body>
 <header>
-  <h1>dsh-web-review · 插件能力评测报告</h1>
-  <div class="meta">模型：<span id="model"></span> · 评测运行时：<span id="runtime"></span> · 记录数：<span id="taskCount"></span> · 生成时间：<span id="generatedAt"></span></div>
+  <h1>dsh-web-review · 评测结果</h1>
+  <div class="meta">使用模型：<span id="model"></span> · DSH 版本：<span id="runtime"></span> · 报告收录 <span id="taskCount"></span> 次运行 · 生成时间：<span id="generatedAt"></span></div>
 </header>
+<div class="plain-summary"><strong>先看结论</strong>${diagnosticConclusion}</div>
 <div class="cards">
-  <div class="stat"><div class="value">${diagnosticScenarios}</div><div class="label">插件诊断场景</div></div>
-  <div class="stat"><div class="value">${pairedGroups}</div><div class="label">三臂配对组</div></div>
-  <div class="stat"><div class="value">${armRate('full')} / ${armRate('text-only')} / ${armRate('oracle')}</div><div class="label">完整 / 仅文本 / Oracle</div></div>
-  <div class="stat"><div class="value">${observedLift === undefined ? '待重跑' : `${observedLift > 0 ? '+' : ''}${observedLift}`}</div><div class="label">完整相对仅文本的成功数提升</div></div>
-  <div class="stat"><div class="value">${diagnostic.length - eligibleDiagnostic.length}</div><div class="label">历史诊断运行（不具因果资格）</div></div>
-  <div class="stat"><div class="value">${smoke.filter(record => record.status === 'pass').length}/${smoke.length}</div><div class="label">协议 Smoke（不代表插件增益）</div></div>
-  <div class="stat"><div class="value">${passed}/${details.length}</div><div class="label">当前标尺兼容结果</div></div>
-  <div class="stat"><div class="value">${tokenWarnings.length}</div><div class="label">可用运行 Token Warning</div></div>
-  <div class="stat"><div class="value" id="totalDuration"></div><div class="label">累计运行时间</div></div>
-  <div class="stat"><div class="value" id="inputTokens"></div><div class="label">输入 Token</div></div>
-  <div class="stat"><div class="value" id="outputTokens"></div><div class="label">输出 Token</div></div>
-  <div class="stat"><div class="value" id="cacheTokens"></div><div class="label">缓存读取 / 写入</div></div>
-  <div class="stat"><div class="value" id="reasoningTokens"></div><div class="label">推理 Token</div></div>
+  <div class="stat"><div class="value">${diagnosticScenarios}</div><div class="label">真正用于比较插件效果的题目</div></div>
+  <div class="stat"><div class="value">${pairedGroups}</div><div class="label">公平对比次数（每次三种输入都跑）</div></div>
+  <div class="stat"><div class="value" style="font-size:17px">插件 ${armRate('full')} · 文字 ${armRate('text-only')} · 理想 ${armRate('oracle')}</div><div class="label">三种输入方式各自完成数</div></div>
+  <div class="stat"><div class="value">${observedLift === undefined ? '还没结果' : `${observedLift > 0 ? '+' : ''}${observedLift}`}</div><div class="label">使用插件比只有文字多完成几次</div></div>
+  <div class="stat"><div class="value">${smoke.filter(record => record.status === 'pass').length}/${smoke.length}</div><div class="label">基础批注任务通过数（只说明链路能跑通）</div></div>
+  <div class="stat"><div class="value">${tokenWarnings.length}</div><div class="label">Token 用量超出预期的运行</div></div>
 </div>
 <main>
-  <p class="meta">结论口径：协议 Smoke 只验证批注链路和当前 grader 可执行。只有使用盲化实验臂、隔离 workspace、显式模型 effort 和不可变 experiment ID 的新运行才进入插件诊断汇总；旧运行保留供审计，但不再用于因果结论。</p>
+  <details class="more-data"><summary>更多运行数据与统计说明</summary>
+    <p class="meta">全部记录按当前检查规则通过 ${passed}/${details.length}。其中 ${diagnostic.length - eligibleDiagnostic.length} 次旧版对比只保留供排查问题，不参与上面的插件效果结论。累计运行 <span id="totalDuration"></span>；输入/输出 Token 为 <span id="inputTokens"></span> / <span id="outputTokens"></span>；缓存读取/写入为 <span id="cacheTokens"></span>；推理 Token 为 <span id="reasoningTokens"></span>。</p>
+    <p class="meta">为什么有些运行不参与结论：正式对比要求三种输入使用同一模型和代码版本、明确记录推理强度，并且模型不能知道自己属于哪一组。不满足这些条件的旧结果仍可查看，但不能公平比较插件效果。</p>
+  </details>
   <div class="filters">
-    <select id="fCategory"><option value="">全部类别</option></select>
+    <select id="fCategory"><option value="">全部考察内容</option></select>
     <select id="fDifficulty"><option value="">全部难度</option><option value="easy">简单</option><option value="medium">中等</option><option value="hard">困难</option><option value="long">长任务</option></select>
-    <select id="fFixture"><option value="">全部应用</option></select>
-    <select id="fArm"><option value="">全部实验臂</option><option value="full">完整插件</option><option value="text-only">仅文本</option><option value="oracle">理想上下文</option></select>
-    <select id="fStatus"><option value="">全部状态</option><option value="pass">通过</option><option value="fail">未通过</option><option value="timeout">超时</option><option value="error">错误</option></select>
-    <select id="fBudget"><option value="">全部 Token</option><option value="warning">仅看超预算</option><option value="normal">仅看预算内</option></select>
+    <select id="fFixture"><option value="">全部测试页面</option></select>
+    <select id="fArm"><option value="">全部输入方式</option><option value="full">使用插件</option><option value="text-only">只有批注文字</option><option value="oracle">已知正确位置</option></select>
+    <select id="fStatus"><option value="">全部结果</option><option value="pass">完成</option><option value="fail">未完成</option><option value="timeout">超时</option><option value="error">运行出错</option></select>
+    <select id="fBudget"><option value="">全部 Token 用量</option><option value="warning">只看超出预期</option><option value="normal">只看预期内</option></select>
     <button id="fReset">重置</button>
   </div>
-  <h2 class="section">插件能力配对诊断</h2>
+  <h2 class="section">插件到底有没有帮助</h2>
+  <p class="meta section-note">同一道题分别用三种信息输入运行：只有批注文字、使用插件完整批注、直接告诉模型正确文件位置。前两者用于判断插件是否有帮助，第三种只作为理想上限参考。</p>
   <div class="table-scroll">
   <table class="pair-table">
-    <thead><tr><th>题目</th><th>重复</th><th>仅文本</th><th>完整插件</th><th>Oracle</th><th>完整 − 仅文本</th><th>Oracle − 完整</th><th>步骤差</th><th>耗时差</th></tr></thead>
+    <thead><tr><th>题目</th><th>第几次</th><th>只有批注文字</th><th>使用插件</th><th>已知正确位置</th><th>插件多完成几次</th><th>距离理想结果</th><th>步骤变化</th><th>用时变化</th></tr></thead>
     <tbody id="pairBody"></tbody>
   </table>
   </div>
-  <h2 class="section">单次运行明细</h2>
+  <h2 class="section">每次运行的详细结果</h2>
   <div class="table-scroll">
   <table class="runs-table">
     <thead><tr>
-      <th>题目</th><th>实验臂</th><th>重复</th><th>题目描述</th><th>能力类别</th><th>难度</th><th>应用</th><th>状态</th>
-      <th>步骤</th><th>工具调用</th><th>首次写入</th><th>Token / 预期</th><th>耗时</th><th>失败归因</th><th>对话日志</th>
+      <th>题目</th><th>拿到的信息</th><th>第几次</th><th>要完成什么</th><th>主要考察</th><th>难度</th><th>测试页面</th><th>结果</th>
+      <th>模型步骤</th><th>工具调用</th><th>从第几步开始改文件</th><th>Token / 预期</th><th>耗时</th><th>没通过的原因</th><th>完整过程</th>
     </tr></thead>
     <tbody id="tbody"></tbody>
   </table>
@@ -271,11 +282,12 @@ document.getElementById('inputTokens').textContent = fmt(TOTALS.input);
 document.getElementById('outputTokens').textContent = fmt(TOTALS.output);
 document.getElementById('cacheTokens').textContent = fmt(TOTALS.cacheRead) + ' / ' + fmt(TOTALS.cacheWrite);
 document.getElementById('reasoningTokens').textContent = fmt(TOTALS.reasoning);
-const STATUS = { pass:'通过', fail:'未通过', timeout:'超时', error:'运行错误' };
-const ARM = { full:'完整插件', 'text-only':'仅文本', oracle:'Oracle' };
-const CATEGORY = { 'protocol-smoke':'协议冒烟', 'multi-target':'多目标定位', 'scope-resolution':'作用域判断', 'anchor-fallback':'无源码锚点回退', responsive:'响应式', semantics:'语义与无障碍', iterative:'多轮修正', 'tool-ownership':'工具归属', trust:'信任边界' };
+const STATUS = { pass:'完成', fail:'未完成', timeout:'超时', error:'运行出错' };
+const ARM = { full:'使用插件', 'text-only':'只有批注文字', oracle:'已知正确位置' };
+const CATEGORY = { 'protocol-smoke':'基础链路', 'multi-target':'一次处理多个位置', 'scope-resolution':'判断该改哪里', 'anchor-fallback':'没有源码位置时自行查找', responsive:'不同屏幕尺寸', semantics:'语义和无障碍', iterative:'连续多轮修改', 'tool-ownership':'判断修改哪个项目', trust:'识别不可信页面信息' };
 const DIFFICULTY = { easy:'简单', medium:'中等', hard:'困难', long:'长任务' };
-const ATTRIBUTION = { 'not-modified':'未修改', localization:'定位错误', 'wrong-value':'结果不符', timeout:'超时', 'runtime-error':'运行错误', unknown:'—' };
+const ATTRIBUTION = { 'not-modified':'没有改到目标', localization:'找错了修改位置', 'wrong-value':'改出的结果不符合要求', timeout:'运行超时', 'runtime-error':'DSH 或检查程序出错', unknown:'—' };
+const END_REASON = { completed:'正常完成', 'max-tokens':'回复达到长度上限', cancelled:'被取消', error:'运行出错' };
 const categories = [...new Set(DATA.map(d => d.category))].sort();
 const fixtures = [...new Set(DATA.map(d => d.fixture))].sort();
 for (const c of categories) { const o = document.createElement('option'); o.value = c; o.textContent = CATEGORY[c] ?? c; document.getElementById('fCategory').appendChild(o); }
@@ -313,7 +325,7 @@ function renderPairs(rows) {
     const deltaClass = n => n > 0 ? 'delta-positive' : n < 0 ? 'delta-negative' : '';
     return '<tr><td>' + esc(row.taskId) + '</td><td>' + esc(row.repetition) + '</td><td>' + armBadge(text) + '</td><td>' + armBadge(full) + '</td><td>' + armBadge(oracle) + '</td>'
       + '<td class="' + deltaClass(fullLift) + '">' + signed(fullLift) + '</td><td class="' + (oracleGap > 0 ? 'delta-negative' : oracleGap < 0 ? 'delta-positive' : '') + '">' + signed(oracleGap) + '</td>'
-      + '<td>完整−文本 ' + signed(stepLift) + ' · Oracle−完整 ' + signed(stepGap) + '</td><td>完整−文本 ' + signed(durationLift) + ' 秒 · Oracle−完整 ' + signed(durationGap) + ' 秒</td></tr>';
+      + '<td>插件比文字 ' + signed(stepLift) + ' · 理想结果比插件 ' + signed(stepGap) + '</td><td>插件比文字 ' + signed(durationLift) + ' 秒 · 理想结果比插件 ' + signed(durationGap) + ' 秒</td></tr>';
   }).join('');
 }
 function render() {
@@ -345,7 +357,7 @@ function render() {
       + '<td>' + (d.process?.steps ?? '—') + '</td>'
       + '<td>' + Object.values(d.process?.toolCalls ?? {}).reduce((a,b)=>a+b,0) + '</td>'
       + '<td>' + (d.process?.firstWriteStep ?? '—') + '</td>'
-      + '<td>' + (tokens ? fmt(usage)+' / '+fmt(d.tokenBudget.expected) + (warning ? ' <span class="badge warning">超预算</span>' : '') : '—') + '</td>'
+      + '<td>' + (tokens ? fmt(usage)+' / '+fmt(d.tokenBudget.expected) + (warning ? ' <span class="badge warning">超出预期</span>' : '') : '—') + '</td>'
       + '<td>' + (d.durationMs/1000).toFixed(0) + ' 秒</td>'
       + '<td>' + esc(ATTRIBUTION[d.attribution] ?? d.attribution ?? '') + '</td>'
       + '<td>' + (d.sessionLogHref ? '<span class="log-actions"><button class="link-button" data-command="' + esc(d.viewerCommand) + '" onclick="event.stopPropagation();copyDshCommand(this.dataset.command)">复制 DSH 命令</button><a href="' + esc(d.sessionLogHref) + '" target="_blank" onclick="event.stopPropagation()">原始 JSONL</a></span>' : '—') + '</td></tr>';
@@ -365,39 +377,43 @@ function openDetail(runKey) {
   const tokens = d.process?.tokens;
   const toolLines = Object.entries(d.process?.toolCalls ?? {}).map(([name,count]) => name + ' × ' + count).join('，');
   const graderLines = (d.grader?.results ?? []).map(r => '<li>' + esc(r.ok ? '✓' : '✗') + ' ' + esc(r.expected) + ' → ' + esc(r.measured) + '</li>').join('');
+  const graderPassed = (d.grader?.results ?? []).filter(r => r.ok).length;
+  const graderTotal = d.grader?.results?.length ?? 0;
   const requirementLines = d.taskDescription.requirements.map(r => {
-    const metadata = ['第 ' + r.round + ' 轮', '目标 ' + r.target, r.viewport ? '视口 ' + r.viewport : '', r.adjustments.length ? '指定调整：' + r.adjustments.join('，') : '', r.skills.length ? 'Skills：' + r.skills.join('，') : ''].filter(Boolean).join(' · ');
+    const metadata = ['第 ' + r.round + ' 轮', '页面元素：' + r.target, r.viewport ? '页面尺寸：' + r.viewport : '', r.adjustments.length ? '指定调整：' + r.adjustments.join('，') : '', r.skills.length ? '辅助说明：' + r.skills.join('，') : ''].filter(Boolean).join(' · ');
     return '<li>' + esc(r.comment) + '<div class="requirement-meta">' + esc(metadata) + '</div></li>';
   }).join('');
   document.getElementById('detailBody').innerHTML =
-    '<h2>' + esc(d.taskId) + ' · ' + esc(ARM[d.arm] ?? d.arm) + ' · 第 ' + esc(d.repetition) + ' 次 · ' + esc(d.title) + '</h2>'
+    '<h2>' + esc(d.taskId) + ' · ' + esc(d.title) + '</h2>'
     + '<p class="meta">' + esc(d.fixture) + ' / ' + esc(CATEGORY[d.category] ?? d.category) + ' / ' + esc(DIFFICULTY[d.difficulty] ?? d.difficulty)
     + ' · <span class="badge ' + d.status + '">' + esc(STATUS[d.status] ?? d.status) + '</span>'
-    + ' · ' + esc(ATTRIBUTION[d.attribution] ?? d.attribution ?? '') + ' · ' + (d.durationMs/1000).toFixed(1) + ' 秒 · 退出码 ' + d.exitCode + '</p>'
-    + '<h3>题目描述</h3><p>' + esc(d.taskDescription.overview) + '</p><ol class="requirements">' + requirementLines + '</ol>'
+    + ' · 输入方式：' + esc(ARM[d.arm] ?? d.arm) + ' · 第 ' + esc(d.repetition) + ' 次运行 · ' + (d.durationMs/1000).toFixed(1) + ' 秒</p>'
+    + (d.status === 'pass' ? '' : '<p><strong>没通过的原因：</strong>' + esc(ATTRIBUTION[d.attribution] ?? d.attribution ?? '暂未判断') + '</p>')
+    + '<h3>模型要完成什么</h3><p>' + esc(d.taskDescription.overview) + '</p><ol class="requirements">' + requirementLines + '</ol>'
     + (d.sessionLogHref ? '<p class="log-actions"><button class="link-button" data-command="' + esc(d.viewerCommand) + '" onclick="copyDshCommand(this.dataset.command)">复制“用正式版 DSH 查看”命令</button><a href="' + esc(d.sessionLogHref) + '" target="_blank">打开原始 JSONL</a>' + (d.process?.sessionId ? ' <span class="meta">会话：' + esc(d.process.sessionId) + '</span>' : '') + '</p>' : '')
-    + '<p class="meta">实验 ID：' + esc(d.experimentId ?? '旧记录（无不可变 ID）')
-    + ' · 原始状态：' + esc(STATUS[d.originalStatus] ?? d.originalStatus ?? '未记录')
-    + ' · 当前评分时间：' + esc(d.gradedAt ?? '未记录')
-    + ' · Grader：' + esc(d.graderRevision ?? '未记录') + '</p>'
-    + '<h3>模型</h3><p class="meta">' + esc([d.model.provider, d.model.model, d.model.reasoningEffort ?? ''].filter(Boolean).join(' · ')) + '</p>'
-    + '<h3>Token 用量</h3><p class="meta">输入 ' + fmt(tokens?.input ?? 0) + ' · 输出 ' + fmt(tokens?.output ?? 0)
+    + '<h3>模型和 Token 用量</h3><p class="meta">' + esc([d.model.provider, d.model.model, d.model.reasoningEffort ? '推理强度 ' + d.model.reasoningEffort : '推理强度未记录'].join(' · ')) + '</p>'
+    + '<p class="meta">输入 ' + fmt(tokens?.input ?? 0) + ' · 输出 ' + fmt(tokens?.output ?? 0)
     + ' · 缓存读取/写入 ' + fmt(tokens?.cacheRead ?? 0) + '/' + fmt(tokens?.cacheWrite ?? 0)
     + ' · 推理 ' + fmt(tokens?.reasoning ?? 0)
     + ' · 有用量记录的步骤 ' + (tokens?.stepsWithUsage ?? 0) + '/' + (tokens?.assistantSteps ?? 0) + '</p>'
-    + '<p class="meta">预算口径（输入 + 输出）：实际 ' + fmt(budgeted(d) ?? 0) + ' · 预期 ' + fmt(d.tokenBudget.expected) + ' · Warning 阈值 ' + fmt(d.tokenBudget.warnAbove)
-    + (tokenWarning(d) ? ' <span class="badge warning">超预算</span>' : '') + '</p>'
-    + '<h3>执行过程</h3><p class="meta">轮次 ' + (d.process?.turns ?? '—') + ' · 步骤 ' + (d.process?.steps ?? '—')
-    + ' · 首次工具调用：第 ' + (d.process?.firstToolCallStep ?? '—') + ' 步 · 首次写入：第 ' + (d.process?.firstWriteStep ?? '—') + ' 步'
-    + ' · 结束原因：' + esc(d.process?.endReason ?? '') + '</p>'
-    + '<p class="meta">工具：' + esc(toolLines || '无') + '</p>'
-    + '<p class="meta">显式 read 工具路径：' + esc((d.process?.filesRead ?? []).join('，') || '无') + '</p>'
-    + '<p class="meta">修改文件：' + esc(d.modifiedFiles.join('，') || '无') + '</p>'
-    + '<h3>评分证据</h3>' + (graderLines ? '<ul>' + graderLines + '</ul>' : '<p class="meta">无评分证据</p>')
+    + '<p class="meta">本报告用“输入 + 输出”判断是否超出预期：实际 ' + fmt(budgeted(d) ?? 0) + ' · 通常预期 ' + fmt(d.tokenBudget.expected) + ' · 超过 ' + fmt(d.tokenBudget.warnAbove) + ' 时提醒'
+    + (tokenWarning(d) ? ' <span class="badge warning">超出预期</span>' : '') + '</p>'
+    + '<h3>模型是怎么做的</h3><p class="meta">共 ' + (d.process?.turns ?? '—') + ' 轮对话、' + (d.process?.steps ?? '—') + ' 个模型步骤'
+    + ' · 第 ' + (d.process?.firstToolCallStep ?? '—') + ' 步首次使用工具 · 第 ' + (d.process?.firstWriteStep ?? '—') + ' 步开始改文件'
+    + ' · 最终状态：' + esc(END_REASON[d.process?.endReason] ?? d.process?.endReason ?? '未记录') + '</p>'
+    + '<p class="meta">使用过的工具：' + esc(toolLines || '无') + '</p>'
+    + '<p class="meta">模型明确打开过的文件（不含搜索和命令读取）：' + esc((d.process?.filesRead ?? []).join('，') || '无') + '</p>'
+    + '<p class="meta">最终修改的文件：' + esc(d.modifiedFiles.join('，') || '无') + '</p>'
+    + '<h3>自动检查结果</h3>' + (graderLines ? '<p>通过 ' + graderPassed + '/' + graderTotal + ' 项检查。</p><details><summary>查看每项检查的技术明细</summary><ul>' + graderLines + '</ul></details>' : '<p class="meta">没有自动检查结果</p>')
     + '<h3>模型最终回复</h3><pre>' + esc(d.process?.finalText ?? '') + '</pre>'
-    + (d.trace ? '<h3>执行轨迹</h3>' + (d.traceHref ? '<p><a href="' + esc(d.traceHref) + '" target="_blank">单独打开轨迹文件</a></p>' : '') + '<pre>' + esc(d.trace) + '</pre>' : '')
-    + (d.diff ? '<h3>工作区差异</h3><pre>' + esc(d.diff) + '</pre>' : '')
-    + (d.stderr ? '<h3>标准错误输出</h3><pre>' + esc(d.stderr) + '</pre>' : '');
+    + (d.trace ? '<details><summary>查看模型思考和完整工具调用</summary>' + (d.traceHref ? '<p><a href="' + esc(d.traceHref) + '" target="_blank">在单独页面打开</a></p>' : '') + '<pre>' + esc(d.trace) + '</pre></details>' : '')
+    + '<details><summary>复现和排查信息</summary><p class="meta">运行 ID：' + esc(d.experimentId ?? '旧记录（没有完整运行 ID）')
+    + ' · 当时结果：' + esc(STATUS[d.originalStatus] ?? d.originalStatus ?? '未记录')
+    + ' · 最近检查时间：' + esc(d.gradedAt ?? '未记录')
+    + ' · 检查规则版本：' + esc(d.graderRevision ?? '未记录')
+    + ' · 进程退出码：' + esc(d.exitCode) + '</p></details>'
+    + (d.diff ? '<h3>文件改动摘要</h3><pre>' + esc(d.diff) + '</pre>' : '')
+    + (d.stderr ? '<details><summary>查看运行错误输出</summary><pre>' + esc(d.stderr) + '</pre></details>' : '');
   document.getElementById('detail').classList.add('open');
 }
 document.getElementById('detail').addEventListener('click', e => { if (e.target === document.getElementById('detail')) document.getElementById('detail').classList.remove('open'); });
