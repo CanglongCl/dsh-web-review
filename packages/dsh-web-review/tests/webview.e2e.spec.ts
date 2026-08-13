@@ -92,11 +92,11 @@ async function sendViaComposer(page: Page, text: string): Promise<void> {
 }
 
 async function openLastContext(page: Page): Promise<import('playwright').Locator> {
-  const rows = page.locator('[data-chat-flow-kind="context"]')
+  const rows = page.locator('[data-chat-flow-kind="context"]').filter({ hasText: 'Page comments' })
   await expect.poll(async () => rows.count(), { timeout: 30_000 }).toBeGreaterThan(0)
   const row = rows.last()
-  await row.getByText('Context injection', { exact: true }).click()
-  const body = row.locator('[data-context-injection-body]')
+  await row.getByText('Page comments', { exact: true }).click()
+  const body = row.locator('[data-browser-comments-context]')
   await body.waitFor({ timeout: 10_000 })
   return body
 }
@@ -403,13 +403,10 @@ describe('dsh-web-review e2e', () => {
     await sendViaComposer(page, 'apply selected skill')
     await clickWhenStable(page, page.getByRole('tab', { name: 'Chat' }))
     const skillSources = page.locator('[data-context-source]:visible').filter({ hasText: 'better-writing' })
-    const pluginSources = page.locator('[data-context-source]:visible').filter({ hasText: 'dsh-web-review' })
     await expect.poll(async () => skillSources.count(), { timeout: 30_000 }).toBeGreaterThan(0)
-    await expect.poll(async () => pluginSources.count(), { timeout: 30_000 }).toBeGreaterThan(0)
-    const firstCommentsRow = pluginSources.first()
-      .locator('xpath=ancestor::*[@data-chat-flow-kind="context"][1]')
-    await firstCommentsRow.getByText('Context injection', { exact: true }).click()
-    expect(await firstCommentsRow.locator('[data-context-injection-body]').textContent())
+    const firstCommentsRow = page.locator('[data-chat-flow-kind="context"]').filter({ hasText: 'Page comments' }).first()
+    await firstCommentsRow.getByText('Page comments', { exact: true }).click()
+    expect(await firstCommentsRow.locator('[data-browser-comments-context]').textContent())
       .toContain('Apply the selected writing guidance.')
     await page.close()
   })
@@ -668,12 +665,12 @@ describe('dsh-web-review e2e', () => {
 
     await clickWhenStable(page, page.getByRole('tab', { name: 'Chat' }))
     const contextText = await (await openLastContext(page)).textContent()
-    expect(contextText).toContain('Browser annotation:')
-    expect(contextText).toContain('Visible viewport at edit time:')
-    expect(contextText).toContain('- color: rgb(255, 255, 255) -> #613838')
-    expect(contextText).toContain(`- width: ${original.width} -> auto`)
-    expect(contextText).toContain('- text: "魔法 UI 演示页" -> "Reviewed magic UI"')
-    expect(contextText).not.toContain('- font-size:')
+    expect(contextText).toContain('Use the reviewed heading treatment.')
+    expect(contextText).toContain('colorrgb(255, 255, 255)→#613838')
+    expect(contextText).toContain(`width${original.width}→auto`)
+    expect(contextText).toContain('Text魔法 UI 演示页→Reviewed magic UI')
+    expect(contextText).not.toContain('Visible viewport at edit time:')
+    expect(contextText).not.toContain('font-size24px')
     await page.close()
   })
 
@@ -720,12 +717,10 @@ describe('dsh-web-review e2e', () => {
 
     const contextBody = await openLastContext(page)
     const contextText = await contextBody.textContent()
-    expect(contextText).toContain('# Browser comments')
-    expect(contextText).toContain('untrusted page evidence')
-    expect(contextText).toContain('Comment (user-authored)')
     expect(contextText).toContain('Make the button color darker.')
-    expect(await contextBody.locator('[data-context-fields] dt').allTextContents()).toContain('plugin')
-    expect(await contextBody.locator('[data-context-fields] dd').allTextContents()).toContain('dsh-web-review')
+    expect(contextText).not.toContain('# Browser comments')
+    expect(contextText).not.toContain('dsh-web-review')
+    expect(contextText).not.toContain('sent')
 
     const userRows = page.locator('[data-chat-flow-kind="user"]')
     const user = userRows.filter({ hasText: 'apply' }).last()

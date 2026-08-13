@@ -93,6 +93,14 @@ This creates two distinct logged records:
 2. a **Context injection** record sourced from `dsh-web-review`, appended to the
    entered `agent/pre-step` message batch before the model request starts.
 
+When the matching client plugin is installed, that durable record uses the
+native compact disclosure row: page title and annotation count when collapsed,
+then ordered targets, user comments, requested before/after values, and source
+anchors when expanded. Delivery badges, snapshot ids, selectors, viewport
+evidence, and raw model-facing Markdown stay out of the normal transcript UI.
+Older, malformed, foreign, or renderer-less records keep the Harness generic
+Context disclosure.
+
 Each non-empty snapshot says that it supersedes older browser-comment
 snapshots. Clearing before send removes pending state and injects nothing. Identical
 snapshots are deduplicated per live session, and session state is released on

@@ -338,7 +338,11 @@ describe('pending annotation admission', () => {
     expect(decision.messages).toHaveLength(2)
     expect(decision.messages[0]).toBe(existing)
     expect(decision.messages[1]).toMatchObject({
-      source: { kind: 'plugin', plugin: 'dsh-web-review', snapshotId: expect.any(String) },
+      source: {
+        kind: 'plugin', plugin: 'dsh-web-review', form: 'browser-comments',
+        snapshotId: expect.any(String),
+        presentation: { page: snapshot().page, comments: [expect.objectContaining({ id: 'pick-1' })] },
+      },
       content: [{ type: 'text', text: expect.stringContaining('# Browser comments') }],
     })
     expect(state.has(SessionId('session-1'))).toBe(true)
@@ -391,7 +395,10 @@ describe('pending annotation admission', () => {
       source: { kind: 'skill-invocation', name: 'better-writing', form: 'instructions' },
     })
     expect(decision.messages[1]).toMatchObject({
-      source: { kind: 'plugin', plugin: 'dsh-web-review', snapshotId: expect.any(String) },
+      source: {
+        kind: 'plugin', plugin: 'dsh-web-review', form: 'browser-comments',
+        snapshotId: expect.any(String), presentation: expect.any(Object),
+      },
       content: [{ type: 'text', text: expect.stringContaining('# Browser comments') }],
     })
   })

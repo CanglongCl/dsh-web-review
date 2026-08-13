@@ -11,6 +11,7 @@
     "src/css-modules.d.ts",
     "src/annotation-contract.ts",
     "src/annotation-properties.ts",
+    "src/browser-comments-context.ts",
     "src/preview-contract.ts",
     "src/proxy-url.ts",
     "src/ui-skills.ts"

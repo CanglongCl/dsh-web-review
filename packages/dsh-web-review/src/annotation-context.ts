@@ -32,6 +32,11 @@ import { isEditableStyleProperty, isSafeAnnotationStyleValue } from './annotatio
 import { isPreviewableUrl } from './proxy-url.ts'
 import { readRequestBytes } from './proxy-transport.ts'
 import { isUiSkillName, type UiSkillName } from './ui-skills.ts'
+import {
+  browserCommentsPresentationOf,
+  type BrowserCommentsContextSource,
+  type BrowserCommentsPresentation,
+} from './browser-comments-context.ts'
 
 /** Plugin provenance recorded on every injected context message. */
 export const ANNOTATION_SOURCE = { kind: 'plugin', plugin: 'dsh-web-review' } as const
@@ -39,6 +44,7 @@ export const ANNOTATION_SOURCE = { kind: 'plugin', plugin: 'dsh-web-review' } as
 export interface PendingAnnotationContext {
   snapshotId: AnnotationSnapshotIdType
   context: string
+  presentation: BrowserCommentsPresentation
   selectedSkills: UiSkillName[]
 }
 
@@ -346,6 +352,7 @@ export function storeAnnotationSnapshot(
   const pending = {
     snapshotId: AnnotationSnapshotId(randomUUID()),
     context,
+    presentation: browserCommentsPresentationOf(snapshot),
     selectedSkills: [...snapshot.selectedSkills],
   }
   state.set(agent.id, pending)
@@ -448,8 +455,16 @@ export async function attachPendingAnnotationContext(
       content: [{ type: 'text', text: renderSkillContent(skill) }],
     }))
   }
+  const annotationSource: BrowserCommentsContextSource = {
+    ...ANNOTATION_SOURCE,
+    form: 'browser-comments',
+    snapshotId: pending.snapshotId,
+    presentation: pending.presentation,
+  }
   const annotation = createUserMessage({
-    source: { ...ANNOTATION_SOURCE, snapshotId: pending.snapshotId },
+    // The pinned rc.2 npm declaration predates merge-extensible Context forms;
+    // the reviewed Harness source validates this exact augmentation directly.
+    source: annotationSource as unknown as UserMessage['source'],
     content: [{ type: 'text', text: pending.context }],
   })
   const reminder = reminders.length === 0 ? [] : [createUserMessage({

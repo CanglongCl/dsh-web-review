@@ -54,6 +54,7 @@ dsh web
 ### AI Collaboration
 
 - Annotations are injected as independent context alongside your prompt.
+- Page comments use DSH's native transcript disclosure: page and count when collapsed, then targets, intent, before/after values, and available source clues when expanded.
 - The agent updates source code in the current workspace; temporary page adjustments do not modify project files directly.
 
 ### UI Design Skills

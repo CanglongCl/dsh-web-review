@@ -2,8 +2,10 @@
 import {
   cloneElement,
   forwardRef,
+  type KeyboardEvent,
   type InputHTMLAttributes,
   type ReactElement,
+  type ReactNode,
   type SVGProps,
 } from 'react'
 
@@ -51,6 +53,37 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
   },
 )
 
+export function DisclosureRow({
+  icon, title, open, expandable, onToggle, collapsedContent, children, keepContentWhenOpen,
+}: {
+  icon: ReactNode
+  title: string
+  open: boolean
+  expandable: boolean
+  onToggle: () => void
+  collapsedContent?: ReactNode
+  children?: ReactNode
+  keepContentWhenOpen?: boolean
+  expandOnRowClick?: boolean
+  className?: string
+  chevronClassName?: string
+}) {
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    onToggle()
+  }
+  return (
+    <div data-open={open || undefined}>
+      <div role={expandable ? 'button' : undefined} tabIndex={expandable ? 0 : undefined}
+        aria-expanded={expandable ? open : undefined} onClick={onToggle} onKeyDown={onKeyDown}>
+        {icon}<span>{title}</span>{(keepContentWhenOpen || !open) && collapsedContent}
+      </div>
+      {open && children}
+    </div>
+  )
+}
+
 type IconProperties = SVGProps<SVGSVGElement> & { size?: number }
 function icon(name: string) {
   return function TestIcon({ size = 16, ...properties }: IconProperties) {
@@ -59,6 +92,7 @@ function icon(name: string) {
 }
 
 export const IconCheckOutline16 = icon('check')
+export const IconBrowseOutline16 = icon('browse')
 export const IconChevronDownOutline14 = icon('chevron-down')
 export const IconChevronLeftOutline14 = icon('chevron-left')
 export const IconChevronRightOutline14 = icon('chevron-right')
