@@ -17,10 +17,10 @@ export interface ArmContextText {
 /** Render user intent while deliberately excluding every localization field. */
 export function formatTextOnlyContext(snapshot: ValidatedSnapshot): string {
   const lines = [
-    '# Browser comments (text-only eval arm)',
+    '# Browser comments',
     '',
-    'Apply the following user-authored comments and requested values.',
-    'Target selectors, paths, labels, source anchors, page evidence, viewports, and original values are intentionally unavailable.',
+    'The following full snapshot supersedes earlier Browser comments snapshots for this turn.',
+    'Apply the user-authored comments and requested values.',
   ]
   snapshot.comments.forEach((comment, index) => {
     lines.push('', `## User Comment ${index + 1}`)
@@ -38,7 +38,7 @@ export function formatTextOnlyContext(snapshot: ValidatedSnapshot): string {
 /** Produce the logged plugin context messages for one diagnostic arm. */
 export function armContextTexts(arm: EvalArm, snapshot: ValidatedSnapshot, productionContext: string, oracleContext?: string): ArmContextText[] {
   const primary = arm === 'text-only'
-    ? { plugin: 'dsh-web-review-eval-text-only', text: formatTextOnlyContext(snapshot) }
+    ? { plugin: 'dsh-web-review', text: formatTextOnlyContext(snapshot) }
     : { plugin: 'dsh-web-review', text: productionContext }
   if (arm !== 'oracle') return [primary]
   if (oracleContext === undefined || oracleContext.trim() === '') throw new Error('oracle arm needs source hints')

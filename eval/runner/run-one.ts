@@ -2,7 +2,9 @@
  * One task run: stage the workspace, launch headless DSH, collect the session
  * log, grade the result, and assemble the full RunRecord with evidence.
  */
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { analyzeSession } from '../process-stats.ts'
 import { grade, gradeVariant, serveFixtureDir } from '../grader.ts'
@@ -21,6 +23,7 @@ import {
 } from './runner.ts'
 import { materializeEvalRunnerLink } from '../../scripts/eval-profile-link.ts'
 import { REPO_ROOT } from './runner.ts'
+import { executionRevision, experimentId, graderRevision, taskRevision } from '../identity.ts'
 
 export interface RunOneOptions extends RunOptions {
   /** Reuse an existing staged run dir instead of creating a fresh one. */
@@ -32,7 +35,8 @@ export interface RunOneOptions extends RunOptions {
 }
 
 export function runDirFor(taskId: string, arm: LoadedEvalTask['arms'][number], repetition: number): string {
-  return join(ARTIFACTS_ROOT, `${taskId}-${arm}-r${repetition}-${Date.now()}`)
+  void taskId; void arm; void repetition
+  return join(ARTIFACTS_ROOT, `run-${randomUUID()}`)
 }
 
 /**
@@ -42,7 +46,9 @@ export function runDirFor(taskId: string, arm: LoadedEvalTask['arms'][number], r
 export async function runTaskOnce(task: LoadedEvalTask, options: RunOneOptions): Promise<RunRecord> {
   const startedAt = new Date().toISOString()
   const runDir = options.runDir ?? runDirFor(task.id, options.arm, options.repetition)
-  const workspaceDir = join(runDir, 'workspace')
+  const persistedWorkspaceDir = join(runDir, 'workspace')
+  const isolatedRoot = options.skipLaunch === true ? undefined : mkdtempSync(join(tmpdir(), 'workspace-'))
+  const workspaceDir = isolatedRoot ?? persistedWorkspaceDir
   const dshHome = join(runDir, 'dsh-home')
   if (!options.skipLaunch && task.rounds.some(round => round.snapshot === undefined)) {
     throw new Error(`task ${task.id} has an unfrozen round; run pnpm eval:capture first`)
@@ -59,7 +65,7 @@ export async function runTaskOnce(task: LoadedEvalTask, options: RunOneOptions):
 
   if (!options.skipLaunch) {
     const overlayPath = writeOverlay(runDir, task, options)
-    const launch = await launchHeadless(runDir, overlayPath, task, dshHome, options)
+    const launch = await launchHeadless(workspaceDir, overlayPath, task, dshHome, options)
     exitCode = launch.exitCode
     if (launch.timedOut) {
       status = 'timeout'
@@ -112,7 +118,26 @@ export async function runTaskOnce(task: LoadedEvalTask, options: RunOneOptions):
   const diff = diffWorkspace(task, workspaceDir)
   writeFileSync(join(runDir, 'diff.txt'), diff.text)
 
+  if (isolatedRoot !== undefined) {
+    cpSync(workspaceDir, persistedWorkspaceDir, { recursive: true })
+    rmSync(isolatedRoot, { recursive: true, force: true })
+  }
+
+  const model = modelRecord(options)
+  const repo = repoCommit()
+  const harness = harnessCommit(options.harnessRoot)
+  const executionStatus = exitCode === 0 && stats?.endReason === 'completed'
+    ? 'completed'
+    : status === 'timeout' ? 'timeout' : 'error'
+
   return {
+    experimentId: experimentId({ task, arm: options.arm, repetition: options.repetition, model, repoCommit: repo, harnessCommit: harness }),
+    taskRevision: taskRevision(task),
+    executionRevision: executionRevision(),
+    graderRevision: graderRevision(task),
+    gradedAt: new Date().toISOString(),
+    originalStatus: status,
+    executionStatus,
     taskId: task.id,
     fixture: task.fixture,
     fixtureKind: task.fixtureKind,
@@ -125,14 +150,14 @@ export async function runTaskOnce(task: LoadedEvalTask, options: RunOneOptions):
     attribution,
     ...(grader === undefined ? {} : { grader }),
     ...(stats === undefined ? {} : { process: stats }),
-    model: modelRecord(options),
+    model,
     durationMs: Date.now() - Date.parse(startedAt),
     startedAt,
     exitCode,
     modifiedFiles: diff.modifiedFiles,
     runDir,
-    repoCommit: repoCommit(),
-    harnessCommit: harnessCommit(options.harnessRoot),
+    repoCommit: repo,
+    harnessCommit: harness,
   }
 }
 

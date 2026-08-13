@@ -18,7 +18,7 @@ export const task: EvalTask = {
   snapshot,
   captureMeta,
   grader: {
-    pass: [{ kind: 'dom', selector: '.product-title', style: { 'font-weight': '700' } }],
+    pass: [{ kind: 'dom', selector: '.product-title', style: { 'font-weight': '700' }, all: true }],
     noRegression: [{ kind: 'dom', selector: '.price', style: { 'font-weight': '600' } }],
   },
   golden: { kind: 'git-patch', patchFile: 'golden.patch' },

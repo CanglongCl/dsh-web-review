@@ -18,10 +18,7 @@ export const task: EvalTask = {
   snapshot,
   captureMeta,
   grader: {
-    // The grid's used track sizes resolve to pixels at render time, so a dom
-    // style assertion on grid-template-columns would be brittle; assert the
-    // source declaration for three equal flexible columns instead.
-    pass: [{ kind: 'code', file: 'src/styles.css', contains: ['repeat(3, 1fr)'] }],
+    pass: [{ kind: 'dom', selector: '.products', itemsPerRow: { childSelector: '.product-card', count: 3 } }],
   },
   golden: { kind: 'git-patch', patchFile: 'golden.patch' },
 }

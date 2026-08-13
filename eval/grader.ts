@@ -123,6 +123,14 @@ function rgbOf(value: string): [number, number, number] | undefined {
   return [Math.round(parts[0]!), Math.round(parts[1]!), Math.round(parts[2]!)]
 }
 
+function alphaOf(value: string): number | undefined {
+  if (/^#([\da-f]{3}|[\da-f]{6})$/iu.test(value.trim())) return 1
+  const match = /^rgba?\(([^)]+)\)$/iu.exec(value.trim())
+  if (match === null) return undefined
+  const parts = match[1]!.split(',').map(part => Number.parseFloat(part))
+  return Number.isNaN(parts[3] ?? 1) ? undefined : (parts[3] ?? 1)
+}
+
 /** Numeric value + unit from a CSS length string, or the raw string. */
 function lengthOf(value: string): { value: number; unit: string } | { raw: string } {
   const match = /^(-?\d+(?:\.\d+)?)(px|rem|em|%|vh|vw|fr)?$/u.exec(value.trim())
@@ -217,6 +225,9 @@ function regexpOf(pattern: string): RegExp | undefined {
 }
 
 async function runSingleDom(page: Page, locator: Locator, assertion: DomAssertion): Promise<{ ok: boolean; expected: string; measured: string }> {
+  const shadowBeforeFocus = assertion.focus === true && assertion.boxShadow?.requireFocusChange === true
+    ? await locator.evaluate(element => getComputedStyle(element).boxShadow)
+    : undefined
   if (assertion.hover === true) await locator.hover()
   if (assertion.focus === true) await locator.focus()
   const expectedParts: string[] = []
@@ -285,6 +296,19 @@ async function runSingleDom(page: Page, locator: Locator, assertion: DomAssertio
     expectedParts.push(`name matches /${assertion.accessibleNamePattern}/u`)
     measuredParts.push(`name=${name}`)
   }
+  if (assertion.accessibleNameFromDescendant !== undefined) {
+    const evidence = await locator.evaluate((element, requirement) => {
+      const ancestor = element.closest(requirement.ancestorSelector)
+      const source = ancestor?.querySelector(requirement.descendantSelector)?.textContent?.trim() ?? ''
+      const aria = element.getAttribute('aria-label')?.trim() ?? ''
+      return { source, aria }
+    }, assertion.accessibleNameFromDescendant)
+    const prefix = assertion.accessibleNameFromDescendant.prefix
+    const related = evidence.aria.startsWith(prefix) && evidence.aria.slice(prefix.length).trim() === evidence.source
+    if (evidence.source === '' || !related) ok = false
+    expectedParts.push(`name=${prefix}[optional space]${evidence.source}`)
+    measuredParts.push(`name=${evidence.aria}`)
+  }
   if (assertion.role !== undefined) {
     const role = await roleOf(locator)
     if (role !== assertion.role) ok = false
@@ -312,12 +336,43 @@ async function runSingleDom(page: Page, locator: Locator, assertion: DomAssertio
       }
     }
   }
+  if (assertion.colorDarkerThan !== undefined) {
+    const other = page.locator(assertion.colorDarkerThan.selector).first()
+    const property = assertion.colorDarkerThan.property
+    if (await other.count() === 0) {
+      ok = false
+      expectedParts.push(`${property} darker than ${assertion.colorDarkerThan.selector}`)
+      measuredParts.push('comparison element missing')
+    } else {
+      const [currentValue, otherValue] = await Promise.all([
+        locator.evaluate((element, prop) => getComputedStyle(element).getPropertyValue(prop), property),
+        other.evaluate((element, prop) => getComputedStyle(element).getPropertyValue(prop), property),
+      ])
+      const current = rgbOf(currentValue)
+      const comparison = rgbOf(otherValue)
+      const luminance = (rgb: [number, number, number]): number => 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
+      const delta = current === undefined || comparison === undefined ? Number.NEGATIVE_INFINITY : luminance(comparison) - luminance(current)
+      if (delta < (assertion.colorDarkerThan.minDelta ?? 8)) ok = false
+      expectedParts.push(`${property} darker than ${assertion.colorDarkerThan.selector}`)
+      measuredParts.push(`${currentValue} vs ${otherValue}; luminance delta=${delta.toFixed(2)}`)
+    }
+  }
+  if (assertion.colorLuminance !== undefined) {
+    const value = await locator.evaluate((element, property) => getComputedStyle(element).getPropertyValue(property), assertion.colorLuminance.property)
+    const rgb = rgbOf(value)
+    const alpha = alphaOf(value)
+    const luminance = rgb === undefined ? Number.NaN : 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
+    if (Number.isNaN(luminance) || alpha === undefined || alpha < (assertion.colorLuminance.minAlpha ?? 0.1) || (assertion.colorLuminance.min !== undefined && luminance < assertion.colorLuminance.min) || (assertion.colorLuminance.max !== undefined && luminance > assertion.colorLuminance.max)) ok = false
+    expectedParts.push(`${assertion.colorLuminance.property} luminance in [${assertion.colorLuminance.min ?? 0}, ${assertion.colorLuminance.max ?? 255}]`)
+    measuredParts.push(`${assertion.colorLuminance.property}=${value}; luminance=${luminance.toFixed(2)}; alpha=${alpha ?? 'unknown'}`)
+  }
   if (assertion.colorDominance !== undefined) {
     const value = await locator.evaluate((element, property) => getComputedStyle(element).getPropertyValue(property), assertion.colorDominance.property)
     const rgb = rgbOf(value)
+    const alpha = alphaOf(value)
     const channelIndex = { red: 0, green: 1, blue: 2 }[assertion.colorDominance.channel]
     const margin = assertion.colorDominance.margin ?? 20
-    const dominant = rgb !== undefined && rgb[channelIndex]! >= Math.max(...rgb.filter((_part, index) => index !== channelIndex)) + margin
+    const dominant = rgb !== undefined && alpha !== undefined && alpha >= 0.1 && rgb[channelIndex]! >= Math.max(...rgb.filter((_part, index) => index !== channelIndex)) + margin
     if (!dominant) ok = false
     expectedParts.push(`${assertion.colorDominance.property} is ${assertion.colorDominance.channel}-dominant by ${margin}`)
     measuredParts.push(`${assertion.colorDominance.property}=${value}`)
@@ -332,33 +387,93 @@ async function runSingleDom(page: Page, locator: Locator, assertion: DomAssertio
       return Math.abs(lengths[0] ?? 0) + Math.abs(lengths[1] ?? 0) + Math.max(0, lengths[2] ?? 0) + Math.max(0, lengths[3] ?? 0)
     })
     const extent = Math.max(0, ...extents)
+    const parsedColors = [...value.matchAll(/rgba?\(([^)]+)\)/giu)].map(match => {
+      const parts = match[1]!.split(',').map(part => Number.parseFloat(part))
+      return { rgb: [Math.round(parts[0] ?? 0), Math.round(parts[1] ?? 0), Math.round(parts[2] ?? 0)] as [number, number, number], alpha: parts[3] ?? 1 }
+    })
+    const minAlpha = assertion.boxShadow.minAlpha ?? 0.08
+    const visibleColor = parsedColors.some(color => color.alpha >= minAlpha)
     let colorOk = true
     if (assertion.boxShadow.colorDominance !== undefined) {
       const channelIndex = { red: 0, green: 1, blue: 2 }[assertion.boxShadow.colorDominance]
       const margin = assertion.boxShadow.margin ?? 20
-      const colors = [...value.matchAll(/rgba?\(([^)]+)\)/giu)]
-        .map(match => rgbOf(`rgb(${match[1]!.split(',').slice(0, 3).join(',')})`))
-        .filter((color): color is [number, number, number] => color !== undefined)
-      colorOk = colors.some(color => color[channelIndex]! >= Math.max(...color.filter((_part, index) => index !== channelIndex)) + margin)
+      colorOk = parsedColors.some(color => color.alpha >= minAlpha && color.rgb[channelIndex]! >= Math.max(...color.rgb.filter((_part, index) => index !== channelIndex)) + margin)
     }
-    if (extent < assertion.boxShadow.minExtentPx || !colorOk) ok = false
+    const changed = assertion.boxShadow.requireFocusChange !== true || shadowBeforeFocus !== value
+    if (extent < assertion.boxShadow.minExtentPx || !visibleColor || !colorOk || !changed) ok = false
     expectedParts.push(`box-shadow extent>=${assertion.boxShadow.minExtentPx}px${assertion.boxShadow.colorDominance === undefined ? '' : ` and ${assertion.boxShadow.colorDominance}-dominant`}`)
-    measuredParts.push(`box-shadow=${value}; extent=${extent}px`)
+    measuredParts.push(`box-shadow=${value}; extent=${extent}px; visible=${visibleColor}; changed=${changed}`)
   }
   if (assertion.horizontalCoverage !== undefined) {
     const geometry = await locator.evaluate((element, requirement) => {
       const parent = element.getBoundingClientRect()
       const children = [...element.querySelectorAll(requirement.childSelector)].map(child => child.getBoundingClientRect())
-      if (children.length < 2 || parent.width <= 0) return { count: children.length, ratio: 0, topDelta: Number.POSITIVE_INFINITY }
+      if (children.length < 2 || parent.width <= 0) return { count: children.length, ratio: 0, topDelta: Number.POSITIVE_INFINITY, inBounds: false, nonOverlapping: false, widthDelta: Number.POSITIVE_INFINITY, gapDelta: Number.POSITIVE_INFINITY }
+      const ordered = [...children].sort((a, b) => a.left - b.left)
       const left = Math.min(...children.map(child => child.left))
       const right = Math.max(...children.map(child => child.right))
       const tops = children.map(child => child.top)
-      return { count: children.length, ratio: (right - left) / parent.width, topDelta: Math.max(...tops) - Math.min(...tops) }
+      const widths = children.map(child => child.width)
+      const gaps = ordered.slice(1).map((child, index) => child.left - ordered[index]!.right)
+      return {
+        count: children.length,
+        ratio: (right - left) / parent.width,
+        topDelta: Math.max(...tops) - Math.min(...tops),
+        inBounds: children.every(child => child.left >= parent.left - 1 && child.right <= parent.right + 1),
+        nonOverlapping: gaps.every(gap => gap >= -1),
+        widthDelta: Math.max(...widths) - Math.min(...widths),
+        gapDelta: gaps.length === 0 ? 0 : Math.max(...gaps) - Math.min(...gaps),
+      }
     }, assertion.horizontalCoverage)
     const aligned = geometry.topDelta <= (assertion.horizontalCoverage.maxTopDeltaPx ?? 2)
-    if (geometry.ratio < assertion.horizontalCoverage.minRatio || !aligned) ok = false
+    const distributed = geometry.inBounds && geometry.nonOverlapping && geometry.widthDelta <= 2 && geometry.gapDelta <= 3
+    if (geometry.ratio < assertion.horizontalCoverage.minRatio || !aligned || !distributed) ok = false
     expectedParts.push(`${assertion.horizontalCoverage.childSelector} horizontal coverage>=${assertion.horizontalCoverage.minRatio}; top delta<=${assertion.horizontalCoverage.maxTopDeltaPx ?? 2}px`)
-    measuredParts.push(`children=${geometry.count}; coverage=${geometry.ratio.toFixed(3)}; top delta=${geometry.topDelta}px`)
+    measuredParts.push(`children=${geometry.count}; coverage=${geometry.ratio.toFixed(3)}; top delta=${geometry.topDelta}px; in bounds=${geometry.inBounds}; non-overlap=${geometry.nonOverlapping}; width delta=${geometry.widthDelta}px; gap delta=${geometry.gapDelta}px`)
+  }
+  if (assertion.centered !== undefined) {
+    const geometry = await locator.evaluate(element => { const rect = element.getBoundingClientRect(); return { left: rect.left, right: rect.right, width: rect.width, viewport: innerWidth } })
+    const offset = Math.abs(geometry.left - (geometry.viewport - geometry.right))
+    const widthOk = assertion.centered.maxWidthPx === undefined || geometry.width <= assertion.centered.maxWidthPx + 1
+    if (offset > (assertion.centered.tolerancePx ?? 2) || !widthOk) ok = false
+    expectedParts.push(`horizontally centered${assertion.centered.maxWidthPx === undefined ? '' : `; width<=${assertion.centered.maxWidthPx}px`}`)
+    measuredParts.push(`left/right offset=${offset}px; width=${geometry.width}px`)
+  }
+  if (assertion.itemsPerRow !== undefined) {
+    const geometry = await locator.evaluate((element, requirement) => {
+      const children = [...element.querySelectorAll(requirement.childSelector)].map(child => child.getBoundingClientRect()).filter(rect => rect.width > 0 && rect.height > 0)
+      if (children.length === 0) return { firstRow: 0, total: 0 }
+      const firstTop = Math.min(...children.map(child => child.top))
+      return { firstRow: children.filter(child => Math.abs(child.top - firstTop) <= (requirement.topTolerancePx ?? 2)).length, total: children.length }
+    }, assertion.itemsPerRow)
+    if (geometry.firstRow !== assertion.itemsPerRow.count) ok = false
+    expectedParts.push(`${assertion.itemsPerRow.count} ${assertion.itemsPerRow.childSelector} item(s) per first row`)
+    measuredParts.push(`first row=${geometry.firstRow}; total=${geometry.total}`)
+  }
+  if (assertion.visible === true || assertion.doesNotOverlap !== undefined) {
+    const geometry = await locator.evaluate(element => {
+      const rect = element.getBoundingClientRect()
+      const style = getComputedStyle(element)
+      return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height, display: style.display, visibility: style.visibility, opacity: Number.parseFloat(style.opacity) }
+    })
+    const visible = geometry.width > 0 && geometry.height > 0 && geometry.display !== 'none' && geometry.visibility !== 'hidden' && geometry.opacity > 0
+    if (assertion.visible === true && !visible) ok = false
+    expectedParts.push('visible')
+    measuredParts.push(`visible=${visible}`)
+    if (assertion.doesNotOverlap !== undefined) {
+      const other = page.locator(assertion.doesNotOverlap).first()
+      if (await other.count() === 0) {
+        ok = false
+        expectedParts.push(`does not overlap ${assertion.doesNotOverlap}`)
+        measuredParts.push('comparison element missing')
+      } else {
+        const otherRect = await other.evaluate(element => { const rect = element.getBoundingClientRect(); return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom } })
+        const overlap = geometry.left < otherRect.right && geometry.right > otherRect.left && geometry.top < otherRect.bottom && geometry.bottom > otherRect.top
+        if (overlap) ok = false
+        expectedParts.push(`does not overlap ${assertion.doesNotOverlap}`)
+        measuredParts.push(`overlap=${overlap}`)
+      }
+    }
   }
   if (assertion.leftAccentColor !== undefined) {
     const evidence = await locator.evaluate((element) => {
@@ -371,6 +486,7 @@ async function runSingleDom(page: Page, locator: Locator, assertion: DomAssertio
         beforeColor: before.backgroundColor,
         beforeWidth: before.width,
         beforeContent: before.content,
+        beforeLeft: before.left,
       }
     })
     const expectedRgb = rgbOf(assertion.leftAccentColor)
@@ -380,12 +496,14 @@ async function runSingleDom(page: Page, locator: Locator, assertion: DomAssertio
         && expectedRgb.every((part, index) => Math.abs(part - actual[index]!) <= COLOR_TOLERANCE)
     }
     const border = sameColor(evidence.borderColor) && Number.parseFloat(evidence.borderWidth) >= 2
+    const shadowMatch = /(-?\d+(?:\.\d+)?)px\s+(-?\d+(?:\.\d+)?)px[^,]*inset/iu.exec(evidence.boxShadow)
     const shadow = expectedRgb !== undefined
       && evidence.boxShadow.includes(expectedRgb.join(', '))
-      && /inset/iu.test(evidence.boxShadow)
+      && shadowMatch !== null && Number.parseFloat(shadowMatch[1]!) >= 2 && Math.abs(Number.parseFloat(shadowMatch[2]!)) <= 1
     const pseudo = evidence.beforeContent !== 'none'
       && sameColor(evidence.beforeColor)
       && Number.parseFloat(evidence.beforeWidth) >= 2
+      && Number.parseFloat(evidence.beforeLeft) <= 2
     if (!border && !shadow && !pseudo) ok = false
     expectedParts.push(`left accent color=${assertion.leftAccentColor}`)
     measuredParts.push(`border=${evidence.borderWidth} ${evidence.borderColor}; shadow=${evidence.boxShadow}; ::before=${evidence.beforeWidth} ${evidence.beforeColor}`)

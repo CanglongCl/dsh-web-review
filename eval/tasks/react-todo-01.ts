@@ -20,7 +20,7 @@ export const task: EvalTask = {
     ...frozen,
   }],
   grader: {
-    pass: [{ kind: 'dom', selector: 'li.nav-item', hover: true, style: { 'background-color': '#eef2ff' } }],
+    pass: [{ kind: 'dom', selector: 'li.nav-item', hover: true, style: { 'background-color': '#eef2ff' }, all: true }],
     noRegression: [{ kind: 'dom', selector: '.add-button', style: { 'background-color': '#4c6ef5' } }],
   },
   golden: { kind: 'git-patch', patchFile: 'golden.patch' },

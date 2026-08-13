@@ -13,6 +13,7 @@ import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { resolveHarnessRoot } from '../../scripts/harness-path.ts'
 import { loadTasks } from '../tasks/register.ts'
+import { executionRevision, experimentId, graderRevision, taskRevision } from '../identity.ts'
 import { runTaskOnce } from './run-one.ts'
 import { ARTIFACTS_ROOT, REPO_ROOT, RESULTS_PATH } from './runner.ts'
 import type { EvalArm, LoadedEvalTask, RunRecord } from '../types.ts'
@@ -40,7 +41,7 @@ function parseFlags(argv: string[]): Flags {
     concurrency: 4,
     provider: process.env.EVAL_PROVIDER ?? 'deepseek-official',
     model: process.env.EVAL_MODEL ?? 'deepseek-v4-flash',
-    ...(process.env.EVAL_REASONING === undefined ? {} : { reasoningEffort: process.env.EVAL_REASONING }),
+    reasoningEffort: process.env.EVAL_REASONING ?? 'high',
     timeoutMs: 300_000,
     force: false,
     skipLaunch: false,
@@ -104,18 +105,21 @@ async function main(): Promise<void> {
     console.log('building the self-contained eval runner bundle')
     execFileSync('pnpm', ['--filter', '@dsh-web-review-dev/eval-runner', 'build'], { cwd: REPO_ROOT, stdio: 'inherit' })
   }
+  const currentRepoCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' }).trim()
+  const currentHarnessCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: harnessRoot, encoding: 'utf8' }).trim()
+  const model = { provider: flags.provider, model: flags.model, ...(flags.reasoningEffort === undefined ? {} : { reasoningEffort: flags.reasoningEffort }) }
   const finished = new Set<string>()
   if (!flags.force && existsSync(RESULTS_FILE)) {
     for (const line of readFileSync(RESULTS_FILE, 'utf8').split('\n')) {
       if (line.trim() === '') continue
       const record = JSON.parse(line) as RunRecord
-      finished.add(`${record.taskId}:${record.arm ?? 'full'}:${record.repetition ?? 1}`)
+      if (record.experimentId !== undefined && record.executionStatus === 'completed') finished.add(record.experimentId)
     }
   }
   const queue = selected.flatMap(task => flags.arms
     .filter(arm => task.arms.includes(arm))
     .flatMap(arm => Array.from({ length: flags.repeat }, (_, index) => ({ task, arm, repetition: index + 1 }))))
-    .filter(run => !finished.has(`${run.task.id}:${run.arm}:${run.repetition}`))
+    .filter(run => !finished.has(experimentId({ task: run.task, arm: run.arm, repetition: run.repetition, model, repoCommit: currentRepoCommit, harnessCommit: currentHarnessCommit })))
   console.log(`${selected.length} task(s) selected, ${queue.length} to run, ${flags.concurrency} concurrent`)
   mkdirSync(ARTIFACTS_ROOT, { recursive: true })
   mkdirSync(RESULTS_PATH, { recursive: true })
@@ -154,6 +158,13 @@ async function main(): Promise<void> {
         if (record.status !== 'pass') failures.push(task.id)
       } catch (error) {
         const record: RunRecord = {
+          experimentId: experimentId({ task, arm, repetition, model, repoCommit: currentRepoCommit, harnessCommit: currentHarnessCommit }),
+          taskRevision: taskRevision(task),
+          executionRevision: executionRevision(),
+          graderRevision: graderRevision(task),
+          gradedAt: new Date().toISOString(),
+          executionStatus: 'error',
+          originalStatus: 'error',
           taskId: task.id,
           fixture: task.fixture,
           fixtureKind: task.fixtureKind,
@@ -164,7 +175,7 @@ async function main(): Promise<void> {
           repetition,
           status: 'error',
           attribution: 'runtime-error',
-          model: { provider: flags.provider, model: flags.model, ...(flags.reasoningEffort === undefined ? {} : { reasoningEffort: flags.reasoningEffort }) },
+          model,
           durationMs: Date.now() - started,
           startedAt: new Date().toISOString(),
           exitCode: null,

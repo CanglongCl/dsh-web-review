@@ -33,6 +33,9 @@ DSH_HARNESS=<abs harness root> pnpm eval:capture -- --task landing-01
 # --capture adds live re-capture drift checks against the frozen snapshots
 pnpm eval:smoke [-- --capture]
 
+# Release/headline gate: real Preview GUI re-capture and frozen-wire drift check
+DSH_HARNESS=<abs harness root> pnpm eval:verify-headline-captures
+
 # Full run (real model): filter by task/category/difficulty/fixture,
 # 4-6-way concurrency, resumable via eval/results/results.jsonl
 DSH_HARNESS=<abs harness root> pnpm eval:run [-- --task react-operations-01 --arm all --repeat 3 --concurrency 3]
@@ -61,9 +64,17 @@ snapshot becomes a generic-prompt round. The smoke gate also validates every
 snapshot with the production parser and checks fixture revision, comment order,
 and selected skills before grading.
 
+The Full/Text-only comparison is blinded at the model boundary: both primary
+messages use the production plugin source and `# Browser comments` heading,
+and neither the cwd nor artifact directory exposes task, arm, or repetition.
+Oracle is an explicit ceiling and may include a separately sourced hint.
+Model workspaces are staged under an OS temporary directory so parent
+repository `AGENTS.md` files cannot contaminate prompts; the finished
+workspace is copied into the durable artifact only after the run.
+
 ## Per-run artifacts
 
-`.artifacts/eval-runs/<taskId>-<ts>/` holds `workspace/` (the agent's cwd),
+`.artifacts/eval-runs/run-<uuid>/` holds the persisted final `workspace/`,
 `session.jsonl` (DSH's own durable session log — turns, steps, reasoning
 chunks, tool calls, per-step token usage), `trace.md`, `process.json`,
 `diff.txt`, `grader` evidence, and the launch stdout/stderr. The report
@@ -71,6 +82,9 @@ embeds the trace, diff, and grader outcomes per task.
 The generated report uses Chinese UI copy. Each run links directly to its
 persisted Harness `session.jsonl` conversation log and shows the durable
 session id, so a score can be audited against the original model/tool events.
+The headline separates three-arm plugin diagnosis from Full-only protocol
+smoke. Historical runs created before blinding/isolation remain visible but
+are excluded from the causal aggregate.
 
 Long-task graders assert user-visible intent rather than one golden
 implementation: natural-language whitespace is tolerated, semantic danger
@@ -78,3 +92,6 @@ colors are accepted by color family, and a left accent may be implemented as
 a border, inset shadow, or pseudo-element. Exact values remain exact only when
 the annotation requested them. Missing selectors are ordinary failed
 assertions, not grader runtime errors.
+Adversarial grader tests reject transparent shadows, permanent fake focus
+states, overlapping-card coverage tricks, and accessible names that are not
+bound to the title in their own card.

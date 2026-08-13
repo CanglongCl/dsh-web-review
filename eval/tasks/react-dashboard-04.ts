@@ -18,8 +18,8 @@ export const task: EvalTask = {
   snapshot,
   captureMeta,
   grader: {
-    pass: [{ kind: 'dom', selector: '.stats', viewport: { width: 375, height: 800 }, style: { 'flex-direction': 'column' } }],
-    noRegression: [{ kind: 'dom', selector: '.stats', style: { 'flex-direction': 'row' } }],
+    pass: [{ kind: 'dom', selector: '.stats', viewport: { width: 375, height: 800 }, itemsPerRow: { childSelector: '.stat-card', count: 1 } }],
+    noRegression: [{ kind: 'dom', selector: '.stats', itemsPerRow: { childSelector: '.stat-card', count: 4 } }],
   },
   golden: { kind: 'git-patch', patchFile: 'golden.patch' },
 }

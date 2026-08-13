@@ -25,6 +25,7 @@
     "check:e2e": "tsx scripts/check.ts --e2e",
     "eval:capture": "tsx eval/capture/capture.ts",
     "eval:smoke": "tsx eval/smoke.ts",
+    "eval:verify-headline-captures": "tsx eval/smoke.ts --capture react-operations-01 static-catalog-01",
     "eval:run": "tsx eval/runner/batch.ts",
     "eval:regrade": "tsx eval/regrade.ts",
     "eval:report": "tsx eval/report.ts"

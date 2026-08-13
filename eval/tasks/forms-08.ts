@@ -18,7 +18,7 @@ export const task: EvalTask = {
   snapshot,
   captureMeta,
   grader: {
-    pass: [{ kind: 'dom', selector: 'input[type="text"]', focus: true, boxShadow: { minExtentPx: 2, colorDominance: 'blue', margin: 20 } }],
+    pass: [{ kind: 'dom', selector: 'input[type="text"]', focus: true, boxShadow: { minExtentPx: 2, colorDominance: 'blue', margin: 20, requireFocusChange: true } }],
   },
   golden: { kind: 'html-dir', dir: 'golden' },
 }

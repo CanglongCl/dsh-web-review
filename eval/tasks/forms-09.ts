@@ -19,7 +19,7 @@ export const task: EvalTask = {
   snapshot,
   captureMeta,
   grader: {
-    pass: [{ kind: 'dom', selector: 'label', style: { 'font-size': '15px', 'font-weight': '600' } }],
+    pass: [{ kind: 'dom', selector: 'label', style: { 'font-size': '15px', 'font-weight': '600' }, all: true }],
     noRegression: [{ kind: 'dom', selector: 'input[type="text"]', style: { 'font-size': '14px' } }],
   },
   golden: { kind: 'html-dir', dir: 'golden' },

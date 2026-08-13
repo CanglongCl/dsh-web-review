@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { armContextTexts } from '../../../eval/arm-context.ts'
 import { runnerTaskPayload } from '../../../eval/runner/payload.ts'
+import { runDirFor } from '../../../eval/runner/run-one.ts'
 import type { AnnotationSnapshot } from '../src/annotation-contract.ts'
 import { formatAnnotationContext, parseAnnotationBody } from '../src/annotation-context.ts'
 import type { EvalTask } from '../../../eval/types.ts'
@@ -34,6 +35,8 @@ describe('plugin capability eval contexts', () => {
     expect(textOnly?.text).not.toContain('OrderTable.tsx')
     expect(textOnly?.text).not.toContain('390x844')
     expect(textOnly?.text).not.toContain('rgb(0, 0, 255)')
+    expect(textOnly?.plugin).toBe(full?.plugin)
+    expect(textOnly?.text).not.toMatch(/text-only|eval arm|intentionally unavailable/iu)
   })
 
   it('adds oracle hints after the unchanged production Browser comments', () => {
@@ -57,6 +60,14 @@ describe('plugin capability eval contexts', () => {
     expect(payload.rounds.map(candidate => candidate.prompt)).toEqual([
       '请根据页面批注修改前端实现。', '请根据页面批注修改前端实现。',
     ])
+  })
+
+  it('keeps model-adjacent run paths neutral', () => {
+    const path = runDirFor('secret-task', 'text-only', 7)
+    expect(path).not.toContain('secret-task')
+    expect(path).not.toContain('text-only')
+    expect(path).not.toContain('-r7-')
+    expect(path).toMatch(/\/run-[0-9a-f-]+$/u)
   })
 
   it('accepts every long-task frozen snapshot through the production parser', () => {

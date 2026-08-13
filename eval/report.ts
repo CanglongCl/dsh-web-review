@@ -45,18 +45,15 @@ function main(): void {
     console.error(`no results at ${resultsFile}; run pnpm eval:run first`)
     process.exit(2)
   }
-  // Keep the latest record per scenario arm and repetition.
+  // Keep the latest grading for one immutable execution. Legacy records are
+  // separated by the configuration fields that were previously omitted.
   const parsed = readFileSync(resultsFile, 'utf8').split('\n')
     .filter(line => line.trim() !== '')
     .map(line => JSON.parse(line) as RunRecord)
   const latestByRun = new Map<string, RunRecord>()
-  for (const record of parsed) latestByRun.set(`${record.taskId}:${record.arm ?? 'full'}:${record.repetition ?? 1}`, record)
+  for (const record of parsed) latestByRun.set(record.experimentId ?? [record.taskId, record.arm ?? 'full', record.repetition ?? 1, record.model.provider, record.model.model, record.model.reasoningEffort ?? 'unknown', record.repoCommit, record.harnessCommit].join(':'), record)
   const records = [...latestByRun.values()].sort((a, b) => `${a.taskId}:${a.arm}:${a.repetition}`.localeCompare(`${b.taskId}:${b.arm}:${b.repetition}`))
   const details = records.map(record => runDetails(record))
-  const summaryFile = join(RESULTS_PATH, 'run-summary.json')
-  const summary = existsSync(summaryFile)
-    ? JSON.parse(readFileSync(summaryFile, 'utf8')) as { model?: unknown; ranAt?: string; taskCount?: number }
-    : {}
   const totals = details.reduce((acc, record) => {
     const tokens = record.process?.tokens
     if (tokens !== undefined) {
@@ -70,6 +67,30 @@ function main(): void {
     return acc
   }, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, durationMs: 0 })
   const passed = details.filter(record => record.status === 'pass').length
+  const diagnostic = details.filter(record => record.category !== 'protocol-smoke')
+  const eligibleDiagnostic = diagnostic.filter(record => record.experimentId !== undefined && record.executionRevision !== undefined && record.model.reasoningEffort !== undefined)
+  const smoke = details.filter(record => record.category === 'protocol-smoke')
+  const diagnosticGroupKey = (record: RunRecord): string => [record.taskId, record.repetition, record.model.provider, record.model.model, record.model.reasoningEffort, record.repoCommit, record.harnessCommit, record.taskRevision, record.executionRevision].join(':')
+  const diagnosticGroups = new Map<string, Set<RunRecord['arm']>>()
+  for (const record of eligibleDiagnostic) {
+    const key = diagnosticGroupKey(record)
+    const arms = diagnosticGroups.get(key) ?? new Set<RunRecord['arm']>()
+    arms.add(record.arm)
+    diagnosticGroups.set(key, arms)
+  }
+  const completeGroupKeys = new Set([...diagnosticGroups].filter(([, arms]) => arms.size === 3).map(([key]) => key))
+  const eligiblePaired = eligibleDiagnostic.filter(record => completeGroupKeys.has(diagnosticGroupKey(record)))
+  const diagnosticScenarios = new Set(eligiblePaired.map(record => record.taskId)).size
+  const pairedGroups = completeGroupKeys.size
+  const armRate = (arm: RunRecord['arm']): string => {
+    const records = eligiblePaired.filter(record => record.arm === arm)
+    return records.length === 0 ? '待重跑' : `${records.filter(record => record.status === 'pass').length}/${records.length}`
+  }
+  const fullWins = eligiblePaired.filter(record => record.arm === 'full' && record.status === 'pass').length
+  const textWins = eligiblePaired.filter(record => record.arm === 'text-only' && record.status === 'pass').length
+  const observedLift = eligiblePaired.length === 0 ? undefined : fullWins - textWins
+  const generatedAt = new Date().toISOString()
+  const modelLabels = [...new Set(details.map(record => [record.model.provider, record.model.model, record.model.reasoningEffort ?? 'effort 未记录'].join(' / ')))]
 
   const html = `<!doctype html>
 <html lang="zh-CN">
@@ -119,7 +140,13 @@ function main(): void {
   <div class="meta">模型：<span id="model"></span> · 运行次数：<span id="taskCount"></span> · 生成时间：<span id="generatedAt"></span></div>
 </header>
 <div class="cards">
-  <div class="stat"><div class="value" id="passRate"></div><div class="label">通过率</div></div>
+  <div class="stat"><div class="value">${diagnosticScenarios}</div><div class="label">插件诊断场景</div></div>
+  <div class="stat"><div class="value">${pairedGroups}</div><div class="label">三臂配对组</div></div>
+  <div class="stat"><div class="value">${armRate('full')} / ${armRate('text-only')} / ${armRate('oracle')}</div><div class="label">完整 / 仅文本 / Oracle</div></div>
+  <div class="stat"><div class="value">${observedLift === undefined ? '待重跑' : `${observedLift > 0 ? '+' : ''}${observedLift}`}</div><div class="label">完整相对仅文本的成功数提升</div></div>
+  <div class="stat"><div class="value">${diagnostic.length - eligibleDiagnostic.length}</div><div class="label">历史诊断运行（不具因果资格）</div></div>
+  <div class="stat"><div class="value">${smoke.filter(record => record.status === 'pass').length}/${smoke.length}</div><div class="label">协议 Smoke（不代表插件增益）</div></div>
+  <div class="stat"><div class="value">${passed}/${details.length}</div><div class="label">当前标尺兼容结果</div></div>
   <div class="stat"><div class="value" id="totalDuration"></div><div class="label">累计运行时间</div></div>
   <div class="stat"><div class="value" id="inputTokens"></div><div class="label">输入 Token</div></div>
   <div class="stat"><div class="value" id="outputTokens"></div><div class="label">输出 Token</div></div>
@@ -127,6 +154,7 @@ function main(): void {
   <div class="stat"><div class="value" id="reasoningTokens"></div><div class="label">推理 Token</div></div>
 </div>
 <main>
+  <p class="meta">结论口径：协议 Smoke 只验证批注链路和当前 grader 可执行。只有使用盲化实验臂、隔离 workspace、显式模型 effort 和不可变 experiment ID 的新运行才进入插件诊断汇总；旧运行保留供审计，但不再用于因果结论。</p>
   <div class="filters">
     <select id="fCategory"><option value="">全部类别</option></select>
     <select id="fDifficulty"><option value="">全部难度</option><option value="easy">简单</option><option value="medium">中等</option><option value="hard">困难</option><option value="long">长任务</option></select>
@@ -155,34 +183,32 @@ function main(): void {
 </article></div>
 <script>
 const DATA = ${JSON.stringify(details)};
-const SUMMARY = ${JSON.stringify(summary)};
 const TOTALS = ${JSON.stringify(totals)};
-const model = SUMMARY.model ?? DATA[0]?.model ?? {};
-document.getElementById('model').textContent = [model.provider, model.model, model.reasoningEffort ? '· 推理强度 ' + model.reasoningEffort : ''].filter(Boolean).join(' ');
+document.getElementById('model').textContent = ${JSON.stringify(modelLabels.length === 1 ? modelLabels[0] : `混合配置（${modelLabels.length} 种）`)};
 document.getElementById('taskCount').textContent = DATA.length;
-document.getElementById('generatedAt').textContent = new Date().toLocaleString('zh-CN', { hour12:false });
-document.getElementById('passRate').textContent = Math.round(${passed} / Math.max(1, DATA.length) * 100) + '%';
+document.getElementById('generatedAt').textContent = new Date(${JSON.stringify(generatedAt)}).toLocaleString('zh-CN', { hour12:false });
 document.getElementById('totalDuration').textContent = (TOTALS.durationMs / 60000).toFixed(1) + ' 分钟';
 const fmt = n => n >= 1000000 ? (n/1000000).toFixed(2)+'M' : n >= 1000 ? (n/1000).toFixed(1)+'k' : String(n);
 document.getElementById('inputTokens').textContent = fmt(TOTALS.input);
 document.getElementById('outputTokens').textContent = fmt(TOTALS.output);
 document.getElementById('cacheTokens').textContent = fmt(TOTALS.cacheRead) + ' / ' + fmt(TOTALS.cacheWrite);
 document.getElementById('reasoningTokens').textContent = fmt(TOTALS.reasoning);
-const categories = [...new Set(DATA.map(d => d.category))].sort();
-const fixtures = [...new Set(DATA.map(d => d.fixture))].sort();
-for (const c of categories) { const o = document.createElement('option'); o.value = c; o.textContent = c; document.getElementById('fCategory').appendChild(o); }
-for (const f of fixtures) { const o = document.createElement('option'); o.value = f; o.textContent = f; document.getElementById('fFixture').appendChild(o); }
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const STATUS = { pass:'通过', fail:'未通过', timeout:'超时', error:'运行错误' };
 const ARM = { full:'完整插件', 'text-only':'仅文本', oracle:'Oracle' };
 const CATEGORY = { 'protocol-smoke':'协议冒烟', 'multi-target':'多目标定位', 'scope-resolution':'作用域判断', 'anchor-fallback':'无源码锚点回退', responsive:'响应式', semantics:'语义与无障碍', iterative:'多轮修正', 'tool-ownership':'工具归属', trust:'信任边界' };
 const DIFFICULTY = { easy:'简单', medium:'中等', hard:'困难', long:'长任务' };
 const ATTRIBUTION = { 'not-modified':'未修改', localization:'定位错误', 'wrong-value':'结果不符', timeout:'超时', 'runtime-error':'运行错误', unknown:'—' };
+const categories = [...new Set(DATA.map(d => d.category))].sort();
+const fixtures = [...new Set(DATA.map(d => d.fixture))].sort();
+for (const c of categories) { const o = document.createElement('option'); o.value = c; o.textContent = CATEGORY[c] ?? c; document.getElementById('fCategory').appendChild(o); }
+for (const f of fixtures) { const o = document.createElement('option'); o.value = f; o.textContent = f; document.getElementById('fFixture').appendChild(o); }
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const statusScore = d => d?.status === 'pass' ? 1 : 0;
+const executionKey = d => d.experimentId ?? [d.taskId,d.arm,d.repetition,d.model?.provider,d.model?.model,d.model?.reasoningEffort ?? 'unknown',d.repoCommit,d.harnessCommit].join(':');
 const signed = n => n === undefined || Number.isNaN(n) ? '—' : (n > 0 ? '+' : '') + n;
 const paired = new Map();
-for (const d of DATA) {
-  const key = d.taskId + ':' + d.repetition;
+for (const d of DATA.filter(d => d.category !== 'protocol-smoke' && d.experimentId && d.executionRevision && d.model?.reasoningEffort)) {
+  const key = [d.taskId,d.repetition,d.model.provider,d.model.model,d.model.reasoningEffort,d.repoCommit,d.harnessCommit,d.taskRevision,d.executionRevision].join(':');
   const row = paired.get(key) ?? { taskId:d.taskId, repetition:d.repetition };
   row[d.arm] = d;
   paired.set(key, row);
@@ -195,11 +221,11 @@ function renderPairs(rows) {
     const oracleGap = full && oracle ? statusScore(oracle) - statusScore(full) : undefined;
     const stepLift = text?.process && full?.process ? full.process.steps - text.process.steps : undefined;
     const stepGap = full?.process && oracle?.process ? oracle.process.steps - full.process.steps : undefined;
-    const durationLift = text && full ? Math.round((full.durationMs - text.durationMs) / 1000) : undefined;
-    const durationGap = full && oracle ? Math.round((oracle.durationMs - full.durationMs) / 1000) : undefined;
+    const durationLift = text && full ? Math.round(((full.process?.durationMs ?? full.durationMs) - (text.process?.durationMs ?? text.durationMs)) / 1000) : undefined;
+    const durationGap = full && oracle ? Math.round(((oracle.process?.durationMs ?? oracle.durationMs) - (full.process?.durationMs ?? full.durationMs)) / 1000) : undefined;
     const deltaClass = n => n > 0 ? 'delta-positive' : n < 0 ? 'delta-negative' : '';
     return '<tr><td>' + esc(row.taskId) + '</td><td>' + esc(row.repetition) + '</td><td>' + armBadge(text) + '</td><td>' + armBadge(full) + '</td><td>' + armBadge(oracle) + '</td>'
-      + '<td class="' + deltaClass(fullLift) + '">' + signed(fullLift) + '</td><td class="' + deltaClass(oracleGap) + '">' + signed(oracleGap) + '</td>'
+      + '<td class="' + deltaClass(fullLift) + '">' + signed(fullLift) + '</td><td class="' + (oracleGap > 0 ? 'delta-negative' : oracleGap < 0 ? 'delta-positive' : '') + '">' + signed(oracleGap) + '</td>'
       + '<td>完整−文本 ' + signed(stepLift) + ' · Oracle−完整 ' + signed(stepGap) + '</td><td>完整−文本 ' + signed(durationLift) + ' 秒 · Oracle−完整 ' + signed(durationGap) + ' 秒</td></tr>';
   }).join('');
 }
@@ -215,11 +241,11 @@ function render() {
     (!fFixture || d.fixture === fFixture) &&
     (!fArm || d.arm === fArm) &&
     (!fStatus || d.status === fStatus));
-  const visiblePairs = [...paired.values()].filter(row => rows.some(d => d.taskId === row.taskId && d.repetition === row.repetition));
+  const visiblePairs = [...paired.values()].filter(row => row.full && row['text-only'] && row.oracle && rows.some(d => executionKey(d) === executionKey(row[d.arm])));
   renderPairs(visiblePairs);
   document.getElementById('tbody').innerHTML = rows.map(d => {
     const tokens = d.process?.tokens;
-    const runKey = d.taskId + ':' + d.arm + ':' + d.repetition;
+    const runKey = executionKey(d);
     return '<tr class="row" onclick="openDetail(' + JSON.stringify(runKey) + ')">'
       + '<td>' + esc(d.taskId) + '</td><td>' + esc(ARM[d.arm] ?? d.arm) + '</td><td>' + esc(d.repetition) + '</td><td>' + esc(d.title) + '</td><td>' + esc(CATEGORY[d.category] ?? d.category) + '</td><td>' + esc(DIFFICULTY[d.difficulty] ?? d.difficulty) + '</td><td>' + esc(d.fixture) + '</td>'
       + '<td><span class="badge ' + d.status + '">' + esc(STATUS[d.status] ?? d.status) + '</span></td>'
@@ -239,7 +265,7 @@ document.getElementById('fArm').onchange = render;
 document.getElementById('fStatus').onchange = render;
 document.getElementById('fReset').onclick = () => { for (const id of ['fCategory','fDifficulty','fFixture','fArm','fStatus']) document.getElementById(id).value=''; render(); };
 function openDetail(runKey) {
-  const d = DATA.find(x => x.taskId + ':' + x.arm + ':' + x.repetition === runKey);
+  const d = DATA.find(x => executionKey(x) === runKey);
   if (!d) return;
   const tokens = d.process?.tokens;
   const toolLines = Object.entries(d.process?.toolCalls ?? {}).map(([name,count]) => name + ' × ' + count).join('，');
@@ -250,6 +276,10 @@ function openDetail(runKey) {
     + ' · <span class="badge ' + d.status + '">' + esc(STATUS[d.status] ?? d.status) + '</span>'
     + ' · ' + esc(ATTRIBUTION[d.attribution] ?? d.attribution ?? '') + ' · ' + (d.durationMs/1000).toFixed(1) + ' 秒 · 退出码 ' + d.exitCode + '</p>'
     + (d.sessionLogHref ? '<p><a href="' + esc(d.sessionLogHref) + '" target="_blank">打开对应的 Harness 对话日志</a>' + (d.process?.sessionId ? ' <span class="meta">会话：' + esc(d.process.sessionId) + '</span>' : '') + '</p>' : '')
+    + '<p class="meta">实验 ID：' + esc(d.experimentId ?? '旧记录（无不可变 ID）')
+    + ' · 原始状态：' + esc(STATUS[d.originalStatus] ?? d.originalStatus ?? '未记录')
+    + ' · 当前评分时间：' + esc(d.gradedAt ?? '未记录')
+    + ' · Grader：' + esc(d.graderRevision ?? '未记录') + '</p>'
     + '<h3>模型</h3><p class="meta">' + esc([d.model.provider, d.model.model, d.model.reasoningEffort ?? ''].filter(Boolean).join(' · ')) + '</p>'
     + '<h3>Token 用量</h3><p class="meta">输入 ' + fmt(tokens?.input ?? 0) + ' · 输出 ' + fmt(tokens?.output ?? 0)
     + ' · 缓存读取/写入 ' + fmt(tokens?.cacheRead ?? 0) + '/' + fmt(tokens?.cacheWrite ?? 0)
@@ -259,7 +289,7 @@ function openDetail(runKey) {
     + ' · 首次工具调用：第 ' + (d.process?.firstToolCallStep ?? '—') + ' 步 · 首次写入：第 ' + (d.process?.firstWriteStep ?? '—') + ' 步'
     + ' · 结束原因：' + esc(d.process?.endReason ?? '') + '</p>'
     + '<p class="meta">工具：' + esc(toolLines || '无') + '</p>'
-    + '<p class="meta">读取文件：' + esc((d.process?.filesRead ?? []).join('，') || '无') + '</p>'
+    + '<p class="meta">显式 read 工具路径：' + esc((d.process?.filesRead ?? []).join('，') || '无') + '</p>'
     + '<p class="meta">修改文件：' + esc(d.modifiedFiles.join('，') || '无') + '</p>'
     + '<h3>评分证据</h3>' + (graderLines ? '<ul>' + graderLines + '</ul>' : '<p class="meta">无评分证据</p>')
     + '<h3>模型最终回复</h3><pre>' + esc(d.process?.finalText ?? '') + '</pre>'

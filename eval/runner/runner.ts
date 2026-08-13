@@ -191,7 +191,7 @@ export interface LaunchResult {
 
 /** Launch one headless task run with a bounded timeout and SIGTERM grace. */
 export async function launchHeadless(
-  runDir: string,
+  workspaceDir: string,
   overlayPath: string,
   task: LoadedEvalTask,
   dshHome: string,
@@ -215,7 +215,7 @@ export async function launchHeadless(
     '--profile', 'headless',
     '--patch', overlayPath,
     task.rounds[0]?.prompt ?? '请根据页面批注修改前端实现。',
-  ], { cwd: join(runDir, 'workspace'), env, stdio: ['ignore', 'pipe', 'pipe'] })
+  ], { cwd: workspaceDir, env, stdio: ['ignore', 'pipe', 'pipe'] })
   let stdout = ''
   let stderr = ''
   child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString('utf8') })
