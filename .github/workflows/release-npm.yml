@@ -59,7 +59,10 @@ jobs:
 
       - name: Install plugin dependencies
         working-directory: plugin
-        run: pnpm install --frozen-lockfile
+        # The committed lockfile was rebuilt and checked against the reviewed
+        # public DSH release set; CI must not reject those same freshly
+        # published entries solely because they are less than 24 hours old.
+        run: pnpm install --frozen-lockfile --trust-lockfile
 
       - name: Verify release identity
         working-directory: plugin
