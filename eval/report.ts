@@ -9,7 +9,6 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { REPO_ROOT, RESULTS_PATH } from './runner/runner.ts'
 import { loadTasks } from './tasks/register.ts'
-import { tokenBudgetExceeded } from './token-budget.ts'
 import type { LoadedEvalTask, RunRecord, TokenBudget } from './types.ts'
 
 interface TaskRequirement {
@@ -120,8 +119,6 @@ async function main(): Promise<void> {
   const currentCohortKey = latestEligible === undefined ? undefined : cohortKey(latestEligible)
   const eligibleDiagnostic = currentCohortKey === undefined ? [] : allEligibleDiagnostic.filter(record => cohortKey(record) === currentCohortKey)
   const smoke = details.filter(record => record.category === 'protocol-smoke')
-  const costQualified = [...smoke, ...eligibleDiagnostic]
-  const tokenWarnings = costQualified.filter(record => record.process?.tokens !== undefined && tokenBudgetExceeded(record.process.tokens, record.tokenBudget))
   const diagnosticGroupKey = (record: RunRecord): string => [record.taskId, record.repetition, record.model.provider, record.model.model, record.model.reasoningEffort, record.repoCommit, record.harnessCommit, record.taskRevision, record.executionRevision].join(':')
   const diagnosticGroups = new Map<string, Set<RunRecord['arm']>>()
   for (const record of eligibleDiagnostic) {
@@ -134,10 +131,6 @@ async function main(): Promise<void> {
   const eligiblePaired = eligibleDiagnostic.filter(record => completeGroupKeys.has(diagnosticGroupKey(record)))
   const diagnosticScenarios = new Set(eligiblePaired.map(record => record.taskId)).size
   const pairedGroups = completeGroupKeys.size
-  const armRate = (arm: RunRecord['arm']): string => {
-    const records = eligiblePaired.filter(record => record.arm === arm)
-    return records.length === 0 ? '待重跑' : `${records.filter(record => record.status === 'pass').length}/${records.length}`
-  }
   const fullWins = eligiblePaired.filter(record => record.arm === 'full' && record.status === 'pass').length
   const textWins = eligiblePaired.filter(record => record.arm === 'text-only' && record.status === 'pass').length
   const observedLift = eligiblePaired.length === 0 ? undefined : fullWins - textWins
@@ -160,33 +153,54 @@ async function main(): Promise<void> {
 <meta charset="utf-8">
 <title>dsh-web-review 评测结果</title>
 <style>
-  :root { --bg:#f6f7f9; --card:#fff; --line:#e2e5ea; --text:#24292f; --muted:#57606a; --ok:#1a7f37; --bad:#cf222e; --warn:#9a6700; }
+  :root { --bg:#f6f7f9; --card:#fff; --line:#dfe3e8; --text:#1f2328; --muted:#656d76; --ok:#1a7f37; --bad:#cf222e; --warn:#9a6700; --blue:#0969da; --blue-bg:#eef6ff; }
   * { box-sizing: border-box; }
   body { margin:0; overflow-x:hidden; font-family: system-ui, sans-serif; background:var(--bg); color:var(--text); }
-  header { background:var(--card); border-bottom:1px solid var(--line); padding:20px 28px; }
-  header h1 { margin:0 0 6px; font-size:20px; }
+  header { background:var(--card); border-bottom:1px solid var(--line); padding:22px 28px 0; }
+  header h1 { margin:0 0 6px; font-size:21px; }
   .meta { color:var(--muted); font-size:13px; }
-  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; padding:20px 28px; }
-  .stat { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
-  .stat .value { font-size:22px; font-weight:600; }
-  .stat .label { font-size:12px; color:var(--muted); }
-  .plain-summary { margin:20px 28px 0; padding:16px 18px; background:#eef6ff; border:1px solid #b6d7ff; border-radius:10px; line-height:1.6; }
-  .plain-summary strong { display:block; margin-bottom:4px; }
-  .more-data { margin:0 0 20px; padding:12px 14px; background:var(--card); border:1px solid var(--line); border-radius:10px; }
-  .more-data p { margin:8px 0 0; line-height:1.6; }
-  .section-note { margin:-3px 0 12px; line-height:1.55; }
-  main { width:100%; min-width:0; padding:0 28px 40px; }
+  .tabs { display:flex; gap:22px; margin-top:20px; }
+  .tab { border:0; border-bottom:2px solid transparent; background:none; padding:10px 2px 12px; color:var(--muted); cursor:pointer; font-weight:600; }
+  .tab.active { color:var(--text); border-bottom-color:var(--blue); }
+  .count { display:inline-block; min-width:20px; margin-left:5px; padding:1px 6px; border-radius:999px; background:#eaeef2; font-size:11px; text-align:center; }
+  main { width:100%; min-width:0; padding:24px 28px 48px; }
+  .view { display:none; }
+  .view.active { display:block; }
+  .experiment-head { display:flex; justify-content:space-between; gap:20px; align-items:flex-start; padding:18px 20px; background:var(--card); border:1px solid var(--line); border-radius:12px; }
+  .experiment-head h2 { margin:2px 0 7px; font-size:20px; }
+  .experiment-head p { margin:0; max-width:850px; line-height:1.55; }
+  .eyebrow { color:var(--muted); font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+  .verdict { flex:0 0 auto; padding:8px 12px; border-radius:999px; background:#fff8c5; color:var(--warn); font-size:13px; font-weight:700; }
+  .arm-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:14px 0 22px; }
+  .arm-card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
+  .arm-card.baseline { border-color:#8c959f; }
+  .arm-card.full { border-color:#80bfff; box-shadow:inset 0 3px 0 #54aeff; }
+  .arm-name { display:flex; justify-content:space-between; align-items:center; gap:8px; font-weight:700; }
+  .role { color:var(--muted); font-size:11px; font-weight:600; }
+  .score { margin:15px 0 2px; font-size:27px; font-weight:700; }
+  .arm-metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:14px; }
+  .metric strong { display:block; font-size:14px; }
+  .metric span { color:var(--muted); font-size:11px; }
+  .delta { margin-top:12px; color:var(--muted); font-size:12px; }
+  .delta-positive { color:var(--ok); font-weight:600; }
+  .delta-negative { color:var(--bad); font-weight:600; }
+  .section-bar { display:flex; justify-content:space-between; gap:12px; align-items:end; margin:22px 0 10px; }
+  .section-bar h2 { margin:0 0 3px; font-size:17px; }
+  .section-bar p { margin:0; }
   .filters { display:flex; gap:8px; flex-wrap:wrap; margin:14px 0; }
   .filters select, .filters button { padding:6px 10px; border:1px solid var(--line); border-radius:8px; background:var(--card); font-size:13px; }
   .table-scroll { width:100%; max-width:100%; overflow-x:auto; border:1px solid var(--line); border-radius:10px; background:var(--card); overscroll-behavior-inline:contain; }
   table { width:100%; border-collapse:collapse; background:var(--card); }
-  .pair-table { min-width:1050px; }
-  .runs-table { min-width:1700px; }
+  .comparison-table { min-width:1080px; }
+  .runs-table { min-width:1500px; }
   th, td { padding:9px 12px; border-bottom:1px solid var(--line); font-size:13px; text-align:left; }
   th { white-space:nowrap; }
-  td.task-description { min-width:340px; max-width:440px; white-space:normal; }
-  .task-summary { display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:3; line-height:1.45; }
-  .task-summary strong { display:block; margin-bottom:2px; }
+  td.task-description { min-width:300px; max-width:430px; white-space:normal; }
+  .task-summary { line-height:1.45; }
+  .task-summary strong { display:block; margin-bottom:3px; }
+  .cell-score { font-weight:700; }
+  .cell-sub { color:var(--muted); font-size:11px; margin-top:3px; white-space:nowrap; }
+  .baseline-cell { background:#f6f8fa; }
   .requirements { padding-left:22px; }
   .requirements li { margin:8px 0; line-height:1.5; }
   .requirement-meta { color:var(--muted); font-size:12px; }
@@ -202,8 +216,13 @@ async function main(): Promise<void> {
   tr.token-warning { background:#fffdf0; }
   #detail { position:fixed; inset:0; background:rgba(20,24,28,0.5); display:none; align-items:center; justify-content:center; }
   #detail.open { display:flex; }
-  #detail article { background:var(--card); width:min(1100px,94vw); height:92vh; border-radius:12px; padding:20px 24px; overflow:auto; }
+  #detail article { background:var(--card); width:min(1180px,94vw); height:92vh; border-radius:12px; padding:20px 24px; overflow:auto; }
   #detail .close { float:right; border:1px solid var(--line); background:none; border-radius:8px; padding:4px 10px; cursor:pointer; }
+  .arm-columns { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:16px 0; }
+  .arm-column { border:1px solid var(--line); border-radius:10px; padding:14px; min-width:0; }
+  .arm-column h3 { margin:0 0 10px; }
+  .trial { display:grid; grid-template-columns:auto 1fr auto; gap:8px; align-items:center; padding:9px 0; border-top:1px solid var(--line); }
+  .trial-metrics { color:var(--muted); font-size:11px; line-height:1.4; }
   pre { background:#f6f8fa; border:1px solid var(--line); border-radius:8px; padding:10px 12px; overflow:auto; font-size:12px; max-height:420px; }
   details { margin:10px 0; }
   summary { cursor:pointer; font-weight:600; font-size:13px; }
@@ -213,54 +232,55 @@ async function main(): Promise<void> {
   .delta-negative { color:var(--bad); font-weight:600; }
   .log-actions { display:flex; align-items:center; gap:8px; white-space:nowrap; }
   .link-button { appearance:none; border:0; padding:0; background:none; color:#0969da; text-decoration:underline; font:inherit; cursor:pointer; }
+  .empty { padding:28px; text-align:center; color:var(--muted); }
+  @media (max-width:900px) { .arm-grid,.arm-columns { grid-template-columns:1fr; } .experiment-head { flex-direction:column; } }
 </style>
 </head>
 <body>
 <header>
   <h1>dsh-web-review · 评测结果</h1>
-  <div class="meta">使用模型：<span id="model"></span> · DSH 版本：<span id="runtime"></span> · 报告收录 <span id="taskCount"></span> 次运行 · 生成时间：<span id="generatedAt"></span></div>
+  <div class="meta">模型：<span id="model"></span> · DSH：<span id="runtime"></span> · 生成时间：<span id="generatedAt"></span></div>
+  <nav class="tabs">
+    <button class="tab active" data-view="comparison">正式对比<span class="count">${diagnosticScenarios}</span></button>
+    <button class="tab" data-view="smoke">基础链路<span class="count">${smoke.length}</span></button>
+    <button class="tab" data-view="archive">全部运行<span class="count">${details.length}</span></button>
+  </nav>
 </header>
-<div class="plain-summary"><strong>先看结论</strong>${diagnosticConclusion}</div>
-<div class="cards">
-  <div class="stat"><div class="value">${diagnosticScenarios}</div><div class="label">真正用于比较插件效果的题目</div></div>
-  <div class="stat"><div class="value">${pairedGroups}</div><div class="label">公平对比次数（每次三种输入都跑）</div></div>
-  <div class="stat"><div class="value" style="font-size:17px">插件 ${armRate('full')} · 文字 ${armRate('text-only')} · 理想 ${armRate('oracle')}</div><div class="label">三种输入方式各自完成数</div></div>
-  <div class="stat"><div class="value">${observedLift === undefined ? '还没结果' : `${observedLift > 0 ? '+' : ''}${observedLift}`}</div><div class="label">使用插件比只有文字多完成几次</div></div>
-  <div class="stat"><div class="value">${smoke.filter(record => record.status === 'pass').length}/${smoke.length}</div><div class="label">基础批注任务通过数（只说明链路能跑通）</div></div>
-  <div class="stat"><div class="value">${tokenWarnings.length}</div><div class="label">Token 用量超出预期的运行</div></div>
-</div>
 <main>
-  <details class="more-data"><summary>更多运行数据与统计说明</summary>
-    <p class="meta">全部记录按当前检查规则通过 ${passed}/${details.length}。其中 ${diagnostic.length - eligibleDiagnostic.length} 次旧版对比只保留供排查问题，不参与上面的插件效果结论。累计运行 <span id="totalDuration"></span>；输入/输出 Token 为 <span id="inputTokens"></span> / <span id="outputTokens"></span>；缓存读取/写入为 <span id="cacheTokens"></span>；推理 Token 为 <span id="reasoningTokens"></span>。</p>
-    <p class="meta">为什么有些运行不参与结论：正式对比要求三种输入使用同一模型和代码版本、明确记录推理强度，并且模型不能知道自己属于哪一组。不满足这些条件的旧结果仍可查看，但不能公平比较插件效果。</p>
-  </details>
-  <div class="filters">
-    <select id="fCategory"><option value="">全部考察内容</option></select>
-    <select id="fDifficulty"><option value="">全部难度</option><option value="easy">简单</option><option value="medium">中等</option><option value="hard">困难</option><option value="long">长任务</option></select>
-    <select id="fFixture"><option value="">全部测试页面</option></select>
-    <select id="fArm"><option value="">全部输入方式</option><option value="full">使用插件</option><option value="text-only">只有批注文字</option><option value="oracle">已知正确位置</option></select>
-    <select id="fStatus"><option value="">全部结果</option><option value="pass">完成</option><option value="fail">未完成</option><option value="timeout">超时</option><option value="error">运行出错</option></select>
-    <select id="fBudget"><option value="">全部 Token 用量</option><option value="warning">只看超出预期</option><option value="normal">只看预期内</option></select>
-    <button id="fReset">重置</button>
-  </div>
-  <h2 class="section">插件到底有没有帮助</h2>
-  <p class="meta section-note">同一道题分别用三种信息输入运行：只有批注文字、使用插件完整批注、直接告诉模型正确文件位置。前两者用于判断插件是否有帮助，第三种只作为理想上限参考。</p>
-  <div class="table-scroll">
-  <table class="pair-table">
-    <thead><tr><th>题目</th><th>第几次</th><th>只有批注文字</th><th>使用插件</th><th>已知正确位置</th><th>插件多完成几次</th><th>距离理想结果</th><th>步骤变化</th><th>用时变化</th></tr></thead>
-    <tbody id="pairBody"></tbody>
-  </table>
-  </div>
-  <h2 class="section">每次运行的详细结果</h2>
-  <div class="table-scroll">
-  <table class="runs-table">
+  <section class="view active" id="comparisonView">
+    <div class="experiment-head">
+      <div><div class="eyebrow">Experiment comparison</div><h2>完整插件 vs 只有批注文字</h2><p>${diagnosticConclusion}</p></div>
+      <div class="verdict">${eligiblePaired.length === 0 ? '等待结果' : observedLiftValue === 0 ? '结果持平' : observedLiftValue > 0 ? '插件更好' : '需要排查'}</div>
+    </div>
+    <div class="arm-grid" id="armSummary"></div>
+    <div class="section-bar"><div><h2>按题目比较</h2><p class="meta">每道题的 3 次重复已合并。点击一行查看三种输入下的每次运行。</p></div>
+      <select id="comparisonFilter"><option value="">全部结果</option><option value="improved">插件更好</option><option value="regressed">插件更差</option><option value="tie">持平</option></select>
+    </div>
+    <div class="table-scroll"><table class="comparison-table">
+      <thead><tr><th>题目</th><th>只有批注文字（基线）</th><th>使用插件</th><th>相对基线</th><th>已知正确位置（上限）</th><th>结论</th></tr></thead>
+      <tbody id="comparisonBody"></tbody>
+    </table></div>
+  </section>
+  <section class="view" id="smokeView">
+    <div class="experiment-head"><div><div class="eyebrow">Protocol smoke</div><h2>基础批注链路</h2><p>检查插件生成的批注能否被模型接收并完成常规修改。通过只代表链路可用，不代表完整插件比纯文字更好。</p></div><div class="verdict">${smoke.filter(record => record.status === 'pass').length}/${smoke.length} 通过</div></div>
+    <div class="section-bar"><div><h2>基础题结果</h2><p class="meta">每行是一道基础题。</p></div></div>
+    <div class="table-scroll"><table><thead><tr><th>题目</th><th>要完成什么</th><th>难度</th><th>结果</th><th>步骤</th><th>Token / 预期</th><th>耗时</th><th>过程</th></tr></thead><tbody id="smokeBody"></tbody></table></div>
+  </section>
+  <section class="view" id="archiveView">
+    <div class="experiment-head"><div><div class="eyebrow">Run archive</div><h2>全部运行记录</h2><p>用于复现和排查，包括旧版实验。旧结果可能使用了不同模型、代码或评估规则，不参与正式比较。</p></div><div class="verdict">${details.length} 条记录</div></div>
+    <div class="filters">
+      <select id="fCategory"><option value="">全部考察内容</option></select><select id="fDifficulty"><option value="">全部难度</option><option value="easy">简单</option><option value="medium">中等</option><option value="hard">困难</option><option value="long">长任务</option></select>
+      <select id="fFixture"><option value="">全部测试页面</option></select><select id="fArm"><option value="">全部输入方式</option><option value="full">使用插件</option><option value="text-only">只有批注文字</option><option value="oracle">已知正确位置</option></select>
+      <select id="fStatus"><option value="">全部结果</option><option value="pass">完成</option><option value="fail">未完成</option><option value="timeout">超时</option><option value="error">运行出错</option></select><select id="fBudget"><option value="">全部 Token 用量</option><option value="warning">只看超出预期</option><option value="normal">只看预期内</option></select><button id="fReset">重置</button>
+    </div>
+    <div class="table-scroll"><table class="runs-table">
     <thead><tr>
       <th>题目</th><th>拿到的信息</th><th>第几次</th><th>要完成什么</th><th>主要考察</th><th>难度</th><th>测试页面</th><th>结果</th>
       <th>模型步骤</th><th>工具调用</th><th>从第几步开始改文件</th><th>Token / 预期</th><th>耗时</th><th>没通过的原因</th><th>完整过程</th>
     </tr></thead>
     <tbody id="tbody"></tbody>
-  </table>
-  </div>
+    </table></div>
+  </section>
 </main>
 <div id="detail"><article>
   <button class="close" onclick="document.getElementById('detail').classList.remove('open')">✕</button>
@@ -272,16 +292,10 @@ const TOTALS = ${JSON.stringify(totals)};
 const CURRENT_COHORT = ${JSON.stringify(currentCohortKey)};
 document.getElementById('model').textContent = ${JSON.stringify(modelLabels.length === 1 ? modelLabels[0] : `混合配置（${modelLabels.length} 种）`)};
 document.getElementById('runtime').textContent = ${JSON.stringify(runtimeLabels.length === 1 ? runtimeLabels[0] : `混合运行时（${runtimeLabels.length} 种）`)};
-document.getElementById('taskCount').textContent = DATA.length;
 document.getElementById('generatedAt').textContent = new Date(${JSON.stringify(generatedAt)}).toLocaleString('zh-CN', { hour12:false });
-document.getElementById('totalDuration').textContent = (TOTALS.durationMs / 60000).toFixed(1) + ' 分钟';
 const fmt = n => n >= 1000000 ? (n/1000000).toFixed(2)+'M' : n >= 1000 ? (n/1000).toFixed(1)+'k' : String(n);
 const budgeted = d => d.process?.tokens ? d.process.tokens.input + d.process.tokens.output : undefined;
 const tokenWarning = d => budgeted(d) !== undefined && budgeted(d) > d.tokenBudget.warnAbove;
-document.getElementById('inputTokens').textContent = fmt(TOTALS.input);
-document.getElementById('outputTokens').textContent = fmt(TOTALS.output);
-document.getElementById('cacheTokens').textContent = fmt(TOTALS.cacheRead) + ' / ' + fmt(TOTALS.cacheWrite);
-document.getElementById('reasoningTokens').textContent = fmt(TOTALS.reasoning);
 const STATUS = { pass:'完成', fail:'未完成', timeout:'超时', error:'运行出错' };
 const ARM = { full:'使用插件', 'text-only':'只有批注文字', oracle:'已知正确位置' };
 const CATEGORY = { 'protocol-smoke':'基础链路', 'multi-target':'一次处理多个位置', 'scope-resolution':'判断该改哪里', 'anchor-fallback':'没有源码位置时自行查找', responsive:'不同屏幕尺寸', semantics:'语义和无障碍', iterative:'连续多轮修改', 'tool-ownership':'判断修改哪个项目', trust:'识别不可信页面信息' };
@@ -295,7 +309,7 @@ for (const f of fixtures) { const o = document.createElement('option'); o.value 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const statusScore = d => d?.status === 'pass' ? 1 : 0;
 const executionKey = d => d.experimentId ?? [d.taskId,d.arm,d.repetition,d.model?.provider,d.model?.model,d.model?.reasoningEffort ?? 'unknown',d.repoCommit,d.harnessCommit].join(':');
-const signed = n => n === undefined || Number.isNaN(n) ? '—' : (n > 0 ? '+' : '') + n;
+const signed = (n, digits) => n === undefined || Number.isNaN(n) ? '—' : (n > 0 ? '+' : '') + n.toFixed(digits ?? 0);
 async function copyDshCommand(command) {
   try {
     await navigator.clipboard.writeText(command);
@@ -312,22 +326,35 @@ for (const d of DATA.filter(d => d.category !== 'protocol-smoke' && d.diagnostic
   row[d.arm] = d;
   paired.set(key, row);
 }
-function armBadge(d) { return d ? '<span class="badge ' + d.status + '">' + esc(STATUS[d.status] ?? d.status) + '</span>' : '—'; }
-function renderPairs(rows) {
-  document.getElementById('pairBody').innerHTML = rows.map(row => {
-    const text = row['text-only'], full = row.full, oracle = row.oracle;
-    const fullLift = text && full ? statusScore(full) - statusScore(text) : undefined;
-    const oracleGap = full && oracle ? statusScore(oracle) - statusScore(full) : undefined;
-    const stepLift = text?.process && full?.process ? full.process.steps - text.process.steps : undefined;
-    const stepGap = full?.process && oracle?.process ? oracle.process.steps - full.process.steps : undefined;
-    const durationLift = text && full ? Math.round(((full.process?.durationMs ?? full.durationMs) - (text.process?.durationMs ?? text.durationMs)) / 1000) : undefined;
-    const durationGap = full && oracle ? Math.round(((oracle.process?.durationMs ?? oracle.durationMs) - (full.process?.durationMs ?? full.durationMs)) / 1000) : undefined;
-    const deltaClass = n => n > 0 ? 'delta-positive' : n < 0 ? 'delta-negative' : '';
-    return '<tr><td>' + esc(row.taskId) + '</td><td>' + esc(row.repetition) + '</td><td>' + armBadge(text) + '</td><td>' + armBadge(full) + '</td><td>' + armBadge(oracle) + '</td>'
-      + '<td class="' + deltaClass(fullLift) + '">' + signed(fullLift) + '</td><td class="' + (oracleGap > 0 ? 'delta-negative' : oracleGap < 0 ? 'delta-positive' : '') + '">' + signed(oracleGap) + '</td>'
-      + '<td>插件比文字 ' + signed(stepLift) + ' · 理想结果比插件 ' + signed(stepGap) + '</td><td>插件比文字 ' + signed(durationLift) + ' 秒 · 理想结果比插件 ' + signed(durationGap) + ' 秒</td></tr>';
-  }).join('');
+const completePairs = [...paired.values()].filter(row => row.full && row['text-only'] && row.oracle);
+const formalRuns = completePairs.flatMap(row => [row['text-only'],row.full,row.oracle]);
+const average = (rows, read) => rows.length ? rows.reduce((sum,row) => sum + (read(row) ?? 0),0) / rows.length : undefined;
+const aggregate = rows => ({ attempts:rows.length, passes:rows.filter(d => d.status === 'pass').length, steps:average(rows,d => d.process?.steps), tokens:average(rows,d => budgeted(d)), duration:average(rows,d => (d.process?.durationMs ?? d.durationMs)/1000) });
+const taskGroups = new Map();
+for (const d of formalRuns) { const group = taskGroups.get(d.taskId) ?? { sample:d, full:[], 'text-only':[], oracle:[] }; group[d.arm].push(d); taskGroups.set(d.taskId,group); }
+const outcome = group => { const full=aggregate(group.full), text=aggregate(group['text-only']); return full.passes > text.passes ? 'improved' : full.passes < text.passes ? 'regressed' : 'tie'; };
+const metricCell = (summary, baseline) => '<div class="cell-score">' + summary.passes + '/' + summary.attempts + ' 完成</div><div class="cell-sub">' + signed(summary.steps,1).replace('+','') + ' 步 · ' + fmt(Math.round(summary.tokens ?? 0)) + ' Token · ' + signed(summary.duration,1).replace('+','') + ' 秒</div>' + (baseline ? '<div class="cell-sub">基线</div>' : '');
+function renderArmSummary() {
+  const text=aggregate(formalRuns.filter(d=>d.arm==='text-only')), full=aggregate(formalRuns.filter(d=>d.arm==='full')), oracle=aggregate(formalRuns.filter(d=>d.arm==='oracle'));
+  const card = (arm,summary,role,base) => '<article class="arm-card ' + (arm==='text-only'?'baseline':arm) + '"><div class="arm-name"><span>' + esc(ARM[arm]) + '</span><span class="role">' + role + '</span></div><div class="score">' + summary.passes + '/' + summary.attempts + '</div><div class="meta">完成次数</div><div class="arm-metrics"><div class="metric"><strong>' + signed(summary.steps,1).replace('+','') + '</strong><span>平均步骤</span></div><div class="metric"><strong>' + fmt(Math.round(summary.tokens ?? 0)) + '</strong><span>平均 Token</span></div><div class="metric"><strong>' + signed(summary.duration,1).replace('+','') + ' 秒</strong><span>平均耗时</span></div></div>' + (base ? '<div class="delta">相对基线：完成 ' + signed(summary.passes-base.passes) + ' · 步骤 ' + signed(summary.steps-base.steps,1) + ' · Token ' + signed(summary.tokens-base.tokens,0) + '</div>' : '<div class="delta">其他输入方式都与此比较</div>') + '</article>';
+  document.getElementById('armSummary').innerHTML = card('text-only',text,'基线') + card('full',full,'待验证方案',text) + card('oracle',oracle,'定位信息上限',text);
 }
+function renderComparison() {
+  const filter=document.getElementById('comparisonFilter').value;
+  const rows=[...taskGroups.entries()].filter(([,g])=>!filter || outcome(g)===filter);
+  document.getElementById('comparisonBody').innerHTML = rows.length ? rows.map(([taskId,g]) => {
+    const text=aggregate(g['text-only']), full=aggregate(g.full), oracle=aggregate(g.oracle), result=outcome(g);
+    const label=result==='improved'?'插件更好':result==='regressed'?'插件更差':'持平';
+    const cls=result==='improved'?'delta-positive':result==='regressed'?'delta-negative':'';
+    return '<tr class="row task-row" data-task-id="'+esc(taskId)+'"><td class="task-description"><div class="task-summary"><strong>'+esc(g.sample.title)+'</strong>'+esc(g.sample.taskDescription.overview)+'</div></td><td class="baseline-cell">'+metricCell(text,true)+'</td><td>'+metricCell(full,false)+'</td><td class="'+cls+'"><div>完成 '+signed(full.passes-text.passes)+'</div><div class="cell-sub">步骤 '+signed(full.steps-text.steps,1)+' · Token '+signed(full.tokens-text.tokens,0)+' · 耗时 '+signed(full.duration-text.duration,1)+' 秒</div></td><td>'+metricCell(oracle,false)+'</td><td class="'+cls+'">'+label+'</td></tr>';
+  }).join('') : '<tr><td colspan="6" class="empty">没有符合条件的题目</td></tr>';
+  for (const row of document.querySelectorAll('.task-row')) row.addEventListener('click',()=>openTask(row.dataset.taskId));
+}
+function renderSmoke() {
+  document.getElementById('smokeBody').innerHTML = DATA.filter(d=>d.category==='protocol-smoke').map(d=>'<tr class="row smoke-row" data-run-key="'+esc(executionKey(d))+'"><td><strong>'+esc(d.taskId)+'</strong></td><td class="task-description">'+esc(d.title)+'</td><td>'+esc(DIFFICULTY[d.difficulty]??d.difficulty)+'</td><td><span class="badge '+d.status+'">'+esc(STATUS[d.status]??d.status)+'</span></td><td>'+(d.process?.steps??'—')+'</td><td>'+(budgeted(d)!==undefined?fmt(budgeted(d))+' / '+fmt(d.tokenBudget.expected)+(tokenWarning(d)?' <span class="badge warning">超出预期</span>':''):'—')+'</td><td>'+((d.process?.durationMs??d.durationMs)/1000).toFixed(0)+' 秒</td><td>'+detailLinks(d)+'</td></tr>').join('');
+  for (const row of document.querySelectorAll('.smoke-row')) row.addEventListener('click',()=>openDetail(row.dataset.runKey));
+}
+function detailLinks(d) { return d.sessionLogHref ? '<span class="log-actions"><button class="link-button copy-command" data-command="'+esc(d.viewerCommand)+'">复制 DSH 命令</button><a href="'+esc(d.sessionLogHref)+'" target="_blank">JSONL</a></span>' : '—'; }
 function render() {
   const fCategory = document.getElementById('fCategory').value;
   const fDifficulty = document.getElementById('fDifficulty').value;
@@ -342,8 +369,6 @@ function render() {
     (!fArm || d.arm === fArm) &&
     (!fStatus || d.status === fStatus) &&
     (!fBudget || (fBudget === 'warning' ? tokenWarning(d) : !tokenWarning(d))));
-  const visiblePairs = [...paired.values()].filter(row => row.full && row['text-only'] && row.oracle && rows.some(d => executionKey(d) === executionKey(row[d.arm])));
-  renderPairs(visiblePairs);
   document.getElementById('tbody').innerHTML = rows.map(d => {
     const tokens = d.process?.tokens;
     const runKey = executionKey(d);
@@ -360,10 +385,12 @@ function render() {
       + '<td>' + (tokens ? fmt(usage)+' / '+fmt(d.tokenBudget.expected) + (warning ? ' <span class="badge warning">超出预期</span>' : '') : '—') + '</td>'
       + '<td>' + (d.durationMs/1000).toFixed(0) + ' 秒</td>'
       + '<td>' + esc(ATTRIBUTION[d.attribution] ?? d.attribution ?? '') + '</td>'
-      + '<td>' + (d.sessionLogHref ? '<span class="log-actions"><button class="link-button" data-command="' + esc(d.viewerCommand) + '" onclick="event.stopPropagation();copyDshCommand(this.dataset.command)">复制 DSH 命令</button><a href="' + esc(d.sessionLogHref) + '" target="_blank" onclick="event.stopPropagation()">原始 JSONL</a></span>' : '—') + '</td></tr>';
+      + '<td>' + detailLinks(d) + '</td></tr>';
   }).join('');
   for (const row of document.querySelectorAll('#tbody tr[data-run-key]')) row.addEventListener('click', () => openDetail(row.dataset.runKey));
+  wireCommands(document.getElementById('tbody'));
 }
+function wireCommands(root) { for (const button of root.querySelectorAll('.copy-command')) button.addEventListener('click',event=>{event.stopPropagation();copyDshCommand(button.dataset.command)}); for (const link of root.querySelectorAll('a')) link.addEventListener('click',event=>event.stopPropagation()); }
 document.getElementById('fCategory').onchange = render;
 document.getElementById('fDifficulty').onchange = render;
 document.getElementById('fFixture').onchange = render;
@@ -371,7 +398,16 @@ document.getElementById('fArm').onchange = render;
 document.getElementById('fStatus').onchange = render;
 document.getElementById('fBudget').onchange = render;
 document.getElementById('fReset').onclick = () => { for (const id of ['fCategory','fDifficulty','fFixture','fArm','fStatus','fBudget']) document.getElementById(id).value=''; render(); };
-function openDetail(runKey) {
+function openTask(taskId) {
+  const group=taskGroups.get(taskId); if(!group)return;
+  const d=group.sample;
+  const requirementLines=d.taskDescription.requirements.map(r=>'<li>'+esc(r.comment)+'<div class="requirement-meta">'+esc(['第 '+r.round+' 轮','页面元素：'+r.target,r.viewport?'页面尺寸：'+r.viewport:'',r.adjustments.length?'指定调整：'+r.adjustments.join('，'):''].filter(Boolean).join(' · '))+'</div></li>').join('');
+  const column=arm=>{const rows=group[arm], summary=aggregate(rows); return '<section class="arm-column"><h3>'+esc(ARM[arm])+'</h3>'+metricCell(summary,arm==='text-only')+rows.map(run=>'<div class="trial"><span>第 '+run.repetition+' 次</span><div><span class="badge '+run.status+'">'+esc(STATUS[run.status]??run.status)+'</span><div class="trial-metrics">'+(run.process?.steps??'—')+' 步 · '+fmt(budgeted(run)??0)+' Token · '+((run.process?.durationMs??run.durationMs)/1000).toFixed(0)+' 秒</div></div><button class="link-button trial-detail" data-run-key="'+esc(executionKey(run))+'">查看详情</button></div>').join('')+'</section>';};
+  document.getElementById('detailBody').innerHTML='<h2>'+esc(d.title)+'</h2><p class="meta">'+esc(taskId)+' · '+esc(CATEGORY[d.category]??d.category)+' · '+esc(DIFFICULTY[d.difficulty]??d.difficulty)+' · '+esc(d.fixture)+'</p><h3>题目要求</h3><p>'+esc(d.taskDescription.overview)+'</p><ol class="requirements">'+requirementLines+'</ol><h3>三种输入的运行结果</h3><div class="arm-columns">'+column('text-only')+column('full')+column('oracle')+'</div>';
+  for(const button of document.querySelectorAll('.trial-detail'))button.addEventListener('click',()=>openDetail(button.dataset.runKey,taskId));
+  document.getElementById('detail').classList.add('open');
+}
+function openDetail(runKey, backTaskId) {
   const d = DATA.find(x => executionKey(x) === runKey);
   if (!d) return;
   const tokens = d.process?.tokens;
@@ -384,7 +420,7 @@ function openDetail(runKey) {
     return '<li>' + esc(r.comment) + '<div class="requirement-meta">' + esc(metadata) + '</div></li>';
   }).join('');
   document.getElementById('detailBody').innerHTML =
-    '<h2>' + esc(d.taskId) + ' · ' + esc(d.title) + '</h2>'
+    (backTaskId ? '<p><button class="link-button" id="backToTask">← 返回题目对比</button></p>' : '') + '<h2>' + esc(d.taskId) + ' · ' + esc(d.title) + '</h2>'
     + '<p class="meta">' + esc(d.fixture) + ' / ' + esc(CATEGORY[d.category] ?? d.category) + ' / ' + esc(DIFFICULTY[d.difficulty] ?? d.difficulty)
     + ' · <span class="badge ' + d.status + '">' + esc(STATUS[d.status] ?? d.status) + '</span>'
     + ' · 输入方式：' + esc(ARM[d.arm] ?? d.arm) + ' · 第 ' + esc(d.repetition) + ' 次运行 · ' + (d.durationMs/1000).toFixed(1) + ' 秒</p>'
@@ -415,8 +451,12 @@ function openDetail(runKey) {
     + (d.diff ? '<h3>文件改动摘要</h3><pre>' + esc(d.diff) + '</pre>' : '')
     + (d.stderr ? '<details><summary>查看运行错误输出</summary><pre>' + esc(d.stderr) + '</pre></details>' : '');
   document.getElementById('detail').classList.add('open');
+  if(backTaskId)document.getElementById('backToTask').onclick=()=>openTask(backTaskId);
 }
 document.getElementById('detail').addEventListener('click', e => { if (e.target === document.getElementById('detail')) document.getElementById('detail').classList.remove('open'); });
+for(const tab of document.querySelectorAll('.tab'))tab.addEventListener('click',()=>{for(const item of document.querySelectorAll('.tab'))item.classList.toggle('active',item===tab);for(const view of document.querySelectorAll('.view'))view.classList.toggle('active',view.id===tab.dataset.view+'View')});
+document.getElementById('comparisonFilter').onchange=renderComparison;
+renderArmSummary(); renderComparison(); renderSmoke(); wireCommands(document.getElementById('smokeBody'));
 render();
 </script>
 </body>
