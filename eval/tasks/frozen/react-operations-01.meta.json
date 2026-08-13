@@ -6,5 +6,8 @@
   "pluginCommit": "94d5cc376ffc2cbdbe17f88685c5a749b129acb1",
   "harnessCommit": "7b9644f2b664e46c9518506035aa6c8d5af4d8e8",
   "capturedAt": "2026-08-12T19:29:15.556Z",
-  "fixtureRevision": "8e8b79621ed9dffea56ce44e34a744113c6b38c5"
+  "fixtureRevision": "8e8b79621ed9dffea56ce44e34a744113c6b38c5",
+  "verifiedAt": "2026-08-13T13:33:19.771Z",
+  "verifiedPluginCommit": "372f93e7dc2a98f9db94b7f679fdcc2519ddc915",
+  "verifiedHarnessCommit": "7b9644f2b664e46c9518506035aa6c8d5af4d8e8"
 }
