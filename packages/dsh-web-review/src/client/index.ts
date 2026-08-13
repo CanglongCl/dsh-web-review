@@ -22,7 +22,7 @@ import type { ClientContext, ISessions, SessionId } from '@deepseek-ai/dsh-clien
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the ui-conversation SlotMap merge (the view/dock entries).
 import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type { CommandServiceContract } from '@deepseek-ai/dsh-client-ui-command/client'
+import type {} from '@deepseek-ai/dsh-client-ui-commands/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
 import {
@@ -56,7 +56,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export const NS = 'webview' as const
 
 /** Required services (cordis fiber inject — activation waits on them). */
-export const inject = ['slots', 'conversation', 'layout', 'locale', 'sessions', 'command']
+export const inject = ['slots', 'conversation', 'layout', 'locale', 'sessions', 'commandUi']
 
 const SKILL_DESCRIPTION_KEYS: Record<UiSkillName, WebviewKey> = {
   'better-ui': 'editor.skills.betterUi',
@@ -209,9 +209,8 @@ export function apply(ctx: ClientContext): void {
   // preview tab and the annotation dock share one pick list).
   const webviewStore = createWebviewStore()
 
-  ctx.inject(['command'], (scope: ClientContext) => {
-    const command = scope.get('command') as CommandServiceContract
-    scope.effect(() => command.register({
+  ctx.inject(['commandUi'], (scope: ClientContext) => {
+    scope.effect(() => scope.commandUi.register({
       name: 'skills',
       description: t('command.skills.description'),
       available: () => true,

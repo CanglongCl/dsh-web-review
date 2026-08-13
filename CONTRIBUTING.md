@@ -1,15 +1,12 @@
 # 参与开发
 
-本文面向 `dsh-web-review` 的维护者和贡献者，介绍本地开发、技术架构、验证与私有发布流程。普通用户请阅读 [README.md](./README.md)。
+本文面向 `dsh-web-review` 的维护者和贡献者，介绍本地开发、技术架构、验证与公开发布流程。普通用户请阅读 [README.md](./README.md)。
 
-## 保密边界
-
-这是一个保密项目。仓库、源码、截图、测试结果、构建产物、tarball、CI 日志和发布配置都不得上传到公共仓库、公共 Release、公开 registry 或其他公共文件服务。
+## 发布边界
 
 - 源码包保持 `private: true`。
-- npm 包名保持 `@canglongcl/dsh-web-review`，发布访问级别必须为 `restricted`。
+- npm 包名保持 `@canglongcl/dsh-web-review`，正式 tarball 的发布访问级别必须为 `public`。
 - 不要在仓库文件、命令参数、日志或截图中写入真实令牌和 provider 凭据。
-- GitHub 仓库、Actions artifacts、Environment 与发布入口必须保持私有和受控。
 
 完整且具有约束力的工程规则见 [AGENTS.md](./AGENTS.md)。修改协议、加载方式或安全边界前必须先阅读该文件。
 
@@ -17,21 +14,21 @@
 
 ### 1. 安装依赖
 
-配置私有 `@deepseek-ai` scope 的 npm 只读认证，然后运行：
+直接从公共 npm registry 安装依赖，无需配置 `@deepseek-ai` 只读令牌：
 
 ```sh
 pnpm install
 ```
 
-安装过程会配置仓库的 pre-commit hook。普通的类型检查、构建、单元测试、打包和 npm 发布使用锁定的私有 npm 依赖，不要求本地存在 Harness checkout。
+安装过程会配置仓库的 pre-commit hook。普通的类型检查、构建、单元测试、打包和 npm 发布使用锁定的公共 npm 依赖，不要求本地存在 Harness checkout。
 
 ### 2. 准备 Harness
 
 开发、手动验收和 E2E 需要外部 DeepSeek Harness checkout。当前兼容基线是：
 
 ```text
-snapshot-20260811T152241Z-da262ec14c
-c0c02980f5fae2ade5a551bc4875765ed6cecda2
+snapshot-20260812T172954Z-final-unwatermarked-5fa48343c7
+7b9644f2b664e46c9518506035aa6c8d5af4d8e8
 ```
 
 Harness 必须位于本仓库之外，不要为本插件修改 Harness 源码：
@@ -151,43 +148,43 @@ DSH_HARNESS='/绝对路径/deepseek-harness' pnpm check:e2e
 | `pnpm test` | 构建并运行 Vitest |
 | `pnpm check` | 类型、测试、配置契约、bundle 与包白名单门禁 |
 | `pnpm test:e2e` | 真实 DSH GUI、隔离 Origin、点选与发送链路 |
-| `pnpm package:official` | 生成私有正式安装包 |
+| `pnpm package:official` | 生成正式安装包 |
 | `pnpm release:verify` | 校验待发布产物 |
 
 pre-commit hook 会运行快速门禁，不包含需要启动服务和 provider 配置的浏览器 E2E。
 
 ## 打包与发布
 
-构建正式私有安装包：
+构建正式安装包：
 
 ```sh
 pnpm package:official
 ```
 
-产物位于 `dist/`，仅包含白名单内的 manifest、自包含 bundles、bridge、Skills、README 和演示资源。它属于保密材料，不得上传到公共位置。
+产物位于 `dist/`，仅包含白名单内的 manifest、自包含 bundles、bridge、Skills、README 和演示资源。
 
 正式 npm 发布只通过 `.github/workflows/release-npm.yml`：
 
 1. PR 与 `main` 运行 npm-only 质量门禁。
-2. 与 `package.json` 版本完全一致的 `v*` tag 才能进入受保护的 `npm-publish` Environment。
+2. 与 `package.json` 版本完全一致的 `v*` tag 才能触发发布。
 3. 发布 Job 使用前一 Job 已校验的 tarball，不重新构建。
-4. 常规发布通过 npm Trusted Publishing/OIDC 完成，并始终保持 `restricted`。
+4. 发布 Job 使用职责独立的 `NPM_PUBLISH_TOKEN`，并显式保持 `public`。
 
-候选版本使用私有 `next` dist-tag，稳定版本使用私有 `latest`。创建 tag 前必须单独完成显式 Harness E2E：
+候选版本使用 `next` dist-tag，稳定版本使用 `latest`。创建 tag 前必须单独完成显式 Harness E2E：
 
 ```sh
 DSH_HARNESS='/绝对路径/deepseek-harness' pnpm check:e2e
 git tag -a v<version> -m "dsh-web-review v<version>"
-git push origin v<version>
+git push personal v<version>
 ```
 
-首次 bootstrap、GitHub Environment、npm Trusted Publisher 与临时发布令牌的详细配置以 [AGENTS.md](./AGENTS.md) 为准。不要在本文复制真实凭据。
+发布令牌与 CI 边界的详细配置以 [AGENTS.md](./AGENTS.md) 为准。不要在本文复制真实凭据。
 
 ## 提交变更
 
 提交前确认：
 
-1. 改动未突破 Preview Origin、消息信任边界或私有发布约束。
+1. 改动未突破 Preview Origin、消息信任边界或公开发布约束。
 2. 没有提交生成文件、凭据、日志、截图或构建产物。
 3. `pnpm check` 通过；相关 UI 或发送路径的 E2E 也已通过。
 4. 用户可见行为和限制已同步更新到 [README.md](./README.md)。

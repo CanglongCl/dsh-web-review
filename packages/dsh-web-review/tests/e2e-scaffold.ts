@@ -17,14 +17,14 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Locator, Page } from 'playwright'
 import { chromium } from 'playwright'
-import {
-  WELCOME_NOTICE_ACK_FIELD,
-  WELCOME_NOTICE_SETTINGS_NAMESPACE,
-  WELCOME_NOTICE_VERSION,
-} from '@deepseek-ai/dsh-client-ui-settings-general'
 import { harnessWebLaunch } from '../../../scripts/harness-cli.ts'
 import { resolveHarnessRoot } from '../../../scripts/harness-path.ts'
 import { materializeProfilePluginLink } from '../../../scripts/profile-plugin-link.ts'
+
+/** Onboarding acknowledgement expected by the reviewed 0812 Harness baseline. */
+const WELCOME_NOTICE_SETTINGS_NAMESPACE = 'ui-onboarding'
+const WELCOME_NOTICE_ACK_FIELD = 'welcomeNoticeVersion'
+const WELCOME_NOTICE_VERSION = '2026-08-11.1'
 
 /** Repo root (dsh-web-review). */
 export const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url))

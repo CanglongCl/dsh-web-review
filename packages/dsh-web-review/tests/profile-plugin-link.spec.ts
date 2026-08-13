@@ -20,7 +20,7 @@ describe('profile-local development package link', () => {
     const profile = join(dshHome, 'profiles', 'web')
     await mkdir(profile, { recursive: true })
     await writeFile(join(profile, 'package.json'), `${JSON.stringify({
-      dependencies: { [OFFICIAL_PACKAGE_NAME]: '0.0.4-rc.3' },
+      dependencies: { [OFFICIAL_PACKAGE_NAME]: '0.1.0' },
       dsh: { profile: { bundles: [OFFICIAL_PACKAGE_NAME] } },
     })}\n`)
 

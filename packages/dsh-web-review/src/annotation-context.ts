@@ -11,7 +11,7 @@ import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session/types'
 import {
   renderSkillContent,
   type SkillInvocationSource,
-  type SkillService,
+  type SkillRegistry,
 } from '@deepseek-ai/dsh-skill'
 import {
   ANNOTATION_LIMITS,
@@ -410,7 +410,7 @@ export function formatLoadedSkillReminder(names: readonly UiSkillName[]): string
 export async function attachPendingAnnotationContext(
   state: AnnotationCommitState,
   agent: Pick<Agent, 'id' | 'session'>,
-  skills: Pick<SkillService, 'get'>,
+  skills: Pick<SkillRegistry, 'get'>,
   signal: AbortSignal,
   claimedMessages: readonly UserMessage[],
   next: () => Promise<PreStepDecision>,

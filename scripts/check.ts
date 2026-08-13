@@ -5,7 +5,7 @@
  *  2. typecheck — source/scripts solution plus every unit/component/E2E test;
  *  3. build — tsdown produces the node half plus both client channels;
  *  4. unit suite — vitest, including the real directory-entry load;
- *  5. config/package contracts — generated config is deterministic, 0811
+ *  5. config/package contracts — generated config is deterministic, 0812
  *     Cordis/CLI names, current dsh.client shape, both banner ids, and the
  *     native-ESM package entry;
  *  6. official package — stable bundle id, dsh.bundle declaration, exact
@@ -26,27 +26,26 @@ const DIST = join(ROOT, 'dist')
 const OFFICIAL = join(DIST, 'package')
 const EXPECTED_PACKAGE_NAME = '@canglongcl/dsh-web-review'
 const EXPECTED_REGISTRY = 'https://registry.npmjs.org/'
-const EXPECTED_REPOSITORY = 'git+https://github.com/dsh-external/dsh-web-review.git'
+const EXPECTED_REPOSITORY = 'git+https://github.com/CanglongCl/dsh-web-review.git'
 const LOCKFILE = readFileSync(join(ROOT, 'pnpm-lock.yaml'), 'utf8')
-const EXPECTED_PRIVATE_DEVELOPMENT_VERSIONS: Record<string, string> = {
-  '@deepseek-ai/cordis': '4.0.1-rc.1',
-  '@deepseek-ai/cordis-plugin-include': '1.0.5-rc.1',
-  '@deepseek-ai/cordis-plugin-loader': '1.0.1-rc.1',
-  '@deepseek-ai/dsh-agent': '0.0.1-rc.1',
-  '@deepseek-ai/dsh-client-locale': '0.0.1-rc.1',
-  '@deepseek-ai/dsh-client-runtime': '0.0.1-rc.1',
-  '@deepseek-ai/dsh-client-ui-command': '0.0.1-rc.1',
-  '@deepseek-ai/dsh-client-ui-conversation': '0.0.1-rc.1',
-  '@deepseek-ai/dsh-client-ui-layout': '0.0.1-rc.1',
-  '@deepseek-ai/dsh-client-ui-primitives': '0.0.1-rc.1',
-  '@deepseek-ai/dsh-client-ui-settings-general': '0.0.1-rc.1',
-  '@deepseek-ai/dsh-client-ui-slots': '0.0.1-rc.1',
-  '@deepseek-ai/dsh-host-webserver': '0.0.1-rc.1',
-  '@deepseek-ai/dsh-llm': '0.0.1-rc.1',
-  '@deepseek-ai/dsh-session': '0.0.1-rc.1',
-  '@deepseek-ai/dsh-skill': '0.0.1-rc.1',
-  '@deepseek-ai/dsh-system-prompt': '0.0.1-rc.1',
-  '@deepseek-ai/schemastery': '3.18.1-rc.1',
+const EXPECTED_PUBLIC_DEVELOPMENT_VERSIONS: Record<string, string> = {
+  '@deepseek-ai/cordis': '4.0.1',
+  '@deepseek-ai/cordis-plugin-include': '1.0.6',
+  '@deepseek-ai/cordis-plugin-loader': '1.0.2',
+  '@deepseek-ai/dsh-agent': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-client-locale': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-client-runtime': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-client-ui-commands': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-client-ui-conversation': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-client-ui-layout': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-client-ui-primitives': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-client-ui-slots': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-host-webserver': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-llm': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-session': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-skill': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-system-prompt': '0.1.0-rc.6',
+  '@deepseek-ai/schemastery': '3.18.1',
 }
 const runE2e = process.argv.includes('--e2e')
 const fast = process.argv.includes('--fast')
@@ -130,7 +129,7 @@ const webLauncherFiles = [
   join(PKG, 'tests', 'e2e-scaffold.ts'),
 ]
 assert(
-  '0811 Web launchers share the built-CLI helper',
+  '0812 Web launchers share the built-CLI helper',
   () => webLauncherFiles.every(path => {
     const source = readFileSync(path, 'utf8')
     return source.includes('harnessWebLaunch(')
@@ -164,7 +163,7 @@ assert(
       join(PKG, 'tests', 'e2e-scaffold.ts'),
     ].map(file => readFileSync(file, 'utf8')).every(source =>
       source.includes('materializeProfilePluginLink')),
-  () => 'entry-name.json, cordis.yml, and every launcher must share and materialize the 0811 development alias',
+  () => 'entry-name.json, cordis.yml, and every launcher must share and materialize the 0812 development alias',
 )
 assert(
   'client package declares dsh.client',
@@ -188,14 +187,14 @@ const packageManifest = JSON.parse(readFileSync(join(PKG, 'package.json'), 'utf8
   exports?: Record<string, unknown>
 }
 assert(
-  'source package keeps the private publication boundary',
+  'source package keeps the public publication boundary',
   () => packageManifest.name === EXPECTED_PACKAGE_NAME
     && packageManifest.private === true
-    && packageManifest.publishConfig?.access === 'restricted'
+    && packageManifest.publishConfig?.access === 'public'
     && packageManifest.publishConfig.registry === EXPECTED_REGISTRY
     && packageManifest.repository?.type === 'git'
     && packageManifest.repository.url === EXPECTED_REPOSITORY,
-  () => `source manifest must be private ${EXPECTED_PACKAGE_NAME} with the reviewed registry and repository metadata`,
+  () => `source manifest must guard direct workspace publication while staging public ${EXPECTED_PACKAGE_NAME}`,
 )
 assert(
   'source package exposes only runtime entrypoints',
@@ -204,20 +203,20 @@ assert(
   () => 'package.json exports must not expose private src/* modules or missing declaration artifacts',
 )
 assert(
-  'source package uses the 0811 scoped Cordis runtime',
+  'source package uses the public 0812 runtime packages',
   () => {
     const dependencies = packageManifest.devDependencies ?? {}
-    const privateDependencies = Object.entries(dependencies)
+    const deepseekDependencies = Object.entries(dependencies)
       .filter(([name]) => name.startsWith('@deepseek-ai/'))
-    return privateDependencies.length === Object.keys(EXPECTED_PRIVATE_DEVELOPMENT_VERSIONS).length
-      && privateDependencies.every(([name, specifier]) =>
-        EXPECTED_PRIVATE_DEVELOPMENT_VERSIONS[name] === specifier)
+    return deepseekDependencies.length === Object.keys(EXPECTED_PUBLIC_DEVELOPMENT_VERSIONS).length
+      && deepseekDependencies.every(([name, specifier]) =>
+        EXPECTED_PUBLIC_DEVELOPMENT_VERSIONS[name] === specifier)
       && dependencies.cordis === undefined
       && dependencies['@cordisjs/plugin-loader'] === undefined
       && dependencies['@cordisjs/plugin-include'] === undefined
       && readFileSync(join(PKG, 'tsdown.config.ts'), 'utf8').includes("'@deepseek-ai/cordis'")
   },
-  () => 'private npm dependencies and browser platform externals must use the exact pinned 0811 @deepseek-ai package line',
+  () => 'public npm dependencies and browser platform externals must use the exact pinned 0812 @deepseek-ai package line',
 )
 assert(
   'lockfile is registry-backed and machine-independent',
@@ -225,7 +224,7 @@ assert(
   () => 'pnpm-lock.yaml must not contain link: dependencies or machine-local user paths',
 )
 assert(
-  'launchers use the 0811 app-owned CLI',
+  'launchers use the 0812 app-owned CLI',
   () => {
     const source = readFileSync(join(ROOT, 'scripts', 'harness-cli.ts'), 'utf8')
     return source.includes('resolveHarnessCli')
@@ -233,7 +232,7 @@ assert(
       && !source.includes("'--dev'")
       && !source.includes("'--import', 'tsx'")
   },
-  () => '0811 launches apps/cli/lib/bin.js with --patch before app flags and has no --dev option',
+  () => '0812 launches apps/cli/lib/bin.js with --patch before app flags and has no --dev option',
 )
 assert(
   'bundle banner id matches the entry name',
@@ -251,7 +250,7 @@ assert(
   'native-ESM package entry exists',
   () => packageManifest.exports?.['.'] === './lib/index.js'
     && existsSync(join(PKG, 'lib', 'index.js')),
-  () => 'package.json must export the built lib/index.js entry used by the 0811 profile-local alias',
+  () => 'package.json must export the built lib/index.js entry used by the 0812 profile-local alias',
 )
 assert(
   'built node half is self-contained',
@@ -290,6 +289,7 @@ assert(
 if (!fast) run('assemble official DSH package', process.execPath, ['--import', 'tsx', join(ROOT, 'scripts/package-official.ts')])
 const expectedOfficialFiles = [
   'README.md',
+  'README_en.md',
   'cordis.patch.yml',
   'docs/assets/web-review-annotation-editor.jpg',
   'docs/assets/web-review-demo.gif',
@@ -327,7 +327,7 @@ if (!fast) {
         && manifest.version === repositoryManifest.version
         && manifest.version === packageManifest.version
         && manifest.private === undefined
-        && manifest.publishConfig?.access === 'restricted'
+        && manifest.publishConfig?.access === 'public'
         && manifest.publishConfig.registry === EXPECTED_REGISTRY
         && manifest.repository?.type === 'git'
         && manifest.repository.url === EXPECTED_REPOSITORY
@@ -340,7 +340,7 @@ if (!fast) {
         && existsSync(join(OFFICIAL, manifest.exports['./client']))
         && existsSync(join(OFFICIAL, manifest.dsh.bundle.patch))
     },
-    () => 'staged package.json must be publishable only as a restricted package and declare valid dsh.bundle/dsh.client entries',
+    () => 'staged package.json must publish the public package and declare valid dsh.bundle/dsh.client entries',
   )
   assert(
     'official package text contains no credentials or machine paths',

@@ -21,8 +21,8 @@ const packageManifest = JSON.parse(readFileSync(
 
 const EXPECTED_NAME = '@canglongcl/dsh-web-review'
 const EXPECTED_REGISTRY = 'https://registry.npmjs.org/'
-const EXPECTED_REPOSITORY = 'git+https://github.com/dsh-external/dsh-web-review.git'
-const EXPECTED_GITHUB_REPOSITORY = 'dsh-external/dsh-web-review'
+const EXPECTED_REPOSITORY = 'git+https://github.com/CanglongCl/dsh-web-review.git'
+const EXPECTED_GITHUB_REPOSITORY = 'CanglongCl/dsh-web-review'
 const EXPECTED_PACKAGE_MANAGER = 'pnpm@11.20.0'
 const NPMRC = [
   '@deepseek-ai:registry=https://registry.npmjs.org/',
@@ -45,10 +45,10 @@ if (repositoryManifest.packageManager !== EXPECTED_PACKAGE_MANAGER) {
 if (packageManifest.name !== EXPECTED_NAME) fail(`package name must be ${EXPECTED_NAME}`)
 if (packageManifest.private !== true) fail('source package must remain private')
 if (
-  packageManifest.publishConfig?.access !== 'restricted'
+  packageManifest.publishConfig?.access !== 'public'
   || packageManifest.publishConfig.registry !== EXPECTED_REGISTRY
 ) {
-  fail('publishConfig must pin the restricted npmjs registry')
+  fail('publishConfig must pin public access on the npmjs registry')
 }
 if (
   packageManifest.repository?.type !== 'git'
@@ -62,16 +62,12 @@ if (readFileSync(join(root, '.npmrc'), 'utf8') !== NPMRC) {
 
 const workflow = readFileSync(join(root, '.github', 'workflows', 'release-npm.yml'), 'utf8')
 for (const required of [
-  'environment: npm-publish',
-  'id-token: write',
-  'secrets.NPM_READ_TOKEN',
-  'secrets.NPM_BOOTSTRAP_TOKEN',
-  'vars.NPM_PUBLISH_MODE',
+  'secrets.NPM_PUBLISH_TOKEN',
   "NPM_VERSION: '11.19.0'",
   'run: pnpm check',
   'manifest.name !== "@canglongcl/dsh-web-review"',
   'npm publish "${{ steps.artifact.outputs.tarball }}"',
-  '--access restricted',
+  '--access public',
 ]) {
   if (!workflow.includes(required)) fail(`release workflow is missing ${required}`)
 }
@@ -85,11 +81,17 @@ for (const forbidden of [
   '@deepseek-ai/dsh-web-review',
   'steps.registry.outputs',
   'npm view "$PACKAGE_IDENTITY"',
+  'NPM_BOOTSTRAP_TOKEN',
+  'NPM_PUBLISH_MODE',
+  'Trusted Publishing',
+  'NPM_READ_TOKEN',
+  '--access restricted',
+  'id-token: write',
 ]) {
   if (workflow.includes(forbidden)) fail(`release workflow must not contain ${forbidden}`)
 }
 if (workflow.includes('pull_request_target')) fail('release workflow must never use pull_request_target')
-if (workflow.includes('secrets.NPM_TOKEN')) fail('release workflow must use distinct read/bootstrap token names')
+if (workflow.includes('secrets.NPM_TOKEN')) fail('release workflow must use distinct read/publish token names')
 const actionRefs = [...workflow.matchAll(/^\s*uses:\s+\S+@([^\s#]+)/gmu)].map(match => match[1])
 if (actionRefs.length === 0 || actionRefs.some(ref => !/^[0-9a-f]{40}$/u.test(ref ?? ''))) {
   fail('every third-party action must be pinned to a full commit SHA')
@@ -106,9 +108,6 @@ if (publishing) {
       `publishing requires GitHub repository ${EXPECTED_GITHUB_REPOSITORY}, got `
       + `${process.env.GITHUB_REPOSITORY ?? '(unset)'}`,
     )
-  }
-  if (process.env.NPM_PUBLISH_MODE !== 'bootstrap' && process.env.NPM_PUBLISH_MODE !== 'trusted') {
-    fail(`publishing requires NPM_PUBLISH_MODE=bootstrap or trusted, got ${process.env.NPM_PUBLISH_MODE ?? '(unset)'}`)
   }
 }
 

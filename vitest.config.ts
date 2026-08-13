@@ -8,7 +8,7 @@ const ROOT = fileURLToPath(new URL('.', import.meta.url))
  * `// @vitest-environment jsdom` pragma (upstream convention). Value imports
  * The runtime client entry is a browser module-loader artifact, so unit tests
  * use a small contract-faithful store engine. Other value imports resolve from
- * the pinned private npm packages through Vite.
+ * the pinned public npm packages through Vite.
  */
 export default defineConfig({
   resolve: {

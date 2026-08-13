@@ -190,8 +190,8 @@ async function loadComposition(): Promise<Context> {
     config: { path: pathToFileURL(configPath).href },
   })
   await context.loader.await()
-  const httpServer = context.httpServer
-  port = httpServer.port
+  const webServer = context.webServer
+  port = webServer.port
   expect(port).toBeGreaterThan(0)
   return context
 }
