@@ -657,7 +657,13 @@ describe('dsh-web-review e2e', () => {
 
     await page.getByPlaceholder('Message the agent').fill('apply the reviewed visual changes')
     await page.getByRole('button', { name: 'Send 1' }).click()
-    await expect.poll(async () => heading.evaluate(element => ({
+    await expect.poll(
+      async () => page.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
+      { message: 'annotation send should activate Chat' },
+    ).toBe('true')
+    await clickWhenStable(page, page.getByRole('tab', { name: 'Web Preview' }))
+    const restoredHeading = page.frameLocator('iframe[title="Web preview"]').locator('.hero h1')
+    await expect.poll(async () => restoredHeading.evaluate(element => ({
       color: getComputedStyle(element).color,
       fontSize: getComputedStyle(element).fontSize,
       width: getComputedStyle(element).width,
@@ -756,12 +762,15 @@ describe('dsh-web-review e2e', () => {
     await composer.fill('apply this annotated draft')
     await page.getByRole('button', { name: 'Send 1' }).click()
     await expect.poll(
+      async () => page.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
+      { message: 'annotation send should activate Chat' },
+    ).toBe('true')
+    await expect.poll(
       async () => page.locator('[data-webview-annotation-toolbar]').count(),
       { timeout: 15_000, message: 'successful dedicated send should exit annotation mode' },
     ).toBe(0)
     expect(await composer.inputValue()).toBe('')
 
-    await clickWhenStable(page, page.getByRole('tab', { name: 'Chat' }))
     const user = page.locator('[data-chat-flow-kind="user"]')
       .filter({ hasText: 'apply this annotated draft' }).last()
     await user.waitFor({ timeout: 30_000 })
@@ -779,7 +788,10 @@ describe('dsh-web-review e2e', () => {
     expect(await page.getByPlaceholder('Message the agent').inputValue()).toBe('')
     await page.getByRole('button', { name: 'Send 1' }).click()
 
-    await clickWhenStable(page, page.getByRole('tab', { name: 'Chat' }))
+    await expect.poll(
+      async () => page.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
+      { message: 'annotation send should activate Chat' },
+    ).toBe('true')
     const user = page.locator('[data-chat-flow-kind="user"]')
       .filter({ hasText: 'Please apply the page comments to the frontend implementation.' }).last()
     await user.waitFor({ timeout: 30_000 })
