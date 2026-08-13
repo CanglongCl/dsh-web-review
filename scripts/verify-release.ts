@@ -62,7 +62,6 @@ if (readFileSync(join(root, '.npmrc'), 'utf8') !== NPMRC) {
 
 const workflow = readFileSync(join(root, '.github', 'workflows', 'release-npm.yml'), 'utf8')
 for (const required of [
-  'secrets.NPM_READ_TOKEN',
   'secrets.NPM_PUBLISH_TOKEN',
   "NPM_VERSION: '11.19.0'",
   'run: pnpm check',
@@ -85,6 +84,7 @@ for (const forbidden of [
   'NPM_BOOTSTRAP_TOKEN',
   'NPM_PUBLISH_MODE',
   'Trusted Publishing',
+  'NPM_READ_TOKEN',
   '--access restricted',
   'id-token: write',
 ]) {

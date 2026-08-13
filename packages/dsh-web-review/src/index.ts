@@ -40,7 +40,7 @@ export { PREVIEW_GUIDANCE } from './preview-guidance.ts'
 /** Plugin identity for diagnostics and the client-modules scan. */
 export const name = 'dsh-web-review'
 /** Services required before the routes register. */
-export const inject = ['httpServer', 'agents', 'systemPrompt', 'skills']
+export const inject = ['webServer', 'agents', 'systemPrompt', 'skills']
 
 /** `/webview-annotations` exact route path (annotation state sync). */
 export const ANNOTATIONS_PREFIX = '/webview-annotations'
@@ -48,7 +48,7 @@ const MAX_PREVIEW_CONTROL_BODY = 16 * 1024
 
 /**
  * Plugin body: register proxy/pending routes and send-time context admission.
- * @param ctx - root context carrying the httpServer and live-agent services.
+ * @param ctx - root context carrying the webServer and live-agent services.
  */
 export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
   const annotations: AnnotationCommitState = new Map()
@@ -67,13 +67,13 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
     text: PREVIEW_GUIDANCE,
   })
   const livePreviewServer = previewServer
-  ctx.effect(() => ctx.httpServer.register({
+  ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
     path: PREVIEW_SESSIONS_PATH,
     handler: previewSessionsHandler(livePreviewServer),
   }), 'dsh-web-review: preview-session control route')
   ctx.effect(
-    () => ctx.httpServer.register({
+    () => ctx.webServer.register({
       kind: 'exact',
       path: ANNOTATIONS_PREFIX,
       handler: annotationsHandler(ctx, annotations),

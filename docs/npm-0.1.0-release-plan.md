@@ -12,11 +12,10 @@ This plan publishes `@canglongcl/dsh-web-review@0.1.0` as the first public stabl
 - Commit the release preparation separately, for example:
   `dsh-web-review: prepare public 0.1.0 release`.
 
-## 2. Configure GitHub Actions credentials
+## 2. Configure the GitHub Actions credential
 
-- Repository secret `NPM_READ_TOKEN`: read-only installation access for the pinned `@deepseek-ai/*` build dependencies.
 - Repository secret `NPM_PUBLISH_TOKEN`: a short-lived npm granular token with read/write access limited to the `@canglongcl` scope and non-interactive publishing enabled.
-- Do not reuse either token for the other purpose, write credentials into repository files, or expose them in logs.
+- Public `@deepseek-ai/*` build dependencies install anonymously. Do not write the publish token into repository files or expose it in logs.
 
 ## 3. Run release gates
 
@@ -88,6 +87,5 @@ Verify that anonymous metadata and package download work, `latest` points to `0.
 ## 8. Close out the release
 
 - Revoke or rotate the short-lived `NPM_PUBLISH_TOKEN` after publication.
-- Retain `NPM_READ_TOKEN` only while CI needs the pinned build dependencies, keeping it read-only and minimally scoped.
 - Record the workflow run, npm package URL, published integrity, and installation acceptance result.
 - Consider migrating later releases to npm Trusted Publishing/OIDC to remove the stored write token.

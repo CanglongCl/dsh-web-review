@@ -14,21 +14,21 @@
 
 ### 1. 安装依赖
 
-配置私有 `@deepseek-ai` scope 的 npm 只读认证，然后运行：
+直接从公共 npm registry 安装依赖，无需配置 `@deepseek-ai` 只读令牌：
 
 ```sh
 pnpm install
 ```
 
-安装过程会配置仓库的 pre-commit hook。普通的类型检查、构建、单元测试、打包和 npm 发布使用锁定的私有 npm 依赖，不要求本地存在 Harness checkout。
+安装过程会配置仓库的 pre-commit hook。普通的类型检查、构建、单元测试、打包和 npm 发布使用锁定的公共 npm 依赖，不要求本地存在 Harness checkout。
 
 ### 2. 准备 Harness
 
 开发、手动验收和 E2E 需要外部 DeepSeek Harness checkout。当前兼容基线是：
 
 ```text
-snapshot-20260811T152241Z-da262ec14c
-c0c02980f5fae2ade5a551bc4875765ed6cecda2
+snapshot-20260812T172954Z-final-unwatermarked-5fa48343c7
+7b9644f2b664e46c9518506035aa6c8d5af4d8e8
 ```
 
 Harness 必须位于本仓库之外，不要为本插件修改 Harness 源码：

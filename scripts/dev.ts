@@ -1,6 +1,6 @@
 /**
  * One-command dev: prepare the harness checkout once, regenerate the launch
- * overlay, then run the 0811 built CLI (whose HMR receiver is always mounted)
+ * overlay, then run the 0812 built CLI (whose HMR receiver is always mounted)
  * with this package's tsdown watch (rebuilds the client bundle). Both must
  * run from their own places per the loading model — neither alone updates
  * the GUI; browser refresh applies rebuilt bundles, node-half changes need
@@ -44,7 +44,7 @@ function harnessHead(): string {
 
 const head = harnessHead()
 
-/** Harness readiness: current-commit stamp plus the 0811 built CLI and runtime artifacts. */
+/** Harness readiness: current-commit stamp plus the 0812 built CLI and runtime artifacts. */
 function harnessReady(): boolean {
   let stamp: { harness?: string; head?: string } = {}
   try {
@@ -84,7 +84,7 @@ if (setupOnly) {
 const profileLink = materializeProfilePluginLink(root, dshHome)
 console.log(`dev: source package linked at ${profileLink}`)
 
-// 3. 0811 built CLI with the plugin overlay; cwd = this repo so the session
+// 3. 0812 built CLI with the plugin overlay; cwd = this repo so the session
 // workspace root (and the AI's file tools) defaults to the user's project.
 const launch = harnessWebLaunch(harness, join(root, 'cordis.yml'), host, port)
 console.log(`dev: starting dsh web on http://${host}:${port} (cwd ${root})`)

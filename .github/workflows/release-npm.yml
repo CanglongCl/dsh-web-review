@@ -1,5 +1,6 @@
 # Build the reviewed DSH bundle once, then publish those exact bytes to the
-# public npm registry. Read and publish credentials remain separate.
+# public npm registry. Public dependencies install anonymously; only the
+# publish job receives an npm credential.
 name: Release (npm)
 
 on:
@@ -58,8 +59,6 @@ jobs:
 
       - name: Install plugin dependencies
         working-directory: plugin
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_READ_TOKEN }}
         run: pnpm install --frozen-lockfile
 
       - name: Verify release identity
@@ -70,8 +69,6 @@ jobs:
 
       - name: Run npm-only quality gate
         working-directory: plugin
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_READ_TOKEN }}
         run: pnpm check
 
       # Recreate the final artifact after all tests. The publish job downloads
