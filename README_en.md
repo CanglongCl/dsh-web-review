@@ -2,6 +2,8 @@
 
 [简体中文](./README.md)
 
+> ⭐ If you find this project helpful, please consider giving it a Star! Your support motivates me to keep maintaining and improving it.
+
 Select page elements in the built-in browser as you would in a design tool, leave feedback, and preview changes to text, colors, typography, dimensions, spacing, borders, and effects. Once submitted, the agent uses your page annotations to update the source code in the current workspace.
 
 <p align="center">
