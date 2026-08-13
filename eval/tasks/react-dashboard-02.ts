@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'react',
   category: 'color',
   difficulty: 'medium',
-  title: 'Lighten the stat card background',
+  title: '调浅统计卡片背景色',
   instruction: '把统计卡片的背景改成 #f1f5ff',
   capture: {
     target: '.stat-card',

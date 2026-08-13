@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'vue',
   category: 'protocol-smoke',
   difficulty: 'easy',
-  title: 'Rename the blog heading',
+  title: '修改博客标题文案',
   arms: ['full'],
   rounds: [{
     prompt: '请根据页面批注修改前端实现。',

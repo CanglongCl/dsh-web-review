@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'static',
   category: 'typography',
   difficulty: 'medium',
-  title: 'Enlarge the hero heading',
+  title: '放大首屏标题',
   instruction: '把首页主标题的字号从 28px 加大到 32px',
   capture: {
     target: '.hero h1',

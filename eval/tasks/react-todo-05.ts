@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'react',
   category: 'anchor',
   difficulty: 'hard',
-  title: 'Rename the drafts nav item',
+  title: '修改草稿导航项文案',
   instruction: '把侧边栏"草稿"这一项改成"草稿箱"',
   capture: {
     target: 'li.nav-item:nth-of-type(3)',

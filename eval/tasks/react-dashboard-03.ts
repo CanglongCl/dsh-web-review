@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'react',
   category: 'size',
   difficulty: 'medium',
-  title: 'Enlarge the user avatar to 48px',
+  title: '将用户头像放大到 48px',
   instruction: '把用户头像的尺寸改成 48px',
   capture: {
     target: '.avatar',

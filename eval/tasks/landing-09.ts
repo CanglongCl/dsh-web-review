@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'static',
   category: 'typography',
   difficulty: 'medium',
-  title: 'Bolden the card headings',
+  title: '加粗卡片标题',
   instruction: '把卡片标题的字重加粗到 600',
   capture: {
     target: '.card h3',

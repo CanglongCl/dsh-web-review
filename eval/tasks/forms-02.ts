@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'static',
   category: 'accessibility',
   difficulty: 'medium',
-  title: 'Add accessible name to the search input',
+  title: '为搜索输入框添加可访问名称',
   instruction: '给顶部搜索输入框补上可访问名称“搜索”',
   capture: {
     target: 'input[type="search"]',

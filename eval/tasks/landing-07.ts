@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'static',
   category: 'color',
   difficulty: 'medium',
-  title: 'Lighten the cancel button',
+  title: '调浅取消按钮颜色',
   instruction: '把“取消”按钮的背景改成浅灰色 #d7dbe0',
   capture: {
     target: '.card:nth-of-type(2) button.btn-ghost',

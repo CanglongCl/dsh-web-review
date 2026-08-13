@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'react',
   category: 'layout',
   difficulty: 'medium',
-  title: 'Switch the product grid to three columns',
+  title: '将商品网格改为三列',
   instruction: '把商品网格改成每行三列',
   capture: {
     target: '.products',

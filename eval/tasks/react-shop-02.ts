@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'react',
   category: 'typography',
   difficulty: 'medium',
-  title: 'Bolden the product titles',
+  title: '加粗商品标题',
   instruction: '把商品标题的字重加粗到 700',
   capture: {
     target: '.product-title',

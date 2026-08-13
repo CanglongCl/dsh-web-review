@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'react',
   category: 'text',
   difficulty: 'easy',
-  title: 'Update the bio text',
+  title: '修改个人简介文案',
   instruction: '把简介文案改成“热爱前端工程与界面设计”',
   capture: {
     target: '.bio',

@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'static',
   category: 'text',
   difficulty: 'easy',
-  title: 'Rename the submit button',
+  title: '修改提交按钮文案',
   instruction: '把提交按钮文案从“提交”改成“立即提交”',
   capture: {
     target: 'button[type="submit"]',

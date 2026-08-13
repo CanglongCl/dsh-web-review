@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'react',
   category: 'spacing',
   difficulty: 'medium',
-  title: 'Increase spacing between product cards',
+  title: '加大商品卡片之间的间距',
   instruction: '加大商品卡片之间的间距',
   capture: {
     target: '.products',

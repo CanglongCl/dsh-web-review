@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'react',
   category: 'accessibility',
   difficulty: 'medium',
-  title: 'Add accessible name to the avatar',
+  title: '为头像添加可访问名称',
   instruction: '给头像补充可访问名称“用户头像”',
   capture: {
     target: '.avatar',

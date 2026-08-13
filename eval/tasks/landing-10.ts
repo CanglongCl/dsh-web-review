@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'static',
   category: 'batch',
   difficulty: 'hard',
-  title: 'Reduce the card corner radius',
+  title: '减小卡片圆角',
   instruction: '把所有卡片的圆角从 12px 改成 8px',
   capture: {
     target: '.card',

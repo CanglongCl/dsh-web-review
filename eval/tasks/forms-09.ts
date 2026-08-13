@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'static',
   category: 'typography',
   difficulty: 'medium',
-  title: 'Enlarge and bolden form labels',
+  title: '放大并加粗表单标签',
   instruction: '把表单标签的字号加大到 15px 并加粗到 600',
   capture: {
     target: 'label',

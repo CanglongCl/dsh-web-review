@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'react',
   category: 'batch',
   difficulty: 'hard',
-  title: 'Unify add-to-cart button radius',
+  title: '统一加入购物车按钮圆角',
   instruction: '把所有“加入购物车”按钮的圆角统一改成 999px',
   capture: {
     target: '.buy',

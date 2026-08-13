@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'static',
   category: 'layout',
   difficulty: 'hard',
-  title: 'Center the form and cap its width',
+  title: '居中表单并限制最大宽度',
   instruction: '让表单容器水平居中并限制最大宽度为 480px',
   capture: {
     target: '.form',

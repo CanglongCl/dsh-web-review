@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'static',
   category: 'spacing',
   difficulty: 'medium',
-  title: 'Increase spacing between form fields',
+  title: '加大表单项之间的间距',
   instruction: '加大表单项之间的垂直间距',
   capture: {
     target: '.form-field',
@@ -18,7 +18,7 @@ export const task: EvalTask = {
   snapshot,
   captureMeta,
   grader: {
-    pass: [{ kind: 'dom', selector: '.form-field', style: { 'margin-bottom': '24px' } }],
+    pass: [{ kind: 'dom', selector: '.form-field', styleGreaterThan: { 'margin-bottom': '12px' } }],
     noRegression: [{ kind: 'dom', selector: '.form', style: { 'background-color': '#fff' } }],
   },
   golden: { kind: 'html-dir', dir: 'golden' },

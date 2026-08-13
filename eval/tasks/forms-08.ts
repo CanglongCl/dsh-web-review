@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'static',
   category: 'effects',
   difficulty: 'medium',
-  title: 'Add focus shadow to text inputs',
+  title: '为文本输入框添加聚焦阴影',
   instruction: '给输入框聚焦时增加淡蓝色阴影',
   capture: {
     target: 'input[type="text"]',
@@ -18,7 +18,7 @@ export const task: EvalTask = {
   snapshot,
   captureMeta,
   grader: {
-    pass: [{ kind: 'code', file: 'index.html', contains: ['input[type="text"]:focus', 'box-shadow: 0 0 0 3px rgba(76, 110, 245, 0.25)'] }],
+    pass: [{ kind: 'dom', selector: 'input[type="text"]', focus: true, boxShadow: { minExtentPx: 2, colorDominance: 'blue', margin: 20 } }],
   },
   golden: { kind: 'html-dir', dir: 'golden' },
 }

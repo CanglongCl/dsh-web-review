@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'static',
   category: 'interaction',
   difficulty: 'medium',
-  title: 'Darken submit button on hover',
+  title: '加深提交按钮的悬停颜色',
   instruction: '鼠标悬停提交按钮时背景加深为 #3b5bdb',
   capture: {
     target: 'button[type="submit"]',

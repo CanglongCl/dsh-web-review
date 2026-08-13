@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'react',
   category: 'effects',
   difficulty: 'medium',
-  title: 'Strengthen the stat card shadow',
+  title: '增强统计卡片阴影',
   instruction: '给统计卡片加上更明显的阴影',
   capture: {
     target: '.stat-card',
@@ -18,7 +18,7 @@ export const task: EvalTask = {
   snapshot,
   captureMeta,
   grader: {
-    pass: [{ kind: 'code', file: 'src/styles.css', contains: ['0 8px 24px rgba(0, 0, 0, 0.15)'] }],
+    pass: [{ kind: 'dom', selector: '.stat-card', boxShadow: { minExtentPx: 5 }, all: true }],
     noRegression: [{ kind: 'dom', selector: '.stat-card', style: { padding: '20px' } }],
   },
   golden: { kind: 'git-patch', patchFile: 'golden.patch' },

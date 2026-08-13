@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'react',
   category: 'layout',
   difficulty: 'hard',
-  title: 'Evenly distribute the stat cards',
+  title: '均匀分布并对齐统计卡片',
   instruction: '让统计卡片区域在页面上均匀分布并对齐',
   capture: {
     target: '.stats',
@@ -18,7 +18,7 @@ export const task: EvalTask = {
   snapshot,
   captureMeta,
   grader: {
-    pass: [{ kind: 'dom', selector: '.stats', style: { 'justify-content': 'space-between' } }],
+    pass: [{ kind: 'dom', selector: '.stats', horizontalCoverage: { childSelector: '.stat-card', minRatio: 0.98, maxTopDeltaPx: 2 } }],
     noRegression: [{ kind: 'dom', selector: '.stat-card', style: { 'border-radius': '12px' } }],
   },
   golden: { kind: 'git-patch', patchFile: 'golden.patch' },

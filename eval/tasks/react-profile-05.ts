@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'react',
   category: 'layout',
   difficulty: 'medium',
-  title: 'Stack and center the info row',
+  title: '纵向排列并居中个人信息',
   instruction: '让个人信息行改为上下排列并居中',
   capture: {
     target: '.info',

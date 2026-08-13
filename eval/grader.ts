@@ -164,6 +164,7 @@ async function accessibleNameOf(locator: Locator): Promise<string> {
     }
     const placeholder = el.getAttribute('placeholder')
     if (placeholder !== null && placeholder.trim() !== '') return placeholder.trim()
+    if (el instanceof HTMLImageElement && el.alt.trim() !== '') return el.alt.trim()
     return ''
   })
 }
@@ -235,6 +236,23 @@ async function runSingleDom(page: Page, locator: Locator, assertion: DomAssertio
       measuredParts.push(`${property}=${actual}`)
     }
   }
+  if (assertion.styleGreaterThan !== undefined) {
+    const measured = await locator.evaluate((element, props) => {
+      const style = getComputedStyle(element)
+      return Object.fromEntries(props.map(prop => [prop, style.getPropertyValue(prop)]))
+    }, Object.keys(assertion.styleGreaterThan))
+    for (const [property, threshold] of Object.entries(assertion.styleGreaterThan)) {
+      const actual = String(measured[property] ?? '')
+      const thresholdLength = lengthOf(threshold)
+      const actualLength = lengthOf(actual)
+      const greater = !('raw' in thresholdLength) && !('raw' in actualLength)
+        && thresholdLength.unit === actualLength.unit
+        && actualLength.value > thresholdLength.value + (assertion.tolerance ?? 0.5)
+      if (!greater) ok = false
+      expectedParts.push(`${property}>${threshold}`)
+      measuredParts.push(`${property}=${actual}`)
+    }
+  }
   if (assertion.text !== undefined) {
     const text = (await locator.textContent())?.trim() ?? ''
     if (text !== assertion.text) ok = false
@@ -303,6 +321,44 @@ async function runSingleDom(page: Page, locator: Locator, assertion: DomAssertio
     if (!dominant) ok = false
     expectedParts.push(`${assertion.colorDominance.property} is ${assertion.colorDominance.channel}-dominant by ${margin}`)
     measuredParts.push(`${assertion.colorDominance.property}=${value}`)
+  }
+  if (assertion.boxShadow !== undefined) {
+    const value = await locator.evaluate(element => getComputedStyle(element).boxShadow)
+    const shadows = value === 'none'
+      ? []
+      : value.split(/,(?![^()]*\))/u)
+    const extents = shadows.map(shadow => {
+      const lengths = [...shadow.matchAll(/(-?\d+(?:\.\d+)?)px/gu)].map(match => Number.parseFloat(match[1]!))
+      return Math.abs(lengths[0] ?? 0) + Math.abs(lengths[1] ?? 0) + Math.max(0, lengths[2] ?? 0) + Math.max(0, lengths[3] ?? 0)
+    })
+    const extent = Math.max(0, ...extents)
+    let colorOk = true
+    if (assertion.boxShadow.colorDominance !== undefined) {
+      const channelIndex = { red: 0, green: 1, blue: 2 }[assertion.boxShadow.colorDominance]
+      const margin = assertion.boxShadow.margin ?? 20
+      const colors = [...value.matchAll(/rgba?\(([^)]+)\)/giu)]
+        .map(match => rgbOf(`rgb(${match[1]!.split(',').slice(0, 3).join(',')})`))
+        .filter((color): color is [number, number, number] => color !== undefined)
+      colorOk = colors.some(color => color[channelIndex]! >= Math.max(...color.filter((_part, index) => index !== channelIndex)) + margin)
+    }
+    if (extent < assertion.boxShadow.minExtentPx || !colorOk) ok = false
+    expectedParts.push(`box-shadow extent>=${assertion.boxShadow.minExtentPx}px${assertion.boxShadow.colorDominance === undefined ? '' : ` and ${assertion.boxShadow.colorDominance}-dominant`}`)
+    measuredParts.push(`box-shadow=${value}; extent=${extent}px`)
+  }
+  if (assertion.horizontalCoverage !== undefined) {
+    const geometry = await locator.evaluate((element, requirement) => {
+      const parent = element.getBoundingClientRect()
+      const children = [...element.querySelectorAll(requirement.childSelector)].map(child => child.getBoundingClientRect())
+      if (children.length < 2 || parent.width <= 0) return { count: children.length, ratio: 0, topDelta: Number.POSITIVE_INFINITY }
+      const left = Math.min(...children.map(child => child.left))
+      const right = Math.max(...children.map(child => child.right))
+      const tops = children.map(child => child.top)
+      return { count: children.length, ratio: (right - left) / parent.width, topDelta: Math.max(...tops) - Math.min(...tops) }
+    }, assertion.horizontalCoverage)
+    const aligned = geometry.topDelta <= (assertion.horizontalCoverage.maxTopDeltaPx ?? 2)
+    if (geometry.ratio < assertion.horizontalCoverage.minRatio || !aligned) ok = false
+    expectedParts.push(`${assertion.horizontalCoverage.childSelector} horizontal coverage>=${assertion.horizontalCoverage.minRatio}; top delta<=${assertion.horizontalCoverage.maxTopDeltaPx ?? 2}px`)
+    measuredParts.push(`children=${geometry.count}; coverage=${geometry.ratio.toFixed(3)}; top delta=${geometry.topDelta}px`)
   }
   if (assertion.leftAccentColor !== undefined) {
     const evidence = await locator.evaluate((element) => {

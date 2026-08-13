@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'static',
   category: 'spacing',
   difficulty: 'medium',
-  title: 'Widen the primary button padding',
+  title: '加宽主按钮内边距',
   instruction: '把主按钮的内边距加大到上下 10px、左右 24px',
   capture: {
     target: 'button.btn-primary',

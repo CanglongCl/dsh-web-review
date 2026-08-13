@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'react',
   category: 'text',
   difficulty: 'easy',
-  title: 'Rename the add button',
+  title: '修改添加按钮文案',
   instruction: '把"添加任务"按钮文案改成"新建任务"',
   capture: {
     target: '.add-button',

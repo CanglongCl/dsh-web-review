@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'react',
   category: 'typography',
   difficulty: 'medium',
-  title: 'Enlarge the name font size',
+  title: '放大姓名字号',
   instruction: '把名字的字号加大到 24px',
   capture: {
     target: '.name',

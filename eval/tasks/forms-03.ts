@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'static',
   category: 'color',
   difficulty: 'easy',
-  title: 'Change the error text color',
+  title: '修改错误提示文字颜色',
   instruction: '把错误提示文字的颜色改成 #d64545',
   capture: {
     target: '.error',

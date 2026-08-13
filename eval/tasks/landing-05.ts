@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'static',
   category: 'layout',
   difficulty: 'hard',
-  title: 'Left-align the hero content',
+  title: '将首屏内容左对齐',
   instruction: '让首页宣传区的内容改为左对齐',
   capture: {
     target: '.hero',

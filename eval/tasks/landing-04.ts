@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'static',
   category: 'spacing',
   difficulty: 'easy',
-  title: 'Increase spacing between cards',
+  title: '加大卡片之间的间距',
   instruction: '把卡片之间的间距从 16px 加大到 24px',
   capture: {
     target: '.cards',

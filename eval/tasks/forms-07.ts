@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'static',
   category: 'text',
   difficulty: 'medium',
-  title: 'Update the email error message',
+  title: '修改邮箱错误提示文案',
   instruction: '把邮箱错误提示文案改成“请填写有效的邮箱地址”',
   capture: {
     target: '.error',

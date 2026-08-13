@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'react',
   category: 'effects',
   difficulty: 'medium',
-  title: 'Add a soft shadow to the add button',
+  title: '为添加按钮增加柔和阴影',
   instruction: '给添加按钮加上柔和阴影',
   capture: {
     target: '.add-button',
@@ -18,7 +18,7 @@ export const task: EvalTask = {
   snapshot,
   captureMeta,
   grader: {
-    pass: [{ kind: 'code', file: 'src/styles.css', contains: ['box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15)'] }],
+    pass: [{ kind: 'dom', selector: '.add-button', boxShadow: { minExtentPx: 5 } }],
     noRegression: [{ kind: 'dom', selector: '.add-button', style: { 'background-color': '#4c6ef5' } }],
   },
   golden: { kind: 'git-patch', patchFile: 'golden.patch' },

@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'static',
   category: 'text',
   difficulty: 'easy',
-  title: 'Rename the learn-more button',
+  title: '修改了解更多按钮文案',
   instruction: '把第三个卡片里的“了解更多”按钮文案改成“查看详情”',
   capture: {
     target: '.card:nth-of-type(3) button.btn-ghost',

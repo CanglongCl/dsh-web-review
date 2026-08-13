@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'react',
   category: 'protocol-smoke',
   difficulty: 'hard',
-  title: 'Hover highlight for sidebar items',
+  title: '为侧栏项目添加悬停高亮',
   arms: ['full'],
   rounds: [{
     prompt: '请根据页面批注修改前端实现。',

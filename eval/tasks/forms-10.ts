@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'static',
   category: 'batch',
   difficulty: 'hard',
-  title: 'Unify input border radius',
+  title: '统一输入框圆角',
   instruction: '把所有输入框的圆角统一改成 8px',
   capture: {
     target: 'input',

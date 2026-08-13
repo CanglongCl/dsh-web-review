@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'static',
   category: 'effects',
   difficulty: 'medium',
-  title: 'Strengthen the card shadow',
+  title: '增强卡片阴影',
   instruction: '给卡片增加更明显的阴影',
   capture: {
     target: '.card',
@@ -18,7 +18,7 @@ export const task: EvalTask = {
   snapshot,
   captureMeta,
   grader: {
-    pass: [{ kind: 'code', file: 'index.html', contains: ['0 8px 24px rgba(0, 0, 0, 0.15)'] }],
+    pass: [{ kind: 'dom', selector: 'div:nth-of-type(1).card', boxShadow: { minExtentPx: 5 } }],
   },
   golden: { kind: 'html-dir', dir: 'golden' },
 }

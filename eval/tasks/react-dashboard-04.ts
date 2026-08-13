@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'react',
   category: 'responsive',
   difficulty: 'hard',
-  title: 'Stack stat cards on narrow screens',
+  title: '在窄屏下纵向排列统计卡片',
   instruction: '窗口宽度小于 768px 时统计卡片堆叠成单列',
   capture: {
     target: '.stats',

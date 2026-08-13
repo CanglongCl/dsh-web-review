@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'static',
   category: 'protocol-smoke',
   difficulty: 'easy',
-  title: 'Darken the primary button',
+  title: '加深主按钮颜色',
   arms: ['full'],
   rounds: [{
     prompt: '请根据页面批注修改前端实现。',

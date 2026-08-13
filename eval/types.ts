@@ -87,6 +87,8 @@ export interface DomAssertion {
   selector: string
   /** Computed-style expectations; numeric values compare with tolerance. */
   style?: Record<string, string>
+  /** Require numeric computed styles to be strictly greater than the baseline values. */
+  styleGreaterThan?: Record<string, string>
   /** Exact textContent expectation. */
   text?: string
   /** Attribute expectation. */
@@ -111,6 +113,10 @@ export interface DomAssertion {
   styleDiffersFrom?: { selector: string; properties: string[] }
   /** Require one RGB channel to exceed the other two by this margin. */
   colorDominance?: { property: string; channel: 'red' | 'green' | 'blue'; margin?: number }
+  /** Require a computed shadow with enough visible extent and optional color character. */
+  boxShadow?: { minExtentPx: number; colorDominance?: 'red' | 'green' | 'blue'; margin?: number }
+  /** Require child boxes to span and align across the selected container. */
+  horizontalCoverage?: { childSelector: string; minRatio: number; maxTopDeltaPx?: number }
   /** Accept border, inset shadow, or positioned pseudo-element as a left accent. */
   leftAccentColor?: string
   /** Assert the check against EVERY matching element (batch tasks). */

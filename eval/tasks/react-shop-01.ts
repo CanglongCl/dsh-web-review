@@ -9,7 +9,7 @@ export const task: EvalTask = {
   fixtureKind: 'react',
   category: 'color',
   difficulty: 'easy',
-  title: 'Recolor the product price',
+  title: '修改商品价格颜色',
   instruction: '把价格文字的颜色改成 #e8590c',
   capture: {
     target: '.price',
