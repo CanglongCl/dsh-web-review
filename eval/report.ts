@@ -10,10 +10,25 @@ import { join, relative, sep } from 'node:path'
 import { RESULTS_PATH } from './runner/runner.ts'
 import { loadTasks } from './tasks/register.ts'
 import { tokenBudgetExceeded } from './token-budget.ts'
-import type { RunRecord, TokenBudget } from './types.ts'
+import type { LoadedEvalTask, RunRecord, TokenBudget } from './types.ts'
+
+interface TaskRequirement {
+  round: number
+  target: string
+  comment: string
+  adjustments: string[]
+  skills: string[]
+  viewport?: string
+}
+
+interface TaskDescription {
+  overview: string
+  requirements: TaskRequirement[]
+}
 
 interface Detail extends RunRecord {
   tokenBudget: TokenBudget
+  taskDescription: TaskDescription
   trace?: string
   diff?: string
   stdout?: string
@@ -22,8 +37,23 @@ interface Detail extends RunRecord {
   traceHref?: string
 }
 
-function runDetails(record: RunRecord, tokenBudget: TokenBudget): Detail {
-  const detail: Detail = { ...record, tokenBudget }
+function describeTask(task: LoadedEvalTask): TaskDescription {
+  const requirements = task.rounds.flatMap((round, roundIndex) => round.capture.map(annotation => ({
+    round: roundIndex + 1,
+    target: annotation.target,
+    comment: annotation.comment,
+    adjustments: (annotation.adjusts ?? []).map(adjustment => `${adjustment.property} → ${adjustment.after}`),
+    skills: annotation.selectedSkills ?? [],
+    ...(annotation.viewport === undefined ? {} : { viewport: `${annotation.viewport.width}×${annotation.viewport.height}` }),
+  })))
+  return {
+    overview: `在 ${task.fixture}（${task.fixtureKind}）中完成 ${task.rounds.length} 轮、${requirements.length} 条真实浏览器批注，重点评估“${task.title}”。`,
+    requirements,
+  }
+}
+
+function runDetails(record: RunRecord, task: LoadedEvalTask): Detail {
+  const detail: Detail = { ...record, tokenBudget: task.tokenBudget, taskDescription: describeTask(task) }
   const linkTo = (file: string): string => relative(RESULTS_PATH, join(record.runDir, file)).split(sep).join('/')
   if (record.runDir !== '' && existsSync(join(record.runDir, 'session.jsonl'))) detail.sessionLogHref = linkTo('session.jsonl')
   if (record.runDir !== '' && existsSync(join(record.runDir, 'trace.md'))) detail.traceHref = linkTo('trace.md')
@@ -60,7 +90,7 @@ async function main(): Promise<void> {
   const details = records.map(record => {
     const task = tasks.get(record.taskId)
     if (task === undefined) throw new Error(`result references unknown task ${record.taskId}`)
-    return runDetails(record, task.tokenBudget)
+    return runDetails(record, task)
   })
   const totals = details.reduce((acc, record) => {
     const tokens = record.process?.tokens
@@ -124,9 +154,15 @@ async function main(): Promise<void> {
   .table-scroll { width:100%; max-width:100%; overflow-x:auto; border:1px solid var(--line); border-radius:10px; background:var(--card); overscroll-behavior-inline:contain; }
   table { width:100%; border-collapse:collapse; background:var(--card); }
   .pair-table { min-width:1050px; }
-  .runs-table { min-width:1480px; }
+  .runs-table { min-width:1700px; }
   th, td { padding:9px 12px; border-bottom:1px solid var(--line); font-size:13px; text-align:left; }
   th { white-space:nowrap; }
+  td.task-description { min-width:340px; max-width:440px; white-space:normal; }
+  .task-summary { display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:3; line-height:1.45; }
+  .task-summary strong { display:block; margin-bottom:2px; }
+  .requirements { padding-left:22px; }
+  .requirements li { margin:8px 0; line-height:1.5; }
+  .requirement-meta { color:var(--muted); font-size:12px; }
   th { background:#f0f2f5; font-weight:600; }
   tr:last-child td { border-bottom:0; }
   tr.row { cursor:pointer; }
@@ -192,7 +228,7 @@ async function main(): Promise<void> {
   <div class="table-scroll">
   <table class="runs-table">
     <thead><tr>
-      <th>题目</th><th>实验臂</th><th>重复</th><th>题目名称</th><th>能力类别</th><th>难度</th><th>应用</th><th>状态</th>
+      <th>题目</th><th>实验臂</th><th>重复</th><th>题目描述</th><th>能力类别</th><th>难度</th><th>应用</th><th>状态</th>
       <th>步骤</th><th>工具调用</th><th>首次写入</th><th>Token / 预期</th><th>耗时</th><th>失败归因</th><th>对话日志</th>
     </tr></thead>
     <tbody id="tbody"></tbody>
@@ -274,8 +310,10 @@ function render() {
     const runKey = executionKey(d);
     const usage = budgeted(d);
     const warning = tokenWarning(d);
-    return '<tr class="row' + (warning ? ' token-warning' : '') + '" onclick="openDetail(' + JSON.stringify(runKey) + ')">'
-      + '<td>' + esc(d.taskId) + '</td><td>' + esc(ARM[d.arm] ?? d.arm) + '</td><td>' + esc(d.repetition) + '</td><td>' + esc(d.title) + '</td><td>' + esc(CATEGORY[d.category] ?? d.category) + '</td><td>' + esc(DIFFICULTY[d.difficulty] ?? d.difficulty) + '</td><td>' + esc(d.fixture) + '</td>'
+    return '<tr class="row' + (warning ? ' token-warning' : '') + '" data-run-key="' + esc(runKey) + '">'
+      + '<td>' + esc(d.taskId) + '</td><td>' + esc(ARM[d.arm] ?? d.arm) + '</td><td>' + esc(d.repetition) + '</td>'
+      + '<td class="task-description"><div class="task-summary"><strong>' + esc(d.title) + '</strong>' + esc(d.taskDescription.overview) + '</div></td>'
+      + '<td>' + esc(CATEGORY[d.category] ?? d.category) + '</td><td>' + esc(DIFFICULTY[d.difficulty] ?? d.difficulty) + '</td><td>' + esc(d.fixture) + '</td>'
       + '<td><span class="badge ' + d.status + '">' + esc(STATUS[d.status] ?? d.status) + '</span></td>'
       + '<td>' + (d.process?.steps ?? '—') + '</td>'
       + '<td>' + Object.values(d.process?.toolCalls ?? {}).reduce((a,b)=>a+b,0) + '</td>'
@@ -285,6 +323,7 @@ function render() {
       + '<td>' + esc(ATTRIBUTION[d.attribution] ?? d.attribution ?? '') + '</td>'
       + '<td>' + (d.sessionLogHref ? '<a href="' + esc(d.sessionLogHref) + '" target="_blank" onclick="event.stopPropagation()">打开日志</a>' : '—') + '</td></tr>';
   }).join('');
+  for (const row of document.querySelectorAll('#tbody tr[data-run-key]')) row.addEventListener('click', () => openDetail(row.dataset.runKey));
 }
 document.getElementById('fCategory').onchange = render;
 document.getElementById('fDifficulty').onchange = render;
@@ -299,11 +338,16 @@ function openDetail(runKey) {
   const tokens = d.process?.tokens;
   const toolLines = Object.entries(d.process?.toolCalls ?? {}).map(([name,count]) => name + ' × ' + count).join('，');
   const graderLines = (d.grader?.results ?? []).map(r => '<li>' + esc(r.ok ? '✓' : '✗') + ' ' + esc(r.expected) + ' → ' + esc(r.measured) + '</li>').join('');
+  const requirementLines = d.taskDescription.requirements.map(r => {
+    const metadata = ['第 ' + r.round + ' 轮', '目标 ' + r.target, r.viewport ? '视口 ' + r.viewport : '', r.adjustments.length ? '指定调整：' + r.adjustments.join('，') : '', r.skills.length ? 'Skills：' + r.skills.join('，') : ''].filter(Boolean).join(' · ');
+    return '<li>' + esc(r.comment) + '<div class="requirement-meta">' + esc(metadata) + '</div></li>';
+  }).join('');
   document.getElementById('detailBody').innerHTML =
     '<h2>' + esc(d.taskId) + ' · ' + esc(ARM[d.arm] ?? d.arm) + ' · 第 ' + esc(d.repetition) + ' 次 · ' + esc(d.title) + '</h2>'
     + '<p class="meta">' + esc(d.fixture) + ' / ' + esc(CATEGORY[d.category] ?? d.category) + ' / ' + esc(DIFFICULTY[d.difficulty] ?? d.difficulty)
     + ' · <span class="badge ' + d.status + '">' + esc(STATUS[d.status] ?? d.status) + '</span>'
     + ' · ' + esc(ATTRIBUTION[d.attribution] ?? d.attribution ?? '') + ' · ' + (d.durationMs/1000).toFixed(1) + ' 秒 · 退出码 ' + d.exitCode + '</p>'
+    + '<h3>题目描述</h3><p>' + esc(d.taskDescription.overview) + '</p><ol class="requirements">' + requirementLines + '</ol>'
     + (d.sessionLogHref ? '<p><a href="' + esc(d.sessionLogHref) + '" target="_blank">打开对应的 Harness 对话日志</a>' + (d.process?.sessionId ? ' <span class="meta">会话：' + esc(d.process.sessionId) + '</span>' : '') + '</p>' : '')
     + '<p class="meta">实验 ID：' + esc(d.experimentId ?? '旧记录（无不可变 ID）')
     + ' · 原始状态：' + esc(STATUS[d.originalStatus] ?? d.originalStatus ?? '未记录')
