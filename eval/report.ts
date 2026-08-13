@@ -106,7 +106,11 @@ async function main(): Promise<void> {
   }, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, durationMs: 0 })
   const passed = details.filter(record => record.status === 'pass').length
   const diagnostic = details.filter(record => record.category !== 'protocol-smoke')
-  const eligibleDiagnostic = diagnostic.filter(record => record.diagnosticValidity === 'eligible' && record.experimentId !== undefined && record.executionRevision !== undefined && record.model.reasoningEffort !== undefined)
+  const allEligibleDiagnostic = diagnostic.filter(record => record.diagnosticValidity === 'eligible' && record.experimentId !== undefined && record.executionRevision !== undefined && record.model.reasoningEffort !== undefined)
+  const cohortKey = (record: RunRecord): string => [record.model.provider, record.model.model, record.model.reasoningEffort, record.repoCommit, record.harnessCommit, record.executionRevision].join(':')
+  const latestEligible = [...allEligibleDiagnostic].sort((a, b) => a.startedAt.localeCompare(b.startedAt)).at(-1)
+  const currentCohortKey = latestEligible === undefined ? undefined : cohortKey(latestEligible)
+  const eligibleDiagnostic = currentCohortKey === undefined ? [] : allEligibleDiagnostic.filter(record => cohortKey(record) === currentCohortKey)
   const smoke = details.filter(record => record.category === 'protocol-smoke')
   const costQualified = [...smoke, ...eligibleDiagnostic]
   const tokenWarnings = costQualified.filter(record => record.process?.tokens !== undefined && tokenBudgetExceeded(record.process.tokens, record.tokenBudget))
@@ -130,7 +134,9 @@ async function main(): Promise<void> {
   const textWins = eligiblePaired.filter(record => record.arm === 'text-only' && record.status === 'pass').length
   const observedLift = eligiblePaired.length === 0 ? undefined : fullWins - textWins
   const generatedAt = new Date().toISOString()
-  const modelLabels = [...new Set(details.map(record => [record.model.provider, record.model.model, record.model.reasoningEffort ?? 'effort 未记录'].join(' / ')))]
+  const headlineRecords = eligibleDiagnostic.length === 0 ? details : eligibleDiagnostic
+  const modelLabels = [...new Set(headlineRecords.map(record => [record.model.provider, record.model.model, record.model.reasoningEffort ?? 'effort 未记录'].join(' / ')))]
+  const runtimeLabels = [...new Set(headlineRecords.map(record => record.harnessCommit))]
 
   const html = `<!doctype html>
 <html lang="zh-CN">
@@ -189,7 +195,7 @@ async function main(): Promise<void> {
 <body>
 <header>
   <h1>dsh-web-review · 插件能力评测报告</h1>
-  <div class="meta">模型：<span id="model"></span> · 运行次数：<span id="taskCount"></span> · 生成时间：<span id="generatedAt"></span></div>
+  <div class="meta">模型：<span id="model"></span> · 评测运行时：<span id="runtime"></span> · 记录数：<span id="taskCount"></span> · 生成时间：<span id="generatedAt"></span></div>
 </header>
 <div class="cards">
   <div class="stat"><div class="value">${diagnosticScenarios}</div><div class="label">插件诊断场景</div></div>
@@ -242,7 +248,9 @@ async function main(): Promise<void> {
 <script>
 const DATA = ${JSON.stringify(details)};
 const TOTALS = ${JSON.stringify(totals)};
+const CURRENT_COHORT = ${JSON.stringify(currentCohortKey)};
 document.getElementById('model').textContent = ${JSON.stringify(modelLabels.length === 1 ? modelLabels[0] : `混合配置（${modelLabels.length} 种）`)};
+document.getElementById('runtime').textContent = ${JSON.stringify(runtimeLabels.length === 1 ? runtimeLabels[0] : `混合运行时（${runtimeLabels.length} 种）`)};
 document.getElementById('taskCount').textContent = DATA.length;
 document.getElementById('generatedAt').textContent = new Date(${JSON.stringify(generatedAt)}).toLocaleString('zh-CN', { hour12:false });
 document.getElementById('totalDuration').textContent = (TOTALS.durationMs / 60000).toFixed(1) + ' 分钟';
@@ -267,7 +275,8 @@ const statusScore = d => d?.status === 'pass' ? 1 : 0;
 const executionKey = d => d.experimentId ?? [d.taskId,d.arm,d.repetition,d.model?.provider,d.model?.model,d.model?.reasoningEffort ?? 'unknown',d.repoCommit,d.harnessCommit].join(':');
 const signed = n => n === undefined || Number.isNaN(n) ? '—' : (n > 0 ? '+' : '') + n;
 const paired = new Map();
-for (const d of DATA.filter(d => d.category !== 'protocol-smoke' && d.diagnosticValidity === 'eligible' && d.experimentId && d.executionRevision && d.model?.reasoningEffort)) {
+const cohortKey = d => [d.model.provider,d.model.model,d.model.reasoningEffort,d.repoCommit,d.harnessCommit,d.executionRevision].join(':');
+for (const d of DATA.filter(d => d.category !== 'protocol-smoke' && d.diagnosticValidity === 'eligible' && d.experimentId && d.executionRevision && d.model?.reasoningEffort && cohortKey(d) === CURRENT_COHORT)) {
   const key = [d.taskId,d.repetition,d.model.provider,d.model.model,d.model.reasoningEffort,d.repoCommit,d.harnessCommit,d.taskRevision,d.executionRevision].join(':');
   const row = paired.get(key) ?? { taskId:d.taskId, repetition:d.repetition };
   row[d.arm] = d;
