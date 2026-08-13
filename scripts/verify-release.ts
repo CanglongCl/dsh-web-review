@@ -21,8 +21,8 @@ const packageManifest = JSON.parse(readFileSync(
 
 const EXPECTED_NAME = '@canglongcl/dsh-web-review'
 const EXPECTED_REGISTRY = 'https://registry.npmjs.org/'
-const EXPECTED_REPOSITORY = 'git+https://github.com/dsh-external/dsh-web-review.git'
-const EXPECTED_GITHUB_REPOSITORY = 'dsh-external/dsh-web-review'
+const EXPECTED_REPOSITORY = 'git+https://github.com/CanglongCl/dsh-web-review.git'
+const EXPECTED_GITHUB_REPOSITORY = 'CanglongCl/dsh-web-review'
 const EXPECTED_PACKAGE_MANAGER = 'pnpm@11.20.0'
 const NPMRC = [
   '@deepseek-ai:registry=https://registry.npmjs.org/',

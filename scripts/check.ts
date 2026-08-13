@@ -26,7 +26,7 @@ const DIST = join(ROOT, 'dist')
 const OFFICIAL = join(DIST, 'package')
 const EXPECTED_PACKAGE_NAME = '@canglongcl/dsh-web-review'
 const EXPECTED_REGISTRY = 'https://registry.npmjs.org/'
-const EXPECTED_REPOSITORY = 'git+https://github.com/dsh-external/dsh-web-review.git'
+const EXPECTED_REPOSITORY = 'git+https://github.com/CanglongCl/dsh-web-review.git'
 const LOCKFILE = readFileSync(join(ROOT, 'pnpm-lock.yaml'), 'utf8')
 const EXPECTED_PRIVATE_DEVELOPMENT_VERSIONS: Record<string, string> = {
   '@deepseek-ai/cordis': '4.0.1-rc.1',
@@ -290,6 +290,7 @@ assert(
 if (!fast) run('assemble official DSH package', process.execPath, ['--import', 'tsx', join(ROOT, 'scripts/package-official.ts')])
 const expectedOfficialFiles = [
   'README.md',
+  'README_en.md',
   'cordis.patch.yml',
   'docs/assets/web-review-annotation-editor.jpg',
   'docs/assets/web-review-demo.gif',

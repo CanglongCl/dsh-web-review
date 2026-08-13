@@ -63,7 +63,7 @@ Create the tag only on the reviewed public-release commit:
 
 ```sh
 git tag -a v0.1.0 -m "dsh-web-review v0.1.0"
-git push origin v0.1.0
+git push personal v0.1.0
 ```
 
 The tag workflow must rebuild and verify the artifact, download the exact checked tarball, validate package/tag identity, and run:

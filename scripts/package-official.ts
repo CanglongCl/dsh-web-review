@@ -52,6 +52,7 @@ writeFileSync(join(staging, 'cordis.patch.yml'), [
   '',
 ].join('\n'))
 cpSync(join(root, 'README.md'), join(staging, 'README.md'))
+cpSync(join(root, 'README_en.md'), join(staging, 'README_en.md'))
 for (const file of ['web-review-demo.gif', 'web-review-preview.jpg', 'web-review-annotation-editor.jpg']) {
   cpSync(join(root, 'docs', 'assets', file), join(staging, 'docs', 'assets', file))
 }

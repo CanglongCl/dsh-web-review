@@ -1,7 +1,7 @@
 {
   "name": "@canglongcl/dsh-web-review",
   "description": "DSH web review plugin: page preview, element annotation, visual adjustments, and AI-driven workspace source edits",
-  "version": "0.0.4-rc.3",
+  "version": "0.1.0",
   "private": true,
   "publishConfig": {
     "access": "public",
@@ -9,7 +9,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dsh-external/dsh-web-review.git"
+    "url": "git+https://github.com/CanglongCl/dsh-web-review.git"
   },
   "type": "module",
   "main": "lib/index.js",
