@@ -114,7 +114,8 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          registry-url: https://registry.npmjs.org/
+          # Do not set registry-url here: setup-node writes an _authToken
+          # placeholder that can mask npm's OIDC trusted-publisher flow.
           package-manager-cache: false
 
       - name: Install current npm
