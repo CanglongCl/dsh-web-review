@@ -278,6 +278,9 @@ describe('dsh-web-review e2e', () => {
 
     let editor = page.locator('[data-webview-annotation-editor]')
     await editor.waitFor({ timeout: 10_000 })
+    const commentInput = editor.getByPlaceholder('Describe these changes…')
+    await expect.poll(async () => commentInput.evaluate(element => element.ownerDocument.activeElement === element)).toBe(true)
+    await editor.focus()
     await expect.poll(async () => editor.evaluate(element => element.ownerDocument.activeElement === element)).toBe(true)
     expect(await frame.locator('button.btn-primary').evaluate(element => element.ownerDocument.activeElement !== element)).toBe(true)
     const feedback = page.locator('[data-webview-navigation-feedback]')

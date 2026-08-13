@@ -21,6 +21,11 @@ import { harnessWebLaunch } from '../../../scripts/harness-cli.ts'
 import { resolveHarnessRoot } from '../../../scripts/harness-path.ts'
 import { materializeProfilePluginLink } from '../../../scripts/profile-plugin-link.ts'
 
+/** Onboarding acknowledgement expected by the reviewed 0812 Harness baseline. */
+const WELCOME_NOTICE_SETTINGS_NAMESPACE = 'ui-onboarding'
+const WELCOME_NOTICE_ACK_FIELD = 'welcomeNoticeVersion'
+const WELCOME_NOTICE_VERSION = '2026-08-11.1'
+
 /** Repo root (dsh-web-review). */
 export const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
 
@@ -105,15 +110,6 @@ async function waitForChildService(
 export async function startServices(): Promise<E2EServices> {
   const webPort = await probeFreePort()
   const demoPort = await probeFreePort()
-  const harness = resolveHarnessRoot()
-  const welcome = await import(join(
-    harness,
-    'packages/client/ui-settings-general/src/onboarding-copy.ts',
-  )) as {
-    WELCOME_NOTICE_ACK_FIELD: string
-    WELCOME_NOTICE_SETTINGS_NAMESPACE: string
-    WELCOME_NOTICE_VERSION: string
-  }
   // Isolated harness home: a fresh GUI must boot into the hero (workspace
   // picker) state instead of inheriting the developer's ~/.dsh sessions.
   const dshHome = await mkdtemp(join(tmpdir(), 'dsh-web-review-e2e-home-'))
@@ -144,8 +140,8 @@ export async function startServices(): Promise<E2EServices> {
     chmodSync(stagedCredentials, 0o600)
   }
   writeFileSync(join(dshHome, 'settings.yaml'), [
-    `${welcome.WELCOME_NOTICE_SETTINGS_NAMESPACE}:`,
-    `  ${welcome.WELCOME_NOTICE_ACK_FIELD}: ${welcome.WELCOME_NOTICE_VERSION}`,
+    `${WELCOME_NOTICE_SETTINGS_NAMESPACE}:`,
+    `  ${WELCOME_NOTICE_ACK_FIELD}: ${WELCOME_NOTICE_VERSION}`,
     '',
   ].join('\n'))
   materializeProfilePluginLink(REPO_ROOT, dshHome)
@@ -189,6 +185,7 @@ export async function startServices(): Promise<E2EServices> {
     '',
   ].join('\n'))
 
+  const harness = resolveHarnessRoot()
   const launch = harnessWebLaunch(harness, overlayPath, '127.0.0.1', webPort, {
     ...process.env,
     DSH_HOME: dshHome,

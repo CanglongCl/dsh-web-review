@@ -26,26 +26,26 @@ const DIST = join(ROOT, 'dist')
 const OFFICIAL = join(DIST, 'package')
 const EXPECTED_PACKAGE_NAME = '@canglongcl/dsh-web-review'
 const EXPECTED_REGISTRY = 'https://registry.npmjs.org/'
-const EXPECTED_REPOSITORY = 'git+https://github.com/dsh-external/dsh-web-review.git'
+const EXPECTED_REPOSITORY = 'git+https://github.com/CanglongCl/dsh-web-review.git'
 const LOCKFILE = readFileSync(join(ROOT, 'pnpm-lock.yaml'), 'utf8')
-const EXPECTED_PRIVATE_DEVELOPMENT_VERSIONS: Record<string, string> = {
-  '@deepseek-ai/cordis': '4.0.1-rc.1',
-  '@deepseek-ai/cordis-plugin-include': '1.0.5-rc.1',
-  '@deepseek-ai/cordis-plugin-loader': '1.0.1-rc.1',
-  '@deepseek-ai/dsh-agent': '0.0.1-rc.2',
-  '@deepseek-ai/dsh-client-locale': '0.0.1-rc.2',
-  '@deepseek-ai/dsh-client-runtime': '0.0.1-rc.2',
-  '@deepseek-ai/dsh-client-ui-conversation': '0.0.1-rc.2',
-  '@deepseek-ai/dsh-client-ui-layout': '0.0.1-rc.2',
-  '@deepseek-ai/dsh-client-ui-primitives': '0.0.1-rc.2',
-  '@deepseek-ai/dsh-client-ui-settings-general': '0.0.1-rc.2',
-  '@deepseek-ai/dsh-client-ui-slots': '0.0.1-rc.2',
-  '@deepseek-ai/dsh-host-webserver': '0.0.1-rc.2',
-  '@deepseek-ai/dsh-llm': '0.0.1-rc.2',
-  '@deepseek-ai/dsh-session': '0.0.1-rc.2',
-  '@deepseek-ai/dsh-skill': '0.0.1-rc.2',
-  '@deepseek-ai/dsh-system-prompt': '0.0.1-rc.2',
-  '@deepseek-ai/schemastery': '3.18.1-rc.1',
+const EXPECTED_PUBLIC_DEVELOPMENT_VERSIONS: Record<string, string> = {
+  '@deepseek-ai/cordis': '4.0.1',
+  '@deepseek-ai/cordis-plugin-include': '1.0.6',
+  '@deepseek-ai/cordis-plugin-loader': '1.0.2',
+  '@deepseek-ai/dsh-agent': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-client-locale': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-client-runtime': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-client-ui-commands': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-client-ui-conversation': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-client-ui-layout': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-client-ui-primitives': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-client-ui-slots': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-host-webserver': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-llm': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-session': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-skill': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-system-prompt': '0.1.0-rc.6',
+  '@deepseek-ai/schemastery': '3.18.1',
 }
 const runE2e = process.argv.includes('--e2e')
 const fast = process.argv.includes('--fast')
@@ -191,14 +191,14 @@ const packageManifest = JSON.parse(readFileSync(join(PKG, 'package.json'), 'utf8
   exports?: Record<string, unknown>
 }
 assert(
-  'source package keeps the private publication boundary',
+  'source package keeps the public publication boundary',
   () => packageManifest.name === EXPECTED_PACKAGE_NAME
     && packageManifest.private === true
-    && packageManifest.publishConfig?.access === 'restricted'
+    && packageManifest.publishConfig?.access === 'public'
     && packageManifest.publishConfig.registry === EXPECTED_REGISTRY
     && packageManifest.repository?.type === 'git'
     && packageManifest.repository.url === EXPECTED_REPOSITORY,
-  () => `source manifest must be private ${EXPECTED_PACKAGE_NAME} with the reviewed registry and repository metadata`,
+  () => `source manifest must guard direct workspace publication while staging public ${EXPECTED_PACKAGE_NAME}`,
 )
 assert(
   'source package exposes only runtime entrypoints',
@@ -207,20 +207,20 @@ assert(
   () => 'package.json exports must not expose private src/* modules or missing declaration artifacts',
 )
 assert(
-  'source package uses the 0812 scoped Cordis runtime',
+  'source package uses the public 0812 runtime packages',
   () => {
     const dependencies = packageManifest.devDependencies ?? {}
-    const privateDependencies = Object.entries(dependencies)
+    const deepseekDependencies = Object.entries(dependencies)
       .filter(([name]) => name.startsWith('@deepseek-ai/'))
-    return privateDependencies.length === Object.keys(EXPECTED_PRIVATE_DEVELOPMENT_VERSIONS).length
-      && privateDependencies.every(([name, specifier]) =>
-        EXPECTED_PRIVATE_DEVELOPMENT_VERSIONS[name] === specifier)
+    return deepseekDependencies.length === Object.keys(EXPECTED_PUBLIC_DEVELOPMENT_VERSIONS).length
+      && deepseekDependencies.every(([name, specifier]) =>
+        EXPECTED_PUBLIC_DEVELOPMENT_VERSIONS[name] === specifier)
       && dependencies.cordis === undefined
       && dependencies['@cordisjs/plugin-loader'] === undefined
       && dependencies['@cordisjs/plugin-include'] === undefined
       && readFileSync(join(PKG, 'tsdown.config.ts'), 'utf8').includes("'@deepseek-ai/cordis'")
   },
-  () => 'private npm dependencies and browser platform externals must use the exact pinned 0812 @deepseek-ai package line',
+  () => 'public npm dependencies and browser platform externals must use the exact pinned 0812 @deepseek-ai package line',
 )
 const migrationSurfaces = [
   join(PKG, 'package.json'),
@@ -350,7 +350,7 @@ if (!fast) {
         && manifest.version === repositoryManifest.version
         && manifest.version === packageManifest.version
         && manifest.private === undefined
-        && manifest.publishConfig?.access === 'restricted'
+        && manifest.publishConfig?.access === 'public'
         && manifest.publishConfig.registry === EXPECTED_REGISTRY
         && manifest.repository?.type === 'git'
         && manifest.repository.url === EXPECTED_REPOSITORY
@@ -363,7 +363,7 @@ if (!fast) {
         && existsSync(join(OFFICIAL, manifest.exports['./client']))
         && existsSync(join(OFFICIAL, manifest.dsh.bundle.patch))
     },
-    () => 'staged package.json must be publishable only as a restricted package and declare valid dsh.bundle/dsh.client entries',
+    () => 'staged package.json must publish the public package and declare valid dsh.bundle/dsh.client entries',
   )
   assert(
     'official package text contains no credentials or machine paths',

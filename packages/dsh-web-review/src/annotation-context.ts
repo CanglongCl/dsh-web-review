@@ -10,9 +10,8 @@ import { createUserMessage, type UserMessage } from '@deepseek-ai/dsh-llm/messag
 import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session/types'
 import {
   renderSkillContent,
-  type SkillDefinition,
   type SkillInvocationSource,
-  type SkillViewOptions,
+  type SkillRegistry,
 } from '@deepseek-ai/dsh-skill'
 import {
   ANNOTATION_LIMITS,
@@ -56,11 +55,6 @@ export type AnnotationCommitResult =
   | { kind: 'cleared' | 'initial-empty' | 'agent-not-found' | 'context-too-large' }
 
 type UnknownRecord = Record<string, unknown>
-
-/** Minimal registry read face shared by the published and 0812 Harness Skill implementations. */
-interface SkillLookup {
-  get(name: string, options: SkillViewOptions): Promise<SkillDefinition | undefined>
-}
 
 function recordOf(value: unknown): UnknownRecord | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -423,7 +417,7 @@ export function formatLoadedSkillReminder(names: readonly UiSkillName[]): string
 export async function attachPendingAnnotationContext(
   state: AnnotationCommitState,
   agent: Pick<Agent, 'id' | 'session'>,
-  skills: SkillLookup,
+  skills: Pick<SkillRegistry, 'get'>,
   signal: AbortSignal,
   claimedMessages: readonly UserMessage[],
   next: () => Promise<PreStepDecision>,
@@ -462,8 +456,8 @@ export async function attachPendingAnnotationContext(
     presentation: pending.presentation,
   }
   const annotation = createUserMessage({
-    // The pinned rc.2 npm declaration predates merge-extensible Context forms;
-    // the reviewed Harness source validates this exact augmentation directly.
+    // Public rc.6 predates merge-extensible Context forms; the reviewed
+    // Harness source validates this exact augmentation directly.
     source: annotationSource as unknown as UserMessage['source'],
     content: [{ type: 'text', text: pending.context }],
   })

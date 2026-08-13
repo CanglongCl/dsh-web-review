@@ -10,7 +10,7 @@
  * injects, routes, the HTTP stack — is real.
  */
 import { createServer, type Server } from 'node:http'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -19,10 +19,10 @@ import { Context } from '@deepseek-ai/cordis'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
-import WebServer from '@deepseek-ai/dsh-host-webserver'
+import HttpServer from '@deepseek-ai/dsh-host-webserver'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import SkillRegistry from '@deepseek-ai/dsh-skill'
+import SkillService from '@deepseek-ai/dsh-skill'
 import * as plugin from '../src/index.ts'
 import { PREVIEW_GUIDANCE } from '../src/index.ts'
 import { MAX_ANNOTATION_BODY, type AnnotationSnapshot } from '../src/annotation-contract.ts'
@@ -53,14 +53,6 @@ let fixtureUrl = ''
 let context: Context | undefined
 let root: string | undefined
 let port = 0
-
-/** Published package-line adapter; production Harness 0812 provides `webServer` directly. */
-const webServer0812Alias = {
-  inject: ['httpServer'],
-  apply(ctx: Context) {
-    return ctx.provide('webServer', ctx.httpServer)
-  },
-}
 
 beforeAll(async () => {
   fixture = createServer((req, res) => {
@@ -152,6 +144,10 @@ afterAll(async () => {
 /** Boot a test cordis.yml (webserver + dsh-web-review) through the real Loader. */
 async function loadComposition(): Promise<Context> {
   root = await mkdtemp(join(tmpdir(), 'dsh-web-review-loader-'))
+  const dist = join(root, 'dist')
+  await mkdir(dist)
+  const distIndex = join(dist, 'index.html')
+  await writeFile(distIndex, '<head></head><body>shell</body>')
   const configPath = join(root, 'cordis.yml')
   await writeFile(configPath, [
     "- name: '@deepseek-ai/dsh-agent'",
@@ -164,8 +160,7 @@ async function loadComposition(): Promise<Context> {
     '  config:',
     "    host: '127.0.0.1'",
     '    port: 0',
-    '',
-    "- name: 'dsh-webserver-0812-alias'",
+    `    distIndex: '${distIndex}'`,
     '',
     "- name: 'dsh-web-review-test'",
     '',
@@ -178,9 +173,8 @@ async function loadComposition(): Promise<Context> {
   const modules = new Map<string, unknown>([
     ['@deepseek-ai/dsh-agent', AgentRegistry],
     ['@deepseek-ai/dsh-system-prompt', SystemPrompt],
-    ['@deepseek-ai/dsh-skill', SkillRegistry],
-    ['@deepseek-ai/dsh-host-webserver', WebServer],
-    ['dsh-webserver-0812-alias', webServer0812Alias],
+    ['@deepseek-ai/dsh-skill', SkillService],
+    ['@deepseek-ai/dsh-host-webserver', HttpServer],
     ['dsh-web-review-test', plugin],
   ])
   context.loader.internal = {
@@ -195,7 +189,7 @@ async function loadComposition(): Promise<Context> {
     config: { path: pathToFileURL(configPath).href },
   })
   await context.loader.await()
-  const webServer = context.get('webServer') as WebServer
+  const webServer = context.webServer
   port = webServer.port
   expect(port).toBeGreaterThan(0)
   return context

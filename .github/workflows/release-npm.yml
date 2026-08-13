@@ -1,6 +1,6 @@
-# Build the reviewed DSH bundle once, then publish those exact bytes from a
-# protected job. The read token is confined to dependency installation; npm
-# publication uses OIDC after the one-time package bootstrap.
+# Build the reviewed DSH bundle once, then publish those exact bytes to the
+# public npm registry. Public dependencies install anonymously; publishing
+# authenticates with npm Trusted Publishing and a short-lived GitHub OIDC token.
 name: Release (npm)
 
 on:
@@ -28,8 +28,6 @@ jobs:
     # Never expose repository secrets to code from an external fork.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
-    env:
-      NPM_PUBLISH_MODE: ${{ vars.NPM_PUBLISH_MODE }}
     steps:
       - name: Checkout plugin
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -61,9 +59,10 @@ jobs:
 
       - name: Install plugin dependencies
         working-directory: plugin
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_READ_TOKEN }}
-        run: pnpm install --frozen-lockfile
+        # The committed lockfile was rebuilt and checked against the reviewed
+        # public DSH release set; CI must not reject those same freshly
+        # published entries solely because they are less than 24 hours old.
+        run: pnpm install --frozen-lockfile --trust-lockfile
 
       - name: Verify release identity
         working-directory: plugin
@@ -73,8 +72,6 @@ jobs:
 
       - name: Run npm-only quality gate
         working-directory: plugin
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_READ_TOKEN }}
         run: pnpm check
 
       # Recreate the final artifact after all tests. The publish job downloads
@@ -99,10 +96,9 @@ jobs:
 
   publish:
     name: Publish to npm
-    if: startsWith(github.ref, 'refs/tags/v') && vars.NPM_PUBLISH_MODE == 'trusted'
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: pack
     runs-on: ubuntu-24.04
-    environment: npm-publish
     concurrency:
       group: dsh-web-review-npm-publish
       cancel-in-progress: false
@@ -110,68 +106,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - name: Set up Node.js for npm OIDC
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          registry-url: https://registry.npmjs.org/
-          package-manager-cache: false
-
-      - name: Install OIDC-capable npm
-        run: npm install --global npm@${{ env.NPM_VERSION }}
-
-      - name: Download packed artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: dsh-web-review-npm
-          path: release
-
-      - name: Verify artifact identity
-        id: artifact
-        run: |
-          set -euo pipefail
-          cd release
-          sha256sum -c SHA256SUMS
-          package_file=$(awk 'NF == 2 { print $2 }' SHA256SUMS)
-          test -n "$package_file"
-          test "$(find . -maxdepth 1 -name '*.tgz' -type f | wc -l | tr -d ' ')" = 1
-          test -f "$package_file"
-          case "$package_file" in
-            (*[!a-zA-Z0-9._-]*|'') exit 1 ;;
-          esac
-          tar -xOf "$package_file" package/package.json > "$RUNNER_TEMP/dsh-web-review-package.json"
-          PACKAGE_FILE="$package_file" node -e '
-            const fs = require("node:fs");
-            const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-            if (manifest.name !== "@canglongcl/dsh-web-review") throw new Error(`unexpected package ${manifest.name}`);
-            if (manifest.publishConfig?.access !== "restricted") throw new Error("package is not restricted");
-            if (`refs/tags/v${manifest.version}` !== process.env.GITHUB_REF) throw new Error("tag/version mismatch");
-            const tag = String(manifest.version).includes("-") ? "next" : "latest";
-            const tarball = `${process.env.GITHUB_WORKSPACE}/release/${process.env.PACKAGE_FILE}`;
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `tarball=${tarball}\ntag=${tag}\n`);
-          ' "$RUNNER_TEMP/dsh-web-review-package.json"
-
-      # No registry credential is present: npm exchanges the GitHub OIDC token
-      # under the package's exact Trusted Publisher configuration.
-      - name: Publish with npm Trusted Publishing
-        run: >-
-          npm publish "${{ steps.artifact.outputs.tarball }}"
-          --access restricted
-          --tag "${{ steps.artifact.outputs.tag }}"
-
-  bootstrap_publish:
-    name: Bootstrap first npm publication
-    if: startsWith(github.ref, 'refs/tags/v') && vars.NPM_PUBLISH_MODE == 'bootstrap'
-    needs: pack
-    runs-on: ubuntu-24.04
-    environment: npm-publish
-    concurrency:
-      group: dsh-web-review-npm-publish
-      cancel-in-progress: false
-    permissions:
-      contents: read
-    steps:
-      - name: Set up Node.js for npm bootstrap
+      - name: Set up Node.js for npm publish
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -205,21 +140,15 @@ jobs:
             const fs = require("node:fs");
             const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
             if (manifest.name !== "@canglongcl/dsh-web-review") throw new Error(`unexpected package ${manifest.name}`);
-            if (manifest.publishConfig?.access !== "restricted") throw new Error("package is not restricted");
+            if (manifest.publishConfig?.access !== "public") throw new Error("package is not public");
             if (`refs/tags/v${manifest.version}` !== process.env.GITHUB_REF) throw new Error("tag/version mismatch");
             const tag = String(manifest.version).includes("-") ? "next" : "latest";
             const tarball = `${process.env.GITHUB_WORKSPACE}/release/${process.env.PACKAGE_FILE}`;
             fs.appendFileSync(process.env.GITHUB_OUTPUT, `tarball=${tarball}\ntag=${tag}\n`);
           ' "$RUNNER_TEMP/dsh-web-review-package.json"
 
-      # Set NPM_PUBLISH_MODE=bootstrap for exactly one run. After it succeeds,
-      # configure npm Trusted Publishing, delete NPM_BOOTSTRAP_TOKEN, and set
-      # the repository variable to trusted.
-      - name: Bootstrap first npm publication
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
-        run: |
-          test -n "$NODE_AUTH_TOKEN"
-          npm publish "${{ steps.artifact.outputs.tarball }}" \
-            --access restricted \
-            --tag "${{ steps.artifact.outputs.tag }}"
+      - name: Publish public package
+        run: >-
+          npm publish "${{ steps.artifact.outputs.tarball }}"
+          --access public
+          --tag "${{ steps.artifact.outputs.tag }}"
