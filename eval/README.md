@@ -46,6 +46,11 @@ pnpm eval:run -- --dsh-cli /opt/homebrew/bin/dsh --task react-operations-01 --ar
 # Single-file HTML report with per-task process detail
 pnpm eval:report
 
+# Open one harvested transcript in the published DSH Web conversation UI.
+# The input can be a run directory or its session.jsonl. Close the browser
+# window (or press Ctrl-C) to stop the isolated viewer.
+pnpm eval:view .artifacts/eval-runs/run-<uuid>
+
 # Re-apply the current grader and process-stat parser to existing workspaces
 # without spending model tokens, then regenerate the report
 pnpm eval:regrade [-- react-operations-01 static-catalog-01]
@@ -83,8 +88,11 @@ chunks, tool calls, per-step token usage), `trace.md`, `process.json`,
 `diff.txt`, `grader` evidence, and the launch stdout/stderr. The report
 embeds the trace, diff, and grader outcomes per task.
 The generated report uses Chinese UI copy. Each run links directly to its
-persisted Harness `session.jsonl` conversation log and shows the durable
-session id, so a score can be audited against the original model/tool events.
+persisted Harness `session.jsonl` conversation log, provides a copyable
+`pnpm eval:view` command for opening it in the published DSH Web conversation
+UI, and shows the durable session id. The viewer stages a disposable copy in
+the current JSONL storage layout and uses an isolated DSH home, so opening a
+historical run neither mutates the evidence nor pollutes ordinary DSH sessions.
 The headline separates three-arm plugin diagnosis from Full-only protocol
 smoke. Historical runs created before blinding/isolation remain visible but
 are excluded from the causal aggregate.

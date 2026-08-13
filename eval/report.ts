@@ -7,7 +7,7 @@
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
-import { RESULTS_PATH } from './runner/runner.ts'
+import { REPO_ROOT, RESULTS_PATH } from './runner/runner.ts'
 import { loadTasks } from './tasks/register.ts'
 import { tokenBudgetExceeded } from './token-budget.ts'
 import type { LoadedEvalTask, RunRecord, TokenBudget } from './types.ts'
@@ -34,7 +34,12 @@ interface Detail extends RunRecord {
   stdout?: string
   stderr?: string
   sessionLogHref?: string
+  viewerCommand?: string
   traceHref?: string
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`
 }
 
 function describeTask(task: LoadedEvalTask): TaskDescription {
@@ -55,7 +60,10 @@ function describeTask(task: LoadedEvalTask): TaskDescription {
 function runDetails(record: RunRecord, task: LoadedEvalTask): Detail {
   const detail: Detail = { ...record, tokenBudget: task.tokenBudget, taskDescription: describeTask(task) }
   const linkTo = (file: string): string => relative(RESULTS_PATH, join(record.runDir, file)).split(sep).join('/')
-  if (record.runDir !== '' && existsSync(join(record.runDir, 'session.jsonl'))) detail.sessionLogHref = linkTo('session.jsonl')
+  if (record.runDir !== '' && existsSync(join(record.runDir, 'session.jsonl'))) {
+    detail.sessionLogHref = linkTo('session.jsonl')
+    detail.viewerCommand = `cd ${shellQuote(REPO_ROOT)} && pnpm eval:view ${shellQuote(join(record.runDir, 'session.jsonl'))}`
+  }
   if (record.runDir !== '' && existsSync(join(record.runDir, 'trace.md'))) detail.traceHref = linkTo('trace.md')
   for (const [field, file] of [
     ['trace', 'trace.md'],
@@ -190,6 +198,8 @@ async function main(): Promise<void> {
   h2.section { margin:24px 0 10px; font-size:16px; }
   .delta-positive { color:var(--ok); font-weight:600; }
   .delta-negative { color:var(--bad); font-weight:600; }
+  .log-actions { display:flex; align-items:center; gap:8px; white-space:nowrap; }
+  .link-button { appearance:none; border:0; padding:0; background:none; color:#0969da; text-decoration:underline; font:inherit; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -274,6 +284,14 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;
 const statusScore = d => d?.status === 'pass' ? 1 : 0;
 const executionKey = d => d.experimentId ?? [d.taskId,d.arm,d.repetition,d.model?.provider,d.model?.model,d.model?.reasoningEffort ?? 'unknown',d.repoCommit,d.harnessCommit].join(':');
 const signed = n => n === undefined || Number.isNaN(n) ? '—' : (n > 0 ? '+' : '') + n;
+async function copyDshCommand(command) {
+  try {
+    await navigator.clipboard.writeText(command);
+    alert('已复制命令。粘贴到终端后会用正式版 DSH 打开该对话。');
+  } catch {
+    window.prompt('复制下面的命令，在终端运行：', command);
+  }
+}
 const paired = new Map();
 const cohortKey = d => [d.model.provider,d.model.model,d.model.reasoningEffort,d.repoCommit,d.harnessCommit,d.executionRevision].join(':');
 for (const d of DATA.filter(d => d.category !== 'protocol-smoke' && d.diagnosticValidity === 'eligible' && d.experimentId && d.executionRevision && d.model?.reasoningEffort && cohortKey(d) === CURRENT_COHORT)) {
@@ -330,7 +348,7 @@ function render() {
       + '<td>' + (tokens ? fmt(usage)+' / '+fmt(d.tokenBudget.expected) + (warning ? ' <span class="badge warning">超预算</span>' : '') : '—') + '</td>'
       + '<td>' + (d.durationMs/1000).toFixed(0) + ' 秒</td>'
       + '<td>' + esc(ATTRIBUTION[d.attribution] ?? d.attribution ?? '') + '</td>'
-      + '<td>' + (d.sessionLogHref ? '<a href="' + esc(d.sessionLogHref) + '" target="_blank" onclick="event.stopPropagation()">打开日志</a>' : '—') + '</td></tr>';
+      + '<td>' + (d.sessionLogHref ? '<span class="log-actions"><button class="link-button" data-command="' + esc(d.viewerCommand) + '" onclick="event.stopPropagation();copyDshCommand(this.dataset.command)">复制 DSH 命令</button><a href="' + esc(d.sessionLogHref) + '" target="_blank" onclick="event.stopPropagation()">原始 JSONL</a></span>' : '—') + '</td></tr>';
   }).join('');
   for (const row of document.querySelectorAll('#tbody tr[data-run-key]')) row.addEventListener('click', () => openDetail(row.dataset.runKey));
 }
@@ -357,7 +375,7 @@ function openDetail(runKey) {
     + ' · <span class="badge ' + d.status + '">' + esc(STATUS[d.status] ?? d.status) + '</span>'
     + ' · ' + esc(ATTRIBUTION[d.attribution] ?? d.attribution ?? '') + ' · ' + (d.durationMs/1000).toFixed(1) + ' 秒 · 退出码 ' + d.exitCode + '</p>'
     + '<h3>题目描述</h3><p>' + esc(d.taskDescription.overview) + '</p><ol class="requirements">' + requirementLines + '</ol>'
-    + (d.sessionLogHref ? '<p><a href="' + esc(d.sessionLogHref) + '" target="_blank">打开对应的 Harness 对话日志</a>' + (d.process?.sessionId ? ' <span class="meta">会话：' + esc(d.process.sessionId) + '</span>' : '') + '</p>' : '')
+    + (d.sessionLogHref ? '<p class="log-actions"><button class="link-button" data-command="' + esc(d.viewerCommand) + '" onclick="copyDshCommand(this.dataset.command)">复制“用正式版 DSH 查看”命令</button><a href="' + esc(d.sessionLogHref) + '" target="_blank">打开原始 JSONL</a>' + (d.process?.sessionId ? ' <span class="meta">会话：' + esc(d.process.sessionId) + '</span>' : '') + '</p>' : '')
     + '<p class="meta">实验 ID：' + esc(d.experimentId ?? '旧记录（无不可变 ID）')
     + ' · 原始状态：' + esc(STATUS[d.originalStatus] ?? d.originalStatus ?? '未记录')
     + ' · 当前评分时间：' + esc(d.gradedAt ?? '未记录')
