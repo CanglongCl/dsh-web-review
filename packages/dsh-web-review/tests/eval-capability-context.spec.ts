@@ -52,6 +52,7 @@ describe('plugin capability eval contexts', () => {
     const round = (id: string) => ({ prompt: '请根据页面批注修改前端实现。', capture: [], snapshot: { ...snapshot, sessionId: id }, captureMeta: undefined })
     const task = {
       id: 'iterative', fixture: 'landing', fixtureKind: 'static', category: 'iterative', difficulty: 'long', title: 'two rounds',
+      tokenBudget: { expected: 20_000, warnAbove: 30_000 },
       arms: ['full', 'oracle'], rounds: [{ ...round('round-1'), oracleContext: 'First source hint.' }, { ...round('round-2'), oracleContext: 'Second source hint.' }],
       grader: { pass: [] }, golden: { kind: 'html-dir', dir: 'golden' },
     } satisfies EvalTask
@@ -73,6 +74,7 @@ describe('plugin capability eval contexts', () => {
   it('stages fixture contents inside the isolated model workspace', () => {
     const task = {
       id: 'isolation-check', fixture: 'landing', fixtureKind: 'static', category: 'protocol-smoke', difficulty: 'easy', title: 'isolation',
+      tokenBudget: { expected: 20_000, warnAbove: 25_000 },
       arms: ['full'], rounds: [], grader: { pass: [] }, golden: { kind: 'html-dir', dir: 'golden' },
     } satisfies EvalTask
     const isolated = stageIsolatedWorkspace(task)

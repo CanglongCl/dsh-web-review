@@ -8,9 +8,12 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { RESULTS_PATH } from './runner/runner.ts'
-import type { RunRecord } from './types.ts'
+import { loadTasks } from './tasks/register.ts'
+import { tokenBudgetExceeded } from './token-budget.ts'
+import type { RunRecord, TokenBudget } from './types.ts'
 
 interface Detail extends RunRecord {
+  tokenBudget: TokenBudget
   trace?: string
   diff?: string
   stdout?: string
@@ -19,8 +22,8 @@ interface Detail extends RunRecord {
   traceHref?: string
 }
 
-function runDetails(record: RunRecord): Detail {
-  const detail: Detail = { ...record }
+function runDetails(record: RunRecord, tokenBudget: TokenBudget): Detail {
+  const detail: Detail = { ...record, tokenBudget }
   const linkTo = (file: string): string => relative(RESULTS_PATH, join(record.runDir, file)).split(sep).join('/')
   if (record.runDir !== '' && existsSync(join(record.runDir, 'session.jsonl'))) detail.sessionLogHref = linkTo('session.jsonl')
   if (record.runDir !== '' && existsSync(join(record.runDir, 'trace.md'))) detail.traceHref = linkTo('trace.md')
@@ -39,7 +42,7 @@ function runDetails(record: RunRecord): Detail {
   return detail
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const resultsFile = join(RESULTS_PATH, 'results.jsonl')
   if (!existsSync(resultsFile)) {
     console.error(`no results at ${resultsFile}; run pnpm eval:run first`)
@@ -53,7 +56,12 @@ function main(): void {
   const latestByRun = new Map<string, RunRecord>()
   for (const record of parsed) latestByRun.set(record.experimentId ?? [record.taskId, record.arm ?? 'full', record.repetition ?? 1, record.model.provider, record.model.model, record.model.reasoningEffort ?? 'unknown', record.repoCommit, record.harnessCommit].join(':'), record)
   const records = [...latestByRun.values()].sort((a, b) => `${a.taskId}:${a.arm}:${a.repetition}`.localeCompare(`${b.taskId}:${b.arm}:${b.repetition}`))
-  const details = records.map(record => runDetails(record))
+  const tasks = new Map((await loadTasks()).map(task => [task.id, task]))
+  const details = records.map(record => {
+    const task = tasks.get(record.taskId)
+    if (task === undefined) throw new Error(`result references unknown task ${record.taskId}`)
+    return runDetails(record, task.tokenBudget)
+  })
   const totals = details.reduce((acc, record) => {
     const tokens = record.process?.tokens
     if (tokens !== undefined) {
@@ -70,6 +78,8 @@ function main(): void {
   const diagnostic = details.filter(record => record.category !== 'protocol-smoke')
   const eligibleDiagnostic = diagnostic.filter(record => record.diagnosticValidity === 'eligible' && record.experimentId !== undefined && record.executionRevision !== undefined && record.model.reasoningEffort !== undefined)
   const smoke = details.filter(record => record.category === 'protocol-smoke')
+  const costQualified = [...smoke, ...eligibleDiagnostic]
+  const tokenWarnings = costQualified.filter(record => record.process?.tokens !== undefined && tokenBudgetExceeded(record.process.tokens, record.tokenBudget))
   const diagnosticGroupKey = (record: RunRecord): string => [record.taskId, record.repetition, record.model.provider, record.model.model, record.model.reasoningEffort, record.repoCommit, record.harnessCommit, record.taskRevision, record.executionRevision].join(':')
   const diagnosticGroups = new Map<string, Set<RunRecord['arm']>>()
   for (const record of eligibleDiagnostic) {
@@ -121,6 +131,8 @@ function main(): void {
   .pass { background:#dafbe1; color:var(--ok); }
   .fail { background:#ffebe9; color:var(--bad); }
   .timeout, .error { background:#fff8c5; color:var(--warn); }
+  .warning { background:#fff8c5; color:var(--warn); }
+  tr.token-warning { background:#fffdf0; }
   #detail { position:fixed; inset:0; background:rgba(20,24,28,0.5); display:none; align-items:center; justify-content:center; }
   #detail.open { display:flex; }
   #detail article { background:var(--card); width:min(1100px,94vw); height:92vh; border-radius:12px; padding:20px 24px; overflow:auto; }
@@ -147,6 +159,7 @@ function main(): void {
   <div class="stat"><div class="value">${diagnostic.length - eligibleDiagnostic.length}</div><div class="label">历史诊断运行（不具因果资格）</div></div>
   <div class="stat"><div class="value">${smoke.filter(record => record.status === 'pass').length}/${smoke.length}</div><div class="label">协议 Smoke（不代表插件增益）</div></div>
   <div class="stat"><div class="value">${passed}/${details.length}</div><div class="label">当前标尺兼容结果</div></div>
+  <div class="stat"><div class="value">${tokenWarnings.length}</div><div class="label">可用运行 Token Warning</div></div>
   <div class="stat"><div class="value" id="totalDuration"></div><div class="label">累计运行时间</div></div>
   <div class="stat"><div class="value" id="inputTokens"></div><div class="label">输入 Token</div></div>
   <div class="stat"><div class="value" id="outputTokens"></div><div class="label">输出 Token</div></div>
@@ -161,6 +174,7 @@ function main(): void {
     <select id="fFixture"><option value="">全部应用</option></select>
     <select id="fArm"><option value="">全部实验臂</option><option value="full">完整插件</option><option value="text-only">仅文本</option><option value="oracle">理想上下文</option></select>
     <select id="fStatus"><option value="">全部状态</option><option value="pass">通过</option><option value="fail">未通过</option><option value="timeout">超时</option><option value="error">错误</option></select>
+    <select id="fBudget"><option value="">全部 Token</option><option value="warning">仅看超预算</option><option value="normal">仅看预算内</option></select>
     <button id="fReset">重置</button>
   </div>
   <h2 class="section">插件能力配对诊断</h2>
@@ -172,7 +186,7 @@ function main(): void {
   <table>
     <thead><tr>
       <th>题目</th><th>实验臂</th><th>重复</th><th>题目名称</th><th>能力类别</th><th>难度</th><th>应用</th><th>状态</th>
-      <th>步骤</th><th>工具调用</th><th>首次写入</th><th>Token 输入 / 输出</th><th>耗时</th><th>失败归因</th><th>对话日志</th>
+      <th>步骤</th><th>工具调用</th><th>首次写入</th><th>Token / 预期</th><th>耗时</th><th>失败归因</th><th>对话日志</th>
     </tr></thead>
     <tbody id="tbody"></tbody>
   </table>
@@ -189,6 +203,8 @@ document.getElementById('taskCount').textContent = DATA.length;
 document.getElementById('generatedAt').textContent = new Date(${JSON.stringify(generatedAt)}).toLocaleString('zh-CN', { hour12:false });
 document.getElementById('totalDuration').textContent = (TOTALS.durationMs / 60000).toFixed(1) + ' 分钟';
 const fmt = n => n >= 1000000 ? (n/1000000).toFixed(2)+'M' : n >= 1000 ? (n/1000).toFixed(1)+'k' : String(n);
+const budgeted = d => d.process?.tokens ? d.process.tokens.input + d.process.tokens.output : undefined;
+const tokenWarning = d => budgeted(d) !== undefined && budgeted(d) > d.tokenBudget.warnAbove;
 document.getElementById('inputTokens').textContent = fmt(TOTALS.input);
 document.getElementById('outputTokens').textContent = fmt(TOTALS.output);
 document.getElementById('cacheTokens').textContent = fmt(TOTALS.cacheRead) + ' / ' + fmt(TOTALS.cacheWrite);
@@ -235,24 +251,28 @@ function render() {
   const fFixture = document.getElementById('fFixture').value;
   const fArm = document.getElementById('fArm').value;
   const fStatus = document.getElementById('fStatus').value;
+  const fBudget = document.getElementById('fBudget').value;
   const rows = DATA.filter(d =>
     (!fCategory || d.category === fCategory) &&
     (!fDifficulty || d.difficulty === fDifficulty) &&
     (!fFixture || d.fixture === fFixture) &&
     (!fArm || d.arm === fArm) &&
-    (!fStatus || d.status === fStatus));
+    (!fStatus || d.status === fStatus) &&
+    (!fBudget || (fBudget === 'warning' ? tokenWarning(d) : !tokenWarning(d))));
   const visiblePairs = [...paired.values()].filter(row => row.full && row['text-only'] && row.oracle && rows.some(d => executionKey(d) === executionKey(row[d.arm])));
   renderPairs(visiblePairs);
   document.getElementById('tbody').innerHTML = rows.map(d => {
     const tokens = d.process?.tokens;
     const runKey = executionKey(d);
-    return '<tr class="row" onclick="openDetail(' + JSON.stringify(runKey) + ')">'
+    const usage = budgeted(d);
+    const warning = tokenWarning(d);
+    return '<tr class="row' + (warning ? ' token-warning' : '') + '" onclick="openDetail(' + JSON.stringify(runKey) + ')">'
       + '<td>' + esc(d.taskId) + '</td><td>' + esc(ARM[d.arm] ?? d.arm) + '</td><td>' + esc(d.repetition) + '</td><td>' + esc(d.title) + '</td><td>' + esc(CATEGORY[d.category] ?? d.category) + '</td><td>' + esc(DIFFICULTY[d.difficulty] ?? d.difficulty) + '</td><td>' + esc(d.fixture) + '</td>'
       + '<td><span class="badge ' + d.status + '">' + esc(STATUS[d.status] ?? d.status) + '</span></td>'
       + '<td>' + (d.process?.steps ?? '—') + '</td>'
       + '<td>' + Object.values(d.process?.toolCalls ?? {}).reduce((a,b)=>a+b,0) + '</td>'
       + '<td>' + (d.process?.firstWriteStep ?? '—') + '</td>'
-      + '<td>' + (tokens ? fmt(tokens.input)+' / '+fmt(tokens.output) : '—') + '</td>'
+      + '<td>' + (tokens ? fmt(usage)+' / '+fmt(d.tokenBudget.expected) + (warning ? ' <span class="badge warning">超预算</span>' : '') : '—') + '</td>'
       + '<td>' + (d.durationMs/1000).toFixed(0) + ' 秒</td>'
       + '<td>' + esc(ATTRIBUTION[d.attribution] ?? d.attribution ?? '') + '</td>'
       + '<td>' + (d.sessionLogHref ? '<a href="' + esc(d.sessionLogHref) + '" target="_blank" onclick="event.stopPropagation()">打开日志</a>' : '—') + '</td></tr>';
@@ -263,7 +283,8 @@ document.getElementById('fDifficulty').onchange = render;
 document.getElementById('fFixture').onchange = render;
 document.getElementById('fArm').onchange = render;
 document.getElementById('fStatus').onchange = render;
-document.getElementById('fReset').onclick = () => { for (const id of ['fCategory','fDifficulty','fFixture','fArm','fStatus']) document.getElementById(id).value=''; render(); };
+document.getElementById('fBudget').onchange = render;
+document.getElementById('fReset').onclick = () => { for (const id of ['fCategory','fDifficulty','fFixture','fArm','fStatus','fBudget']) document.getElementById(id).value=''; render(); };
 function openDetail(runKey) {
   const d = DATA.find(x => executionKey(x) === runKey);
   if (!d) return;
@@ -285,6 +306,8 @@ function openDetail(runKey) {
     + ' · 缓存读取/写入 ' + fmt(tokens?.cacheRead ?? 0) + '/' + fmt(tokens?.cacheWrite ?? 0)
     + ' · 推理 ' + fmt(tokens?.reasoning ?? 0)
     + ' · 有用量记录的步骤 ' + (tokens?.stepsWithUsage ?? 0) + '/' + (tokens?.assistantSteps ?? 0) + '</p>'
+    + '<p class="meta">预算口径（输入 + 输出）：实际 ' + fmt(budgeted(d) ?? 0) + ' · 预期 ' + fmt(d.tokenBudget.expected) + ' · Warning 阈值 ' + fmt(d.tokenBudget.warnAbove)
+    + (tokenWarning(d) ? ' <span class="badge warning">超预算</span>' : '') + '</p>'
     + '<h3>执行过程</h3><p class="meta">轮次 ' + (d.process?.turns ?? '—') + ' · 步骤 ' + (d.process?.steps ?? '—')
     + ' · 首次工具调用：第 ' + (d.process?.firstToolCallStep ?? '—') + ' 步 · 首次写入：第 ' + (d.process?.firstWriteStep ?? '—') + ' 步'
     + ' · 结束原因：' + esc(d.process?.endReason ?? '') + '</p>'

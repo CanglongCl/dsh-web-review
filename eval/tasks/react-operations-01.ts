@@ -10,6 +10,7 @@ export const task: EvalTask = {
   category: 'multi-target',
   difficulty: 'long',
   title: '处理运营后台的六条关联批注',
+  tokenBudget: { expected: 35_000, warnAbove: 50_000 },
   arms: ['full', 'text-only', 'oracle'],
   rounds: [{
     prompt: '请根据页面批注修改前端实现。',

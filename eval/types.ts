@@ -164,6 +164,13 @@ export type GoldenPatch =
   | { kind: 'html-dir'; dir: string }
   | { kind: 'git-patch'; patchFile: string }
 
+export interface TokenBudget {
+  /** Expected uncached input + output tokens for one run. */
+  expected: number
+  /** Emit a cost warning strictly above this value; never changes pass/fail. */
+  warnAbove: number
+}
+
 export interface EvalTask {
   id: string
   fixture: FixtureName
@@ -171,6 +178,8 @@ export interface EvalTask {
   category: Category | LegacyFrontendCategory
   difficulty: Difficulty
   title: string
+  /** Optional task override; the registry supplies difficulty defaults. */
+  tokenBudget?: TokenBudget
   /** Context conditions this scenario is designed to compare. */
   arms?: EvalArm[]
   /** Ordered turns sharing one agent and one staged workspace. */
@@ -185,10 +194,11 @@ export interface EvalTask {
 }
 
 /** Runtime task after the registry has normalized legacy smoke definitions. */
-export interface LoadedEvalTask extends Omit<EvalTask, 'category' | 'arms' | 'rounds'> {
+export interface LoadedEvalTask extends Omit<EvalTask, 'category' | 'arms' | 'rounds' | 'tokenBudget'> {
   category: Category
   arms: EvalArm[]
   rounds: EvalRound[]
+  tokenBudget: TokenBudget
 }
 
 export interface ModelSelectionRecord {

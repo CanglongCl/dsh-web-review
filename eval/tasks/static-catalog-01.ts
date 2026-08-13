@@ -6,6 +6,7 @@ const frozen = loadFrozenRound('static-catalog-01', 1, import.meta.url)
 export const task: EvalTask = {
   id: 'static-catalog-01', fixture: 'static-catalog', fixtureKind: 'static', category: 'anchor-fallback', difficulty: 'long',
   title: '在无框架源码锚点时定位重复商品节点',
+  tokenBudget: { expected: 20_000, warnAbove: 30_000 },
   arms: ['full', 'text-only', 'oracle'],
   rounds: [{
     prompt: '请根据页面批注修改前端实现。',

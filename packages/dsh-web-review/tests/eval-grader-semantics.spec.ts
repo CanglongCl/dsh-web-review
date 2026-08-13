@@ -13,6 +13,7 @@ async function gradeHtml(html: string, assertion: DomAssertion): Promise<boolean
   writeFileSync(join(root, 'index.html'), html)
   const task = {
     id: 'grader-adversarial', fixture: 'forms', fixtureKind: 'static', category: 'protocol-smoke', difficulty: 'hard', title: 'grader adversarial',
+    tokenBudget: { expected: 26_000, warnAbove: 34_000 },
     arms: ['full'], rounds: [], grader: { pass: [assertion] }, golden: { kind: 'html-dir', dir: 'golden' },
   } satisfies LoadedEvalTask
   const served = await serveFixtureDir(task, root)

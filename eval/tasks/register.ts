@@ -7,18 +7,21 @@ import { readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import type { EvalTask, LoadedEvalTask } from '../types.ts'
+import { tokenBudgetForTask } from '../token-budget.ts'
 
 const TASKS_DIR = dirname(fileURLToPath(import.meta.url))
 
 /** Load every committed task module, sorted by id. */
 function normalizeTask(task: EvalTask): LoadedEvalTask {
+  const tokenBudget = tokenBudgetForTask(task)
   if (task.rounds !== undefined) {
     if (task.arms === undefined || task.arms.length === 0) throw new Error(`eval task ${task.id} has rounds but no arms`)
-    return { ...task, category: task.category as LoadedEvalTask['category'], arms: task.arms, rounds: task.rounds }
+    return { ...task, category: task.category as LoadedEvalTask['category'], arms: task.arms, rounds: task.rounds, tokenBudget }
   }
   if (task.capture === undefined) throw new Error(`legacy eval task ${task.id} has no capture`)
   return {
     ...task,
+    tokenBudget,
     category: 'protocol-smoke',
     arms: ['full'],
     rounds: [{
