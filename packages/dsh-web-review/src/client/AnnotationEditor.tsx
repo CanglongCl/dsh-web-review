@@ -71,6 +71,8 @@ interface AnnotationEditorBaseProps {
   changes: readonly AnnotationStyleChange[]
   textChange: AnnotationTextChange | null
   initialMode?: AnnotationEditorMode
+  /** Focus destination used only when this editor instance first opens. */
+  initialFocus?: 'editor' | 'comment'
   navigationFeedback?: ElementNavigationFeedback | null
   selectedSkills?: readonly UiSkillName[]
   position?: FloatingEditorPosition | null
@@ -185,7 +187,7 @@ const four = <T,>(values: readonly T[]): [T, T, T, T] => [values[0]!, values[1]!
 export function AnnotationEditor(props: AnnotationEditorProps) {
   const {
     frame, comment: initialComment, changes: initialChanges,
-    textChange: initialTextChange, initialMode = 'collapsed', navigationFeedback = null,
+    textChange: initialTextChange, initialMode = 'collapsed', initialFocus = 'editor', navigationFeedback = null,
     position = null, size = null, t, onCancel, onConfirm,
     selectedSkills = [], onToggleSkill = () => {},
     onPositionChange = ignorePositionChange,
@@ -228,6 +230,8 @@ export function AnnotationEditor(props: AnnotationEditorProps) {
   const normalStyleRef = useRef('normal')
   const [, forcePosition] = useState(0)
   const editorRef = useRef<HTMLDivElement | null>(null)
+  const commentInputRef = useRef<HTMLInputElement | null>(null)
+  const pendingInitialFocus = useRef(initialFocus)
   const visibleToggleRef = useRef<HTMLButtonElement | null>(null)
   const hiddenToggleRef = useRef<HTMLButtonElement | null>(null)
   const dragRef = useRef<{
@@ -264,8 +268,13 @@ export function AnnotationEditor(props: AnnotationEditorProps) {
   useEffect(() => { forcePosition(value => value + 1) }, [mode])
 
   useEffect(() => {
+    if (pendingInitialFocus.current === 'comment') {
+      pendingInitialFocus.current = 'editor'
+      commentInputRef.current?.focus({ preventScroll: true })
+      return
+    }
     editorRef.current?.focus({ preventScroll: true })
-  }, [mode, target])
+  }, [mode, target.handle])
 
   const cancel = (): void => { onCancel() }
 
@@ -645,6 +654,7 @@ export function AnnotationEditor(props: AnnotationEditorProps) {
             <AdjustIcon />
           </button>
           <input
+            ref={commentInputRef}
             className={`${css.commentInput} dsh-wv-comment-input`}
             value={comment}
             maxLength={ANNOTATION_LIMITS.comment}

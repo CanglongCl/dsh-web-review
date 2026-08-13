@@ -457,6 +457,7 @@ describe('WebviewView', () => {
     await waitFor(() => expect(screen.getByPlaceholderText(zh['editor.comment'])).toBeTruthy())
 
     const comment = screen.getByPlaceholderText(zh['editor.comment']) as HTMLInputElement
+    expect(document.activeElement).toBe(comment)
     fireEvent.change(comment, { target: { value: 'Move this annotation' } })
     fireEvent.click(screen.getByRole('button', { name: zh['editor.adjust'] }))
     fireEvent.change(screen.getByLabelText(zh['editor.property.fontSize']), { target: { value: '24px' } })
@@ -476,6 +477,7 @@ describe('WebviewView', () => {
     expect((screen.getByPlaceholderText(zh['editor.comment']) as HTMLInputElement).value).toBe('Move this annotation')
     expect(document.querySelector('[data-webview-property-inspector]')).toBeTruthy()
     const reanchoredEditor = document.querySelector('[data-webview-annotation-editor]') as HTMLDivElement
+    expect(document.activeElement).toBe(reanchoredEditor)
     expect({ left: reanchoredEditor.style.left, top: reanchoredEditor.style.top }).toEqual(movedPosition)
 
     fireEvent.click(screen.getByRole('button', { name: zh['editor.select'] }))

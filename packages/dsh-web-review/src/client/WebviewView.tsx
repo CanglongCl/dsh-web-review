@@ -80,6 +80,7 @@ interface EditorSession {
   id: string
   target: PreviewElementTarget
   existing: PickItem | null
+  initialFocus: 'editor' | 'comment'
   originalHandle: PreviewElementHandle | null
   tree: PreviewTreeNode | null
   comment: string
@@ -169,13 +170,19 @@ export function WebviewView({
     }).catch(() => undefined)
   }
 
-  const openEditor = (id: string, target: PreviewElementTarget, existing: PickItem | null): void => {
+  const openEditor = (
+    id: string,
+    target: PreviewElementTarget,
+    existing: PickItem | null,
+    initialFocus: EditorSession['initialFocus'] = 'editor',
+  ): void => {
     const current = editorRef.current
     if (current !== null && current.id !== id) bridgeRef.current?.cancelEdit()
     setEditor({
       id,
       target,
       existing,
+      initialFocus,
       originalHandle: existing === null ? null : target.handle,
       tree: null,
       comment: existing?.comment ?? '',
@@ -199,6 +206,7 @@ export function WebviewView({
     setEditor({
       ...current,
       target,
+      initialFocus: 'editor',
       tree: null,
       comment,
       mode,
@@ -254,7 +262,7 @@ export function WebviewView({
       bridgeRef.current?.cancelEdit()
       return
     }
-    openEditor(pickId(), target, null)
+    openEditor(pickId(), target, null, 'comment')
   }
   onMarkClickRef.current = onMarkClick
   onShortcutRef.current = (action) => {
@@ -608,6 +616,7 @@ export function WebviewView({
               changes={editor.originalHandle === editor.target.handle ? editor.existing?.changes ?? [] : []}
               textChange={editor.originalHandle === editor.target.handle ? editor.existing?.textChange ?? null : null}
               initialMode={editor.mode}
+              initialFocus={editor.initialFocus}
               navigationFeedback={editor.navigationFeedback}
               selectedSkills={state.selectedSkills}
               position={editor.position}
