@@ -32,7 +32,7 @@ dsh web
    Alternatively, open the **Web Preview** tab in DSH and enter an absolute HTTP(S) URL.
 2. Click the annotation button, then select the target element on the page.
 3. Enter your feedback. To preview visual changes, expand **Adjust** and edit the desired properties.
-4. Click the Send button in the annotation toolbar. You can also add more instructions in the DSH composer and use the regular DSH Send button; the annotations will be sent together with your prompt.
+4. Click the Send button in the annotation toolbar; after sending, the interface automatically returns to the **Chat** tab. You can also add more instructions in the DSH composer and use the regular DSH Send button; the annotations will be sent together with your prompt.
 5. After the agent updates the source code, refresh the preview to review the result. Continue annotating if further changes are needed.
 
 ## Features

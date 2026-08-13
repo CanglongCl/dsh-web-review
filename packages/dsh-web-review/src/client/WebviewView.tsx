@@ -71,6 +71,7 @@ export type WebviewSlotProps =
 /** Session-bound actions supplied by the registration. */
 export interface WebviewViewInjected {
   sendAnnotationsWithoutDraft: () => Promise<void>
+  returnToChat: () => void
   createPreviewSession: (target: string) => Promise<PreviewSessionDescriptor>
   releasePreviewSessions: (sessionIds: readonly PreviewSessionId[]) => Promise<void>
 }
@@ -113,7 +114,7 @@ function pickId(): string {
 /** The preview tab view (see module doc). */
 export function WebviewView({
   useStore, useSession, useInput, inputActions, actions, sendAnnotationsWithoutDraft,
-  createPreviewSession, releasePreviewSessions, t,
+  returnToChat, createPreviewSession, releasePreviewSessions, t,
 }: WebviewSlotProps) {
   const state = useStore((s) => s)
   const input = useInput(s => s)
@@ -428,10 +429,12 @@ export function WebviewView({
     if (input.draft.trim() !== '') {
       promptErrorAtSend.current = promptError
       inputActions.submit()
+      returnToChat()
       return
     }
     try {
       await sendAnnotationsWithoutDraft()
+      returnToChat()
       if (stateRef.current.pickMode) actionsRef.current.togglePickMode()
     } catch {
       actions.setError(t('panel.pick.sendError'))

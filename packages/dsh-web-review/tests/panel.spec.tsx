@@ -30,7 +30,7 @@ import { DraftOverlayBar, type WebviewDockInjected } from '../src/client/DraftOv
 import { WebviewView } from '../src/client/WebviewView.tsx'
 import type { PickItem } from '../src/client/contract.ts'
 import { zh, type WebviewKey } from '../src/client/locales.ts'
-import { activatePreviewTab } from '../src/client/preview-link.ts'
+import { activateConversationTab } from '../src/client/preview-link.ts'
 import { createWebviewStore, type WebviewState, type WebviewStore } from '../src/client/stores.ts'
 
 const t: Translate<WebviewKey> = (key, params) => {
@@ -257,6 +257,7 @@ function renderView(
   draft = '',
   submit = vi.fn(),
   phase: 'plain' | 'adjudicating' | 'claimed' | 'submitting' = 'plain',
+  returnToChat = vi.fn(),
 ) {
   const store = createWebviewStore().create()
   const session = sessionSource()
@@ -294,6 +295,7 @@ function renderView(
       useInput={(selector) => selector(input)}
       inputActions={{ setDraft: vi.fn(), submit }}
       sendAnnotationsWithoutDraft={sendAnnotationsWithoutDraft}
+      returnToChat={returnToChat}
       createPreviewSession={createPreviewSession}
       releasePreviewSessions={vi.fn(async () => {})}
       t={t}
@@ -556,7 +558,8 @@ describe('WebviewView', () => {
 
   it('uses the Codex-style annotation toolbar and sends only through its injected action', async () => {
     const sendAnnotationsWithoutDraft = vi.fn(async () => {})
-    const store = renderView(sendAnnotationsWithoutDraft)
+    const returnToChat = vi.fn()
+    const store = renderView(sendAnnotationsWithoutDraft, '', vi.fn(), 'plain', returnToChat)
     act(() => {
       store.actions.setUrl('http://localhost:5173/')
       store.actions.addPick(pick('p1', 'Tighten the spacing'))
@@ -571,6 +574,7 @@ describe('WebviewView', () => {
     const send = screen.getByRole('button', { name: '发送 1' })
     await act(async () => { fireEvent.click(send) })
     expect(sendAnnotationsWithoutDraft).toHaveBeenCalledOnce()
+    expect(returnToChat).toHaveBeenCalledOnce()
     expect(store.getSnapshot().pickMode).toBe(false)
     expect(store.getSnapshot().picks).toHaveLength(1)
   })
@@ -578,7 +582,8 @@ describe('WebviewView', () => {
   it('submits a non-empty composer draft through the stock input machine', () => {
     const fallback = vi.fn(async () => {})
     const submit = vi.fn()
-    const store = renderView(fallback, 'ship this draft', submit)
+    const returnToChat = vi.fn()
+    const store = renderView(fallback, 'ship this draft', submit, 'plain', returnToChat)
     act(() => {
       store.actions.setUrl('http://localhost:5173/')
       store.actions.addPick(pick('p1', 'Apply me'))
@@ -587,6 +592,7 @@ describe('WebviewView', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: '发送 1' }))
     expect(submit).toHaveBeenCalledOnce()
+    expect(returnToChat).toHaveBeenCalledOnce()
     expect(fallback).not.toHaveBeenCalled()
     expect(store.getSnapshot().pickMode).toBe(true)
   })
@@ -711,7 +717,7 @@ describe('DraftOverlayBar', () => {
     user.remove()
   })
 
-  it('activates the Preview tab by its accessible label', () => {
+  it('activates a conversation tab by its accessible label', () => {
     const chat = document.createElement('button')
     chat.setAttribute('role', 'tab')
     chat.textContent = '对话'
@@ -721,7 +727,7 @@ describe('DraftOverlayBar', () => {
     const clicked = vi.fn()
     preview.addEventListener('click', clicked)
     document.body.append(chat, preview)
-    expect(activatePreviewTab(document, zh['view.tab'])).toBe(true)
+    expect(activateConversationTab(document, zh['view.tab'])).toBe(true)
     expect(clicked).toHaveBeenCalledOnce()
     chat.remove()
     preview.remove()
