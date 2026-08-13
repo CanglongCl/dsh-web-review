@@ -6,6 +6,7 @@ const frozen = loadFrozenRound('static-catalog-01', 1, import.meta.url)
 export const task: EvalTask = {
   id: 'static-catalog-01', fixture: 'static-catalog', fixtureKind: 'static', category: 'anchor-fallback', difficulty: 'long',
   title: '在无框架源码锚点时定位重复商品节点',
+  tokenBudget: { expected: 20_000, warnAbove: 30_000 },
   arms: ['full', 'text-only', 'oracle'],
   rounds: [{
     prompt: '请根据页面批注修改前端实现。',
@@ -27,16 +28,16 @@ export const task: EvalTask = {
     pass: [
       { kind: 'dom', selector: '.sold-out .a1b2c3_action', text: '到货提醒' },
       { kind: 'dom', selector: '.a1b2c3_price', style: { 'font-size': '18px' }, all: true },
-      { kind: 'dom', selector: '.a1b2c3_favorite', accessibleNamePattern: '^收藏\\s*\\S+', all: true },
+      { kind: 'dom', selector: '.a1b2c3_favorite', accessibleNameFromDescendant: { ancestorSelector: '.a1b2c3_productCard', descendantSelector: 'h2', prefix: '收藏' }, all: true },
       { kind: 'dom', selector: '.a1b2c3_favorite span', attr: { name: 'aria-hidden', value: 'true' }, all: true },
       { kind: 'dom', selector: '.a1b2c3_productCard.featured', style: { 'border-width': '2px', 'border-color': '#7a5af8' } },
-      { kind: 'dom', selector: '.a1b2c3_catalogGrid', style: { 'grid-template-columns': '334px' }, viewport: { width: 390, height: 844 }, tolerance: 2 },
+      { kind: 'dom', selector: '.a1b2c3_catalogGrid', itemsPerRow: { childSelector: '.a1b2c3_productCard', count: 1 }, viewport: { width: 390, height: 844 } },
     ],
     noRegression: [
       { kind: 'dom', selector: '.a1b2c3_productCard:not(.featured)', style: { 'border-width': '1px', 'border-color': '#ded9d0' }, all: true },
       { kind: 'dom', selector: '.a1b2c3_productCard:not(.sold-out) .a1b2c3_action', text: '加入购物袋', all: true },
       { kind: 'dom', selector: '.a1b2c3_productCard h2', style: { 'font-size': '17px' }, all: true },
-      { kind: 'dom', selector: '.a1b2c3_catalogGrid', style: { 'grid-template-columns': '254px 254px 254px 254px' }, viewport: { width: 1120, height: 900 }, tolerance: 3 },
+      { kind: 'dom', selector: '.a1b2c3_catalogGrid', itemsPerRow: { childSelector: '.a1b2c3_productCard', count: 4 }, viewport: { width: 1120, height: 900 } },
     ],
     negative: ['!important'],
   },

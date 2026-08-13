@@ -153,7 +153,18 @@ Frozen snapshots remain production wire messages and must pass `parseAnnotationB
 
 One agent and one staged workspace live for the entire scenario. Before each round, the runner prepares the arm-specific messages and queues them for exactly the next `agent/pre-step` admission. It then sends that round's ordinary prompt and awaits quiescence. Later rounds therefore observe edits made by earlier turns. Every model-visible message remains a logged user-role session event with its original source.
 
-The runner records arm and repetition in the run identity. Batch execution supports `--arm full`, `--arm text-only`, `--arm oracle`, `--arm all`, and `--repeat N`. Resume keys include task, arm, repetition, model, and reasoning effort rather than task id alone.
+The primary Full/Text-only comparison is blinded. Both arms use the same
+production-like plugin source and Browser comments heading; the model is not
+told which evidence was withheld. Model cwd paths are neutral random temporary
+directories outside this repository, preventing task/arm leakage and parent
+`AGENTS.md` inheritance. Oracle remains a separately identified ceiling.
+
+The runner records an immutable experiment id derived from task revision, arm,
+repetition, provider/model/effective effort, repository and Harness commits,
+and the execution-path source revision. Batch execution supports `--arm full`,
+`--arm text-only`, `--arm oracle`, `--arm all`, and `--repeat N`. Resume skips
+only completed executions with that exact identity; failures and different
+configurations remain runnable.
 
 ## Grading and evidence
 
@@ -168,7 +179,18 @@ The implemented first slice combines:
 
 Interaction sequences, focus/keyboard checks, route or persisted-state checks, console/page-error checks, and enforcement of the reserved `afterRound` assertions are added with the scenarios that need them. They are not treated as finished merely because the schema can describe rounds.
 
-Process evidence remains first-class: files read before the first write, duplicate reads, searches, tool errors, first correct file touch, unrelated modified files, steps, tokens, and wall time. Reports group paired arms and show Full-minus-Text and Oracle-minus-Full deltas rather than one undifferentiated pass rate.
+Process evidence remains first-class: tool calls, explicit read-tool paths,
+tool errors, first write, unrelated modified files, steps, tokens, Harness
+session time, and end-to-end wall time. Explicit read-tool paths are not
+mislabelled as complete exploration coverage because grep, glob, and shell
+commands can inspect files without emitting a read event. Reports group paired
+arms and show Full-minus-Text and Oracle-minus-Full deltas.
+
+The report never mixes Full-only protocol smoke with plugin-effect headlines.
+Protocol health and three-arm diagnostic outcomes have separate denominators.
+Each regrade records grader revision, grading time, and the original status;
+legacy runs lacking blinded execution provenance stay auditable but are
+excluded from the causal aggregate.
 
 Grader calibration follows the annotation's semantic precision. Values named
 by the user (for example `20px`, `#7a5af8`, or exact replacement text) remain
@@ -177,6 +199,10 @@ implementations and must not require a golden-only color, helper class, or
 whitespace choice. Missing target selectors produce a localization/assertion
 failure rather than a grader crash. Existing workspaces can be regraded
 without another model call using `pnpm eval:regrade`.
+Every new qualitative predicate requires adversarial bad-patch tests in
+addition to baseline-fail/golden-pass: invisible styles, wrong-state styles,
+overlap/overflow geometry, first-item-only edits, and unrelated accessible
+names are representative mandatory boundaries.
 
 The HTML report uses Chinese interface copy and provides a direct relative
 link from every run to its persisted Harness `session.jsonl`, alongside the

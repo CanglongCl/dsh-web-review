@@ -143,7 +143,11 @@ export interface RunOptions {
   model: string
   reasoningEffort?: string
   timeoutMs: number
-  harnessRoot: string
+  harnessRoot?: string
+  /** Published DSH CLI entry; takes precedence over a source checkout. */
+  dshCli?: string
+  /** Source commit or published package version used in experiment identity. */
+  runtimeRevision?: string
   arm: EvalArm
   repetition: number
 }
@@ -153,6 +157,7 @@ export function writeOverlay(
   runDir: string,
   task: LoadedEvalTask,
   options: RunOptions,
+  skillRoot = join(REPO_ROOT, 'packages', 'dsh-web-review', 'skills'),
 ): string {
   const taskJson = JSON.stringify(runnerTaskPayload(task, options.arm))
   const overlay = [
@@ -164,7 +169,7 @@ export function writeOverlay(
     '      config:',
     '        taskJson: |-',
     ...taskJson.split('\n').map(line => `          ${line}`),
-    `        skillRoot: ${join(REPO_ROOT, 'packages', 'dsh-web-review', 'skills')}`,
+    `        skillRoot: ${skillRoot}`,
     `        provider: ${options.provider}`,
     `        model: ${options.model}`,
     ...(options.reasoningEffort === undefined ? [] : [`        reasoningEffort: ${options.reasoningEffort}`]),
@@ -191,13 +196,18 @@ export interface LaunchResult {
 
 /** Launch one headless task run with a bounded timeout and SIGTERM grace. */
 export async function launchHeadless(
-  runDir: string,
+  workspaceDir: string,
   overlayPath: string,
   task: LoadedEvalTask,
   dshHome: string,
   options: RunOptions,
 ): Promise<LaunchResult> {
-  const bin = resolveHarnessCli(options.harnessRoot)
+  let bin: string
+  if (options.dshCli !== undefined) bin = options.dshCli
+  else {
+    if (options.harnessRoot === undefined) throw new Error('eval requires harnessRoot or dshCli')
+    bin = resolveHarnessCli(options.harnessRoot)
+  }
   resolveCredentials(dshHome)
   // Headless has no UI to answer approval prompts; the harness-sanctioned
   // (sandbox: danger-full-access, approval: never) preset keeps the composed
@@ -215,7 +225,7 @@ export async function launchHeadless(
     '--profile', 'headless',
     '--patch', overlayPath,
     task.rounds[0]?.prompt ?? '请根据页面批注修改前端实现。',
-  ], { cwd: join(runDir, 'workspace'), env, stdio: ['ignore', 'pipe', 'pipe'] })
+  ], { cwd: workspaceDir, env, stdio: ['ignore', 'pipe', 'pipe'] })
   let stdout = ''
   let stderr = ''
   child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString('utf8') })
@@ -236,8 +246,8 @@ export async function launchHeadless(
 }
 
 /** Copy the newest persisted session log from the overlay root into the run dir. */
-export function collectSessionLog(runDir: string): string | undefined {
-  const sessionsRoot = join(runDir, 'sessions')
+export function collectSessionLog(sourceRoot: string, destinationRoot = sourceRoot): string | undefined {
+  const sessionsRoot = join(sourceRoot, 'sessions')
   let newest: { path: string; mtimeMs: number } | undefined
   const walk = (current: string): void => {
     if (!existsSync(current)) return
@@ -252,7 +262,7 @@ export function collectSessionLog(runDir: string): string | undefined {
   }
   walk(sessionsRoot)
   if (newest === undefined) return undefined
-  const destination = join(runDir, 'session.jsonl')
+  const destination = join(destinationRoot, 'session.jsonl')
   cpSync(newest.path, destination)
   return destination
 }

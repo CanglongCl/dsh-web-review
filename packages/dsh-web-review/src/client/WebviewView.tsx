@@ -71,6 +71,7 @@ export type WebviewSlotProps =
 /** Session-bound actions supplied by the registration. */
 export interface WebviewViewInjected {
   sendAnnotationsWithoutDraft: () => Promise<void>
+  returnToChat: () => void
   createPreviewSession: (target: string) => Promise<PreviewSessionDescriptor>
   releasePreviewSessions: (sessionIds: readonly PreviewSessionId[]) => Promise<void>
 }
@@ -79,6 +80,7 @@ interface EditorSession {
   id: string
   target: PreviewElementTarget
   existing: PickItem | null
+  initialFocus: 'editor' | 'comment'
   originalHandle: PreviewElementHandle | null
   tree: PreviewTreeNode | null
   comment: string
@@ -113,7 +115,7 @@ function pickId(): string {
 /** The preview tab view (see module doc). */
 export function WebviewView({
   useStore, useSession, useInput, inputActions, actions, sendAnnotationsWithoutDraft,
-  createPreviewSession, releasePreviewSessions, t,
+  returnToChat, createPreviewSession, releasePreviewSessions, t,
 }: WebviewSlotProps) {
   const state = useStore((s) => s)
   const input = useInput(s => s)
@@ -168,13 +170,19 @@ export function WebviewView({
     }).catch(() => undefined)
   }
 
-  const openEditor = (id: string, target: PreviewElementTarget, existing: PickItem | null): void => {
+  const openEditor = (
+    id: string,
+    target: PreviewElementTarget,
+    existing: PickItem | null,
+    initialFocus: EditorSession['initialFocus'] = 'editor',
+  ): void => {
     const current = editorRef.current
     if (current !== null && current.id !== id) bridgeRef.current?.cancelEdit()
     setEditor({
       id,
       target,
       existing,
+      initialFocus,
       originalHandle: existing === null ? null : target.handle,
       tree: null,
       comment: existing?.comment ?? '',
@@ -198,6 +206,7 @@ export function WebviewView({
     setEditor({
       ...current,
       target,
+      initialFocus: 'editor',
       tree: null,
       comment,
       mode,
@@ -253,7 +262,7 @@ export function WebviewView({
       bridgeRef.current?.cancelEdit()
       return
     }
-    openEditor(pickId(), target, null)
+    openEditor(pickId(), target, null, 'comment')
   }
   onMarkClickRef.current = onMarkClick
   onShortcutRef.current = (action) => {
@@ -428,10 +437,12 @@ export function WebviewView({
     if (input.draft.trim() !== '') {
       promptErrorAtSend.current = promptError
       inputActions.submit()
+      returnToChat()
       return
     }
     try {
       await sendAnnotationsWithoutDraft()
+      returnToChat()
       if (stateRef.current.pickMode) actionsRef.current.togglePickMode()
     } catch {
       actions.setError(t('panel.pick.sendError'))
@@ -605,6 +616,7 @@ export function WebviewView({
               changes={editor.originalHandle === editor.target.handle ? editor.existing?.changes ?? [] : []}
               textChange={editor.originalHandle === editor.target.handle ? editor.existing?.textChange ?? null : null}
               initialMode={editor.mode}
+              initialFocus={editor.initialFocus}
               navigationFeedback={editor.navigationFeedback}
               selectedSkills={state.selectedSkills}
               position={editor.position}

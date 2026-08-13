@@ -19,7 +19,7 @@ export const task: EvalTask = {
   snapshot,
   captureMeta,
   grader: {
-    pass: [{ kind: 'dom', selector: '.stat-card', style: { 'background-color': '#f1f5ff' } }],
+    pass: [{ kind: 'dom', selector: '.stat-card', style: { 'background-color': '#f1f5ff' }, all: true }],
     noRegression: [{ kind: 'dom', selector: '.stat-value', style: { color: '#1f2937' } }],
   },
   golden: { kind: 'git-patch', patchFile: 'golden.patch' },

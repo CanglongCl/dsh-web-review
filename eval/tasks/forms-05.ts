@@ -18,10 +18,7 @@ export const task: EvalTask = {
   snapshot,
   captureMeta,
   grader: {
-    // margin-left/right: auto resolves to a used pixel value at the grader's
-    // 1680px viewport (body padding 32px + 480px max-width + 48px padding →
-    // (1680-32-528)/2 = 560px), so assert the final computed values.
-    pass: [{ kind: 'dom', selector: '.form', style: { 'max-width': '480px', 'margin-left': '560px', 'margin-right': '560px' } }],
+    pass: [{ kind: 'dom', selector: '.form', centered: { maxWidthPx: 528, tolerancePx: 2 } }],
   },
   golden: { kind: 'html-dir', dir: 'golden' },
 }

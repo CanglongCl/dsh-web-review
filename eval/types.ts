@@ -64,6 +64,10 @@ export interface CaptureMeta {
   pluginCommit: string
   harnessCommit: string
   capturedAt: string
+  /** Most recent real-GUI drift verification against this frozen wire body. */
+  verifiedAt?: string
+  verifiedPluginCommit?: string
+  verifiedHarnessCommit?: string
 }
 
 /** One admitted browser-comment snapshot and ordinary user turn. */
@@ -111,12 +115,27 @@ export interface DomAssertion {
   tolerance?: number
   /** Require these computed properties to differ from another element. */
   styleDiffersFrom?: { selector: string; properties: string[] }
+  /** Require this element's color property to be perceptually darker than another element's. */
+  colorDarkerThan?: { selector: string; property: string; minDelta?: number }
+  /** Bound the perceived luminance of a computed color (0 black, 255 white). */
+  colorLuminance?: { property: string; min?: number; max?: number; minAlpha?: number }
   /** Require one RGB channel to exceed the other two by this margin. */
   colorDominance?: { property: string; channel: 'red' | 'green' | 'blue'; margin?: number }
+  /** Accept a visible red cue in background, foreground, or border for destructive actions. */
+  dangerStyle?: { margin?: number }
   /** Require a computed shadow with enough visible extent and optional color character. */
-  boxShadow?: { minExtentPx: number; colorDominance?: 'red' | 'green' | 'blue'; margin?: number }
+  boxShadow?: { minExtentPx: number; minAlpha?: number; colorDominance?: 'red' | 'green' | 'blue'; margin?: number; requireFocusChange?: boolean }
   /** Require child boxes to span and align across the selected container. */
   horizontalCoverage?: { childSelector: string; minRatio: number; maxTopDeltaPx?: number }
+  /** Require a centered element with an optional maximum rendered width. */
+  centered?: { tolerancePx?: number; maxWidthPx?: number }
+  /** Require the rendered number of child items in the first visual row. */
+  itemsPerRow?: { childSelector: string; count: number; topTolerancePx?: number }
+  /** Require the element to be rendered (true) or effectively hidden (false). */
+  visible?: boolean
+  doesNotOverlap?: string
+  /** Build an accessible-name expectation from text in the nearest ancestor. */
+  accessibleNameFromDescendant?: { ancestorSelector: string; descendantSelector: string; prefix: string }
   /** Accept border, inset shadow, or positioned pseudo-element as a left accent. */
   leftAccentColor?: string
   /** Assert the check against EVERY matching element (batch tasks). */
@@ -145,6 +164,13 @@ export type GoldenPatch =
   | { kind: 'html-dir'; dir: string }
   | { kind: 'git-patch'; patchFile: string }
 
+export interface TokenBudget {
+  /** Expected uncached input + output tokens for one run. */
+  expected: number
+  /** Emit a cost warning strictly above this value; never changes pass/fail. */
+  warnAbove: number
+}
+
 export interface EvalTask {
   id: string
   fixture: FixtureName
@@ -152,6 +178,8 @@ export interface EvalTask {
   category: Category | LegacyFrontendCategory
   difficulty: Difficulty
   title: string
+  /** Optional task override; the registry supplies difficulty defaults. */
+  tokenBudget?: TokenBudget
   /** Context conditions this scenario is designed to compare. */
   arms?: EvalArm[]
   /** Ordered turns sharing one agent and one staged workspace. */
@@ -166,10 +194,11 @@ export interface EvalTask {
 }
 
 /** Runtime task after the registry has normalized legacy smoke definitions. */
-export interface LoadedEvalTask extends Omit<EvalTask, 'category' | 'arms' | 'rounds'> {
+export interface LoadedEvalTask extends Omit<EvalTask, 'category' | 'arms' | 'rounds' | 'tokenBudget'> {
   category: Category
   arms: EvalArm[]
   rounds: EvalRound[]
+  tokenBudget: TokenBudget
 }
 
 export interface ModelSelectionRecord {
@@ -219,7 +248,7 @@ export interface ProcessStats {
   firstToolCallStep?: number
   /** Step index of the first write-ish tool call (fs write or bash). */
   firstWriteStep?: number
-  /** Distinct files read, derived from fs tool arguments when parseable. */
+  /** Distinct paths observed in explicit read-style tool arguments. */
   filesRead: string[]
   tokens: TokenTotals
   perStepTokens: { step: number; input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number }[]
@@ -230,6 +259,19 @@ export interface ProcessStats {
 }
 
 export interface RunRecord {
+  /** Explicit causal-use gate. Missing records are legacy; invalid records stay auditable. */
+  diagnosticValidity?: 'eligible' | 'invalid'
+  invalidReason?: string
+  /** Immutable model-execution identity; regrading does not change it. */
+  experimentId?: string
+  taskRevision?: string
+  executionRevision?: string
+  graderRevision?: string
+  gradedAt?: string
+  /** First status recorded before any later regrade. */
+  originalStatus?: RunStatus
+  /** Whether the model session itself completed, independent of grading. */
+  executionStatus?: 'completed' | 'timeout' | 'error'
   taskId: string
   fixture: FixtureName
   fixtureKind: FixtureKind

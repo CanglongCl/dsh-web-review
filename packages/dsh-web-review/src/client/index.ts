@@ -41,7 +41,7 @@ import { createWebviewStore } from './stores.ts'
 import { WebviewView, type WebviewViewInjected } from './WebviewView.tsx'
 import { DraftOverlayBar, type WebviewDockInjected } from './DraftOverlayBar.tsx'
 import { normalizePreviewUrl } from './navigation-url.ts'
-import { activatePreviewTab } from './preview-link.ts'
+import { activateConversationTab } from './preview-link.ts'
 import { isUiSkillName, UI_SKILLS, type UiSkillName } from '../ui-skills.ts'
 import { browserCommentsContextSourceOf } from '../browser-comments-context.ts'
 import { BrowserCommentsContext } from './BrowserCommentsContext.tsx'
@@ -273,6 +273,7 @@ export function apply(ctx: ClientContext): void {
     store: webviewStore,
     inject: (sessionId: SessionId): WebviewViewInjected => ({
       sendAnnotationsWithoutDraft: () => scopedConversation(ctx, sessionId).send(t('panel.pick.defaultPrompt')),
+      returnToChat: () => { activateConversationTab(document, t('view.chat')) },
       createPreviewSession,
       releasePreviewSessions,
     }),
@@ -293,7 +294,7 @@ export function apply(ctx: ClientContext): void {
         actions.setTitle('')
         actions.clearPicks()
         ctx.layout.closeDetails()
-        activatePreviewTab(document, t('view.tab'))
+        activateConversationTab(document, t('view.tab'))
       },
     }),
   }, DraftOverlayBar))

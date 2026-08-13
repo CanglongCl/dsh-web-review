@@ -8,11 +8,12 @@
  * --concurrency N --provider --model --reasoning --timeout-ms N
  * --force --skip-launch --skip-grading
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { resolveHarnessRoot } from '../../scripts/harness-path.ts'
 import { loadTasks } from '../tasks/register.ts'
+import { executionRevision, experimentId, graderRevision, taskRevision } from '../identity.ts'
 import { runTaskOnce } from './run-one.ts'
 import { ARTIFACTS_ROOT, REPO_ROOT, RESULTS_PATH } from './runner.ts'
 import type { EvalArm, LoadedEvalTask, RunRecord } from '../types.ts'
@@ -32,6 +33,7 @@ interface Flags {
   skipGrading: boolean
   arms: EvalArm[]
   repeat: number
+  dshCli?: string
 }
 
 function parseFlags(argv: string[]): Flags {
@@ -40,13 +42,14 @@ function parseFlags(argv: string[]): Flags {
     concurrency: 4,
     provider: process.env.EVAL_PROVIDER ?? 'deepseek-official',
     model: process.env.EVAL_MODEL ?? 'deepseek-v4-flash',
-    ...(process.env.EVAL_REASONING === undefined ? {} : { reasoningEffort: process.env.EVAL_REASONING }),
+    reasoningEffort: process.env.EVAL_REASONING ?? 'high',
     timeoutMs: 300_000,
     force: false,
     skipLaunch: false,
     skipGrading: false,
     arms: ['full'],
     repeat: 1,
+    ...(process.env.EVAL_DSH_CLI === undefined ? {} : { dshCli: process.env.EVAL_DSH_CLI }),
   }
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]!
@@ -74,6 +77,7 @@ function parseFlags(argv: string[]): Flags {
       flags.arms = value === 'all' ? ['full', 'text-only', 'oracle'] : [value as EvalArm]
     }
     else if (arg === '--repeat') flags.repeat = Number(next())
+    else if (arg === '--dsh-cli') flags.dshCli = next()
     else throw new Error(`unknown flag ${arg}`)
   }
   if (flags.arms.some(arm => !['full', 'text-only', 'oracle'].includes(arm))) throw new Error(`invalid --arm ${flags.arms.join(',')}`)
@@ -93,7 +97,8 @@ const RESULTS_FILE = join(RESULTS_PATH, 'results.jsonl')
 
 async function main(): Promise<void> {
   const flags = parseFlags(process.argv.slice(2))
-  const harnessRoot = resolveHarnessRoot()
+  const dshCli = flags.dshCli === undefined ? undefined : realpathSync(flags.dshCli)
+  const harnessRoot = dshCli === undefined ? resolveHarnessRoot() : undefined
   const tasks = await loadTasks()
   const selected = tasks.filter(task => matches(task, flags))
   if (selected.length === 0) {
@@ -104,18 +109,28 @@ async function main(): Promise<void> {
     console.log('building the self-contained eval runner bundle')
     execFileSync('pnpm', ['--filter', '@dsh-web-review-dev/eval-runner', 'build'], { cwd: REPO_ROOT, stdio: 'inherit' })
   }
+  const currentRepoCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' }).trim()
+  const currentHarnessCommit = dshCli === undefined
+    ? execFileSync('git', ['rev-parse', 'HEAD'], { cwd: harnessRoot, encoding: 'utf8' }).trim()
+    : (() => {
+        const manifest = JSON.parse(readFileSync(join(dirname(dirname(dshCli)), 'package.json'), 'utf8')) as { name?: string; version?: string }
+        if (manifest.name !== '@deepseek-ai/dsh' || manifest.version === undefined) throw new Error(`unsupported published DSH CLI at ${dshCli}`)
+        return `${manifest.name}@${manifest.version}`
+      })()
+  console.log(`eval runtime: ${currentHarnessCommit}${dshCli === undefined ? ` (${harnessRoot})` : ` (${dshCli})`}`)
+  const model = { provider: flags.provider, model: flags.model, ...(flags.reasoningEffort === undefined ? {} : { reasoningEffort: flags.reasoningEffort }) }
   const finished = new Set<string>()
   if (!flags.force && existsSync(RESULTS_FILE)) {
     for (const line of readFileSync(RESULTS_FILE, 'utf8').split('\n')) {
       if (line.trim() === '') continue
       const record = JSON.parse(line) as RunRecord
-      finished.add(`${record.taskId}:${record.arm ?? 'full'}:${record.repetition ?? 1}`)
+      if (record.experimentId !== undefined && record.executionStatus === 'completed') finished.add(record.experimentId)
     }
   }
   const queue = selected.flatMap(task => flags.arms
     .filter(arm => task.arms.includes(arm))
     .flatMap(arm => Array.from({ length: flags.repeat }, (_, index) => ({ task, arm, repetition: index + 1 }))))
-    .filter(run => !finished.has(`${run.task.id}:${run.arm}:${run.repetition}`))
+    .filter(run => !finished.has(experimentId({ task: run.task, arm: run.arm, repetition: run.repetition, model, repoCommit: currentRepoCommit, harnessCommit: currentHarnessCommit })))
   console.log(`${selected.length} task(s) selected, ${queue.length} to run, ${flags.concurrency} concurrent`)
   mkdirSync(ARTIFACTS_ROOT, { recursive: true })
   mkdirSync(RESULTS_PATH, { recursive: true })
@@ -133,7 +148,9 @@ async function main(): Promise<void> {
       console.log(`[run] ${task.id}/${arm}/r${repetition} start (${task.fixtureKind}/${task.category}/${task.difficulty})`)
       try {
         const record = await runTaskOnce(task, {
-          harnessRoot,
+          ...(harnessRoot === undefined ? {} : { harnessRoot }),
+          ...(dshCli === undefined ? {} : { dshCli }),
+          runtimeRevision: currentHarnessCommit,
           provider: flags.provider,
           model: flags.model,
           ...(flags.reasoningEffort === undefined ? {} : { reasoningEffort: flags.reasoningEffort }),
@@ -154,6 +171,15 @@ async function main(): Promise<void> {
         if (record.status !== 'pass') failures.push(task.id)
       } catch (error) {
         const record: RunRecord = {
+          diagnosticValidity: 'invalid',
+          invalidReason: `orchestration-error: ${String(error)}`,
+          experimentId: experimentId({ task, arm, repetition, model, repoCommit: currentRepoCommit, harnessCommit: currentHarnessCommit }),
+          taskRevision: taskRevision(task),
+          executionRevision: executionRevision(),
+          graderRevision: graderRevision(task),
+          gradedAt: new Date().toISOString(),
+          executionStatus: 'error',
+          originalStatus: 'error',
           taskId: task.id,
           fixture: task.fixture,
           fixtureKind: task.fixtureKind,
@@ -164,7 +190,7 @@ async function main(): Promise<void> {
           repetition,
           status: 'error',
           attribution: 'runtime-error',
-          model: { provider: flags.provider, model: flags.model, ...(flags.reasoningEffort === undefined ? {} : { reasoningEffort: flags.reasoningEffort }) },
+          model,
           durationMs: Date.now() - started,
           startedAt: new Date().toISOString(),
           exitCode: null,

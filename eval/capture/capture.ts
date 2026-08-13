@@ -426,6 +426,14 @@ async function main(): Promise<void> {
         const issues = diffCaptures(frozen, live.snapshot)
         if (issues.length === 0) {
           console.log(`[capture] ${task.id} round ${roundNumber} verify OK`)
+          const metaPath = frozenPath(task.id, roundNumber, 'meta.json')
+          const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as CaptureMeta
+          writeFileSync(metaPath, JSON.stringify({
+            ...meta,
+            verifiedAt: live.meta.capturedAt,
+            verifiedPluginCommit: live.meta.pluginCommit,
+            verifiedHarnessCommit: live.meta.harnessCommit,
+          }, null, 2))
         } else {
           console.error(`[capture] ${task.id} round ${roundNumber} DRIFT:`)
           for (const issue of issues) console.error(`  - ${issue}`)

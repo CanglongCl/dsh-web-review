@@ -6,6 +6,7 @@
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
   'view.tab': '网页预览',
+  'view.chat': '对话',
   'command.skills.description': '选择一个 UI 优化 Skill',
   'dock.count': '{count} 条注释',
   'dock.details': '注释上下文',
@@ -176,6 +177,7 @@ export const zh = {
 /** English dictionary (same keys as {@link zh}). */
 export const en: Record<WebviewKey, string> = {
   'view.tab': 'Web Preview',
+  'view.chat': 'Chat',
   'command.skills.description': 'Choose one UI optimization Skill',
   'dock.count': '{count} comments',
   'dock.details': 'Comment context',

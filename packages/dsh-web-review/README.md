@@ -74,7 +74,8 @@ Annotation mode also provides a counted **Send** button. When the composer has
 a draft, it submits that draft through the stock input machine together with
 the prepared browser comments. With no draft, it sends the fixed localized
 request “Please apply the page comments to the frontend implementation.” because
-the stock input machine deliberately treats an empty draft as a no-op.
+the stock input machine deliberately treats an empty draft as a no-op. After
+the send starts successfully, the conversation switches back to the **Chat** tab.
 
 The agent may also provide a Markdown link to any HTTP(S) page. An ordinary
 click on that assistant link activates Preview and loads the target. Modifier

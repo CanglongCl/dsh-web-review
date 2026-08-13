@@ -18,7 +18,7 @@ export const task: EvalTask = {
   snapshot,
   captureMeta,
   grader: {
-    pass: [{ kind: 'dom', selector: 'button.btn-primary', style: { 'padding-top': '10px', 'padding-left': '24px' } }],
+    pass: [{ kind: 'dom', selector: 'button.btn-primary', style: { 'padding-top': '10px', 'padding-right': '24px', 'padding-bottom': '10px', 'padding-left': '24px' } }],
   },
   golden: { kind: 'html-dir', dir: 'golden' },
 }
