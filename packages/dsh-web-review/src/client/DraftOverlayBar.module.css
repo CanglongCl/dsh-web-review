@@ -205,7 +205,7 @@
   padding: 1px 7px;
   border: 1px solid var(--dsw-alias-border-l1, rgb(0 0 0 / 8%));
   border-radius: 999px;
-  background: var(--dsw-alias-bg-module-platform, #f4f5f6);
+  background: var(--dsw-alias-bg-module-platform, #f5f6f7);
   color: var(--dsw-alias-label-tertiary, #61666b);
   font: 12px/18px var(--ds-font-family-code, ui-monospace, monospace);
   text-overflow: ellipsis;
