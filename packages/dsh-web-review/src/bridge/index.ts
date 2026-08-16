@@ -46,6 +46,7 @@ import {
   reviewableParent,
 } from '../client/element-navigation.ts'
 import { snapshotOf, truncate } from '../client/picker-core.ts'
+import { capturePageSnapshot } from './capture.ts'
 import { PICKER_STYLE } from './picker-style.ts'
 
 interface BridgeConfig {
@@ -487,7 +488,7 @@ function stylePayload(payload: unknown): {
   }
 }
 
-function execute(command: PreviewBridgeCommand): unknown {
+async function execute(command: PreviewBridgeCommand): Promise<unknown> {
   const payload = command.payload as unknown
   if (command.name === 'request-ready') { postReady(); return null }
   if (command.name === 'activate') {
@@ -610,10 +611,13 @@ function execute(command: PreviewBridgeCommand): unknown {
   if (command.name === 'history-back') { history.back(); return null }
   if (command.name === 'history-forward') { history.forward(); return null }
   if (command.name === 'reload') { location.reload(); return null }
+  if (command.name === 'capture-snapshot') {
+    return capturePageSnapshot(document)
+  }
   throw new Error('unsupported command')
 }
 
-window.addEventListener('message', (event) => {
+window.addEventListener('message', async (event) => {
   if (event.source !== parent || event.origin !== config.parentOrigin) return
   const value = event.data
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return
@@ -624,7 +628,7 @@ window.addEventListener('message', (event) => {
   const command = commandOf(record.command)
   if (command === undefined) return
   try {
-    postResponse(record.requestId, { ok: true, value: execute(command) })
+    postResponse(record.requestId, { ok: true, value: await execute(command) })
   } catch (error) {
     postResponse(record.requestId, {
       ok: false,

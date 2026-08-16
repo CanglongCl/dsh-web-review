@@ -45,6 +45,7 @@ import type {
   PreviewTreeNode,
 } from '../preview-contract.ts'
 import type { PickItem } from './contract.ts'
+import type { PageSnapshotDraft, PageSnapshotReceipt } from '../snapshot-contract.ts'
 import {
   AnnotationEditor,
   type AnnotationEditorMode,
@@ -74,6 +75,8 @@ export interface WebviewViewInjected {
   returnToChat: () => void
   createPreviewSession: (target: string) => Promise<PreviewSessionDescriptor>
   releasePreviewSessions: (sessionIds: readonly PreviewSessionId[]) => Promise<void>
+  /** Archive one captured page snapshot on the node face (session-bound). */
+  uploadPageSnapshot: (payload: PageSnapshotDraft) => Promise<PageSnapshotReceipt>
 }
 
 interface EditorSession {
@@ -115,7 +118,7 @@ function pickId(): string {
 /** The preview tab view (see module doc). */
 export function WebviewView({
   useStore, useSession, useInput, inputActions, actions, sendAnnotationsWithoutDraft,
-  returnToChat, createPreviewSession, releasePreviewSessions, t,
+  returnToChat, createPreviewSession, releasePreviewSessions, uploadPageSnapshot, t,
 }: WebviewSlotProps) {
   const state = useStore((s) => s)
   const input = useInput(s => s)
@@ -148,6 +151,13 @@ export function WebviewView({
   const onPickRef = useRef<(target: PreviewElementTarget) => void>(() => undefined)
   const onMarkClickRef = useRef<(id: string) => void>(() => undefined)
   const onShortcutRef = useRef<(action: PreviewElementNavigationAction) => void>(() => undefined)
+  /** Send-time snapshot capture dedupe and dock-request bookkeeping. */
+  const lastCaptureAtRef = useRef(0)
+  const captureInFlightRef = useRef(false)
+  const pickerReadyRef = useRef(false)
+  const handledSnapshotRequestRef = useRef(0)
+
+  useEffect(() => { pickerReadyRef.current = pickerReady }, [pickerReady])
 
   const release = (ids: readonly PreviewSessionId[]): void => {
     if (ids.length === 0) return
@@ -330,6 +340,7 @@ export function WebviewView({
         setHistoryState({ canGoBack: false, canGoForward: false })
         actionsRef.current.setTitle('')
         actionsRef.current.clearPicks()
+        actionsRef.current.setSnapshotSync({ status: 'idle' })
         setEditor(null)
       },
       onUnavailable: () => {
@@ -415,6 +426,7 @@ export function WebviewView({
     actions.setUrl(normalized)
     actions.setTitle('')
     actions.clearPicks()
+    actions.setSnapshotSync({ status: 'idle' })
   }
 
   const frameSrc = descriptor?.frameUrl
@@ -426,6 +438,59 @@ export function WebviewView({
     && !sendingAnnotations
     && !inputBusy
 
+  /** Capture + archive the annotated page before the send is admitted. */
+  const capturePageSnapshot = async (): Promise<void> => {
+    const bridge = bridgeRef.current
+    const current = stateRef.current
+    if (bridge === null || !pickerReadyRef.current || current.url === '' || captureInFlightRef.current) return
+    captureInFlightRef.current = true
+    lastCaptureAtRef.current = Date.now()
+    actionsRef.current.setSnapshotSync({ status: 'capturing' })
+    try {
+      const captured = await bridge.captureSnapshot()
+      if (captured === null) throw new Error('page capture unavailable')
+      const receipt = await uploadPageSnapshot({
+        page: { url: current.url, title: current.title },
+        viewport: captured.viewport,
+        scroll: captured.scroll,
+        html: captured.html,
+        screenshot: captured.screenshot,
+        screenshotError: captured.screenshotError,
+      })
+      if (receipt.kind === 'saved') {
+        actionsRef.current.setSnapshotSync({ status: 'saved', dir: receipt.dir })
+      } else if (receipt.kind === 'disabled') {
+        actionsRef.current.setSnapshotSync({ status: 'idle' })
+      }
+    } catch (error) {
+      actionsRef.current.setSnapshotSync({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'page snapshot failed',
+      })
+    } finally {
+      captureInFlightRef.current = false
+    }
+  }
+
+  /** Best-effort awaited capture; the snapshot never blocks an annotated send. */
+  const captureForSend = async (): Promise<void> => {
+    await Promise.race([
+      capturePageSnapshot(),
+      new Promise<void>((resolve) => { setTimeout(resolve, 5_000) }),
+    ])
+  }
+
+  // The always-mounted dock bumps the request revision when a new user
+  // message arrives while annotations are pending (stock-composer annotated
+  // sends); the dedicated send above awaited its own capture and the
+  // timestamp window prevents a duplicate.
+  useEffect(() => {
+    if (state.snapshotRequestRevision === handledSnapshotRequestRef.current) return
+    handledSnapshotRequestRef.current = state.snapshotRequestRevision
+    if (Date.now() - lastCaptureAtRef.current < 2_000) return
+    void capturePageSnapshot()
+  }, [state.snapshotRequestRevision])
+
   const submitAnnotations = async (): Promise<void> => {
     if (!canSendAnnotations) return
     if (input.draft.trim().startsWith('/')) {
@@ -434,6 +499,7 @@ export function WebviewView({
     }
     setSendingAnnotations(true)
     actions.setError(null)
+    await captureForSend()
     if (input.draft.trim() !== '') {
       promptErrorAtSend.current = promptError
       inputActions.submit()
@@ -584,6 +650,24 @@ export function WebviewView({
             </button>
           </div>
         )}
+      {state.snapshotSync.status !== 'idle' && (
+        <div
+          className={css.snapshotLine}
+          data-webview-snapshot-status={
+            state.snapshotSync.status === 'capturing' ? 'capturing'
+              : state.snapshotSync.status === 'saved' ? 'saved'
+                : 'error'
+          }
+          {...(state.snapshotSync.status === 'saved'
+            ? { 'data-webview-snapshot-dir': state.snapshotSync.dir }
+            : {})}
+          title={state.snapshotSync.status === 'saved' ? state.snapshotSync.dir : undefined}
+        >
+          {state.snapshotSync.status === 'capturing' && t('panel.snapshot.capturing')}
+          {state.snapshotSync.status === 'saved' && t('panel.snapshot.saved', { dir: state.snapshotSync.dir })}
+          {state.snapshotSync.status === 'error' && t('panel.snapshot.error')}
+        </div>
+      )}
       {visibleError !== null && (
         <div className={css.error} role="alert" title={visibleError} data-webview-error="">
           <IconWarningOutline16 size={14} className={css.errorIcon} />

@@ -3,6 +3,9 @@
  * Fixed sleeps are deliberately absent: the composer capsule's ready state
  * is the browser-visible host acknowledgement boundary.
  */
+import { readFile, readdir } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 import type { Browser, FrameLocator, Page } from 'playwright'
 import {
@@ -99,6 +102,48 @@ async function openLastContext(page: Page): Promise<import('playwright').Locator
   const body = row.locator('[data-browser-comments-context]')
   await body.waitFor({ timeout: 10_000 })
   return body
+}
+
+const SNAPSHOT_BASE = join(tmpdir(), 'dsh-web-review', 'snapshots')
+
+async function snapshotDirs(): Promise<string[]> {
+  try {
+    const entries = await readdir(SNAPSHOT_BASE, { withFileTypes: true })
+    return entries.filter(entry => entry.isDirectory()).map(entry => entry.name)
+  } catch {
+    return []
+  }
+}
+
+async function waitForNewSnapshotDir(before: readonly string[]): Promise<string> {
+  let newest = ''
+  await expect.poll(
+    async () => {
+      const current = await snapshotDirs()
+      newest = current.find(name => !before.includes(name)) ?? ''
+      return newest
+    },
+    { timeout: 20_000, message: 'annotated send should archive a new page snapshot directory' },
+  ).not.toBe('')
+  return newest
+}
+
+async function assertSnapshotFiles(dir: string): Promise<void> {
+  const manifest = JSON.parse(await readFile(join(dir, 'manifest.json'), 'utf8')) as {
+    page: { url: string; title: string }
+    html: { file: string; bytes: number }
+    screenshot: { file: string } | { error: string }
+  }
+  expect(manifest.page.title).toBe('魔法 UI 演示页')
+  expect(manifest.page.url.startsWith(services.demoUrl)).toBe(true)
+  const html = await readFile(join(dir, 'page.html'), 'utf8')
+  expect(html).toContain('魔法 UI 演示页')
+  if (!('file' in manifest.screenshot)) {
+    throw new Error('expected a screenshot file in the demo page snapshot')
+  }
+  const png = await readFile(join(dir, manifest.screenshot.file))
+  expect(png.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  expect(png.length).toBeGreaterThan(0)
 }
 
 describe('dsh-web-review e2e', () => {
@@ -717,7 +762,16 @@ describe('dsh-web-review e2e', () => {
     const frame = await loadDemoPage(page)
     await annotate(page, frame, 'button.btn-primary', 'Make the button color darker.')
     await waitForAnnotationSync(page)
+    const snapshotBefore = await snapshotDirs()
     await sendViaComposer(page, 'apply')
+    // The Preview tab stays mounted for stock sends, so the archive status
+    // line is the browser-visible acknowledgement boundary; the files land
+    // under the OS temp archive root.
+    await expect.poll(
+      async () => page.locator('[data-webview-snapshot-status="saved"]').count(),
+      { timeout: 20_000, message: 'annotated stock send should archive the page snapshot' },
+    ).toBeGreaterThan(0)
+    await assertSnapshotFiles(join(SNAPSHOT_BASE, await waitForNewSnapshotDir(snapshotBefore)))
     await expect.poll(
       async () => page.locator('[data-webview-annotations]').count(),
       { timeout: 30_000, message: 'accepted user prompt should consume the prepared annotation capsule' },
@@ -814,6 +868,47 @@ describe('dsh-web-review e2e', () => {
     await clickWhenStable(page, page.getByRole('tab', { name: 'Chat' }))
     expect(await page.locator('[data-chat-flow-kind="user"]').filter({ hasText: 'apply' }).last().textContent())
       .not.toContain('# Browser comments')
+    await page.close()
+  })
+
+  it('archives the page snapshot with an annotated toolbar send', async () => {
+    const page = await newPage(browser)
+    onTestFailed(() => saveFailureShot(page, 'annotation-snapshot-toolbar-send'))
+    await bootWithPanel(page, 'annotation-snapshot-toolbar-send')
+    const frame = await loadDemoPage(page)
+    await annotate(page, frame, 'button.btn-primary', 'Make the button color darker.')
+    await waitForAnnotationSync(page)
+
+    const snapshotBefore = await snapshotDirs()
+    const composer = page.getByPlaceholder('Message the agent')
+    await composer.fill('apply this annotated draft')
+    await page.getByRole('button', { name: 'Send 1' }).click()
+    // The dedicated send awaited its capture before switching to Chat, so the
+    // archive must exist shortly after the click; the file set is the ack.
+    await assertSnapshotFiles(join(SNAPSHOT_BASE, await waitForNewSnapshotDir(snapshotBefore)))
+    await expect.poll(
+      async () => page.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
+      { message: 'annotation send should activate Chat' },
+    ).toBe('true')
+    expect(await composer.inputValue()).toBe('')
+    await page.close()
+  })
+
+  it('does not archive a snapshot for plain sends without annotations', async () => {
+    const page = await newPage(browser)
+    onTestFailed(() => saveFailureShot(page, 'plain-send-no-snapshot'))
+    await bootWithPanel(page, 'plain-send-no-snapshot')
+    await loadDemoPage(page)
+    const snapshotBefore = await snapshotDirs()
+    await sendViaComposer(page, 'apply')
+    // The turn round-trip (user row in Chat) settles after any capture would
+    // have fired; no new snapshot directory may exist by then.
+    await clickWhenStable(page, page.getByRole('tab', { name: 'Chat' }))
+    await expect.poll(
+      async () => page.locator('[data-chat-flow-kind="user"]').filter({ hasText: 'apply' }).last().count(),
+      { timeout: 30_000 },
+    ).toBeGreaterThan(0)
+    expect(new Set(await snapshotDirs())).toEqual(new Set(snapshotBefore))
     await page.close()
   })
 })

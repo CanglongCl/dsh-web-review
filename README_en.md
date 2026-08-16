@@ -59,6 +59,12 @@ dsh web
 - Page comments use DSH's native transcript disclosure: page and count when collapsed, then targets, intent, before/after values, and available source clues when expanded.
 - The agent updates source code in the current workspace; temporary page adjustments do not modify project files directly.
 
+### Page Snapshot Archival
+
+- Sending comments also archives the page at send time — its full HTML tree and a screenshot — into the OS temp directory (<os.tmpdir()>/dsh-web-review/snapshots/, newest 20 retained).
+- The injected comment context names the snapshot location and how to read it, so the agent can open manifest.json, page.html, and page.png to further confirm your intent.
+- Snapshots are ephemeral: the system clears the temp directory over time, and plain sends without comments never capture.
+
 ### UI Design Skills
 
 The plugin includes [Jakub Krehel's design skills](https://github.com/jakubkrehel/skills):

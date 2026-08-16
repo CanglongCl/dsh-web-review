@@ -16,10 +16,16 @@ import {
   attachPendingAnnotationContext,
   forgetAgent,
   formatAnnotationContext,
+  formatSnapshotGuideBlock,
   parseAnnotationBody,
   readRequestBody,
   storeAnnotationSnapshot,
 } from '../src/annotation-context.ts'
+import {
+  PageSnapshotId,
+  SNAPSHOT_FRESH_WINDOW_MS,
+  type SnapshotArchiveState,
+} from '../src/snapshot-contract.ts'
 
 function snapshot(overrides: Partial<AnnotationSnapshot> = {}): AnnotationSnapshot {
   return {
@@ -55,9 +61,10 @@ function attach(
   state: AnnotationCommitState,
   agent: Agent,
   next: () => Promise<PreStepDecision>,
-  skills: Parameters<typeof attachPendingAnnotationContext>[2] = noSelectedSkills,
+  skills: Parameters<typeof attachPendingAnnotationContext>[4] = noSelectedSkills,
+  snapshotState: Parameters<typeof attachPendingAnnotationContext>[1] = new Map(),
 ): Promise<PreStepDecision> {
-  return attachPendingAnnotationContext(state, agent, skills, signal, [], next)
+  return attachPendingAnnotationContext(state, snapshotState, '/tmp/dsh-web-review/snapshots', agent, skills, signal, [], next)
 }
 
 function harness(rawId = 'session-1'): {
@@ -440,5 +447,94 @@ describe('readRequestBody', () => {
       request(['x'.repeat(MAX_ANNOTATION_BODY + 1)]),
       MAX_ANNOTATION_BODY,
     )).rejects.toThrow(`body exceeds ${MAX_ANNOTATION_BODY} bytes`)
+  })
+})
+
+describe('page snapshot guide block', () => {
+  const baseDir = '/tmp/dsh-web-review/snapshots'
+  const exactDir = '/tmp/dsh-web-review/snapshots/20260816-1200000000-abcd'
+
+  it('names the exact directory while the snapshot is inside the fresh window', () => {
+    const block = formatSnapshotGuideBlock({
+      snapshotId: PageSnapshotId('snap-1'),
+      dir: exactDir,
+      capturedAt: 1_000_000,
+    }, baseDir, 1_000_000 + SNAPSHOT_FRESH_WINDOW_MS)
+    expect(block).toContain('## Page snapshot')
+    expect(block).toContain(exactDir)
+    expect(block).not.toContain('latest.json')
+  })
+
+  it('falls back to the latest pointer when the record is stale or absent', () => {
+    const stale = formatSnapshotGuideBlock({
+      snapshotId: PageSnapshotId('snap-1'),
+      dir: exactDir,
+      capturedAt: 1_000_000,
+    }, baseDir, 1_000_000 + SNAPSHOT_FRESH_WINDOW_MS + 1)
+    expect(stale).toContain(baseDir + '/latest.json')
+    expect(stale).not.toContain(exactDir)
+    const absent = formatSnapshotGuideBlock(undefined, baseDir, 0)
+    expect(absent).toContain(baseDir + '/latest.json')
+  })
+
+  it('appends the guide once, keeps the durable text and lets the event consume it', async () => {
+    const { agent, agents } = harness()
+    const state: AnnotationCommitState = new Map()
+    storeAnnotationSnapshot(agents, state, snapshot())
+    const snapshotState: SnapshotArchiveState = new Map()
+    snapshotState.set(agent.id, {
+      snapshotId: PageSnapshotId('snap-1'),
+      dir: exactDir,
+      capturedAt: Date.now(),
+    })
+    const decision = await attach(
+      state, agent, async () => ({ kind: 'enter', messages: [] }),
+      noSelectedSkills, snapshotState,
+    )
+    if (decision.kind !== 'enter') throw new Error('expected enter')
+    const annotation = decision.messages[0]!
+    const text = annotation.content[0]?.type === 'text' ? annotation.content[0].text : ''
+    expect(text).toContain('# Browser comments')
+    expect(text).toContain('## Page snapshot')
+    expect(text).toContain(exactDir)
+    const pending = state.get(agent.id)
+    expect(pending?.context).toBe(text)
+    acknowledgeAnnotationEvent(state, agent.id, contextEvent(annotation))
+    expect(state.get(agent.id)).toBeUndefined()
+  })
+
+  it('uses the fallback form when no snapshot has landed before the pre-step', async () => {
+    const { agent, agents } = harness()
+    const state: AnnotationCommitState = new Map()
+    storeAnnotationSnapshot(agents, state, snapshot())
+    const decision = await attach(
+      state, agent, async () => ({ kind: 'enter', messages: [] }),
+      noSelectedSkills, new Map(),
+    )
+    if (decision.kind !== 'enter') throw new Error('expected enter')
+    const block = decision.messages[0]!.content[0]
+    const text = block?.type === 'text' ? block.text : ''
+    expect(text).toContain('## Page snapshot')
+    expect(text).toContain('/tmp/dsh-web-review/snapshots/latest.json')
+  })
+
+  it('does not append the guide twice for the same pending snapshot', async () => {
+    const { agent, agents } = harness()
+    const state: AnnotationCommitState = new Map()
+    storeAnnotationSnapshot(agents, state, snapshot())
+    const snapshotState: SnapshotArchiveState = new Map()
+    const first = await attach(
+      state, agent, async () => ({ kind: 'enter', messages: [] }),
+      noSelectedSkills, snapshotState,
+    )
+    if (first.kind !== 'enter') throw new Error('expected enter')
+    const second = await attach(
+      state, agent, async () => ({ kind: 'enter', messages: [] }),
+      noSelectedSkills, snapshotState,
+    )
+    if (second.kind !== 'enter') throw new Error('expected enter')
+    const block = second.messages[0]!.content[0]
+    const text = block?.type === 'text' ? block.text : ''
+    expect(text.split('## Page snapshot').length - 1).toBe(1)
   })
 })

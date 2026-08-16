@@ -5,6 +5,8 @@
  * Origin. The frame and host communicate only through the versioned bridge.
  */
 import { readFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
@@ -20,13 +22,24 @@ import {
   storeAnnotationSnapshot,
   type AnnotationCommitState,
 } from './annotation-context.ts'
-import { PREVIEW_GUIDANCE } from './preview-guidance.ts'
+import { previewGuidanceWithSnapshotRoot } from './preview-guidance.ts'
 import {
   PREVIEW_CLIENT_HEADER,
   PREVIEW_CLIENT_HEADER_VALUE,
   PREVIEW_SESSIONS_PATH,
   type PreviewSessionId,
 } from './preview-contract.ts'
+import {
+  MAX_SNAPSHOT_BODY,
+  PAGE_SNAPSHOTS_PATH,
+  type SnapshotArchiveState,
+} from './snapshot-contract.ts'
+import {
+  forgetAgentSnapshots,
+  parseSnapshotBody,
+  storePageSnapshot,
+  type SnapshotArchiveResult,
+} from './snapshot-archive.ts'
 import { startIsolatedPreviewServer, type IsolatedPreviewServer } from './preview-server.ts'
 import {
   readRequestBytes,
@@ -35,6 +48,7 @@ import { isPreviewableUrl } from './proxy-url.ts'
 import { registerUiSkillProvider, type Config as PluginConfig } from './skill-provider.ts'
 export { Config } from './skill-provider.ts'
 export { PREVIEW_SESSIONS_PATH } from './preview-contract.ts'
+export { PAGE_SNAPSHOTS_PATH } from './snapshot-contract.ts'
 export { PREVIEW_GUIDANCE } from './preview-guidance.ts'
 
 /** Plugin identity for diagnostics and the client-modules scan. */
@@ -45,6 +59,8 @@ export const inject = ['webServer', 'agents', 'systemPrompt', 'skills']
 /** `/webview-annotations` exact route path (annotation state sync). */
 export const ANNOTATIONS_PREFIX = '/webview-annotations'
 const MAX_PREVIEW_CONTROL_BODY = 16 * 1024
+/** Machine-local page snapshot archive root (OS temp, never the workspace). */
+export const PAGE_SNAPSHOT_BASE_DIR = join(tmpdir(), 'dsh-web-review', 'snapshots')
 
 /**
  * Plugin body: register proxy/pending routes and send-time context admission.
@@ -52,6 +68,7 @@ const MAX_PREVIEW_CONTROL_BODY = 16 * 1024
  */
 export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
   const annotations: AnnotationCommitState = new Map()
+  const snapshotState: SnapshotArchiveState = new Map()
   registerUiSkillProvider(ctx, config)
   let previewServer: IsolatedPreviewServer | undefined
   await ctx.effect(async () => {
@@ -64,7 +81,7 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
   ctx.systemPrompt.section({
     name: 'plugin:dsh-web-review-preview',
     order: -97,
-    text: PREVIEW_GUIDANCE,
+    text: previewGuidanceWithSnapshotRoot(PAGE_SNAPSHOT_BASE_DIR),
   })
   const livePreviewServer = previewServer
   ctx.effect(() => ctx.webServer.register({
@@ -80,12 +97,23 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
     }),
     'dsh-web-review: /webview-annotations route',
   )
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: 'exact',
+      path: PAGE_SNAPSHOTS_PATH,
+      handler: snapshotsHandler(ctx, snapshotState, config.pageSnapshotEnabled),
+    }),
+    'dsh-web-review: /webview-snapshots route',
+  )
   ctx.on('agent/pre-step', ({ agent, messages, signal }, next) =>
-    attachPendingAnnotationContext(annotations, agent, ctx.skills, signal, messages, next))
+    attachPendingAnnotationContext(annotations, snapshotState, PAGE_SNAPSHOT_BASE_DIR, agent, ctx.skills, signal, messages, next))
   ctx.on('session/event', (session, event) => {
     acknowledgeAnnotationEvent(annotations, session.id, event)
   })
-  ctx.on('agent/disposed', ({ agent }) => { forgetAgent(annotations, agent) })
+  ctx.on('agent/disposed', ({ agent }) => {
+    forgetAgent(annotations, agent)
+    forgetAgentSnapshots(snapshotState, agent)
+  })
 }
 
 async function readBridgeSource(): Promise<string> {
@@ -265,5 +293,90 @@ function annotationsHandler(
       'x-webview-annotation-result': result.kind,
     })
     res.end(JSON.stringify(receipt))
+  }
+}
+
+/**
+ * Route handler for `/webview-snapshots`: validate the structured page
+ * capture and archive it under the OS temp root for the live agent.
+ * @param ctx - context carrying the live-agent registry.
+ * @param state - per-agent newest-snapshot records consumed at pre-step.
+ * @param enabled - deployment switch; a disabled archive answers 'disabled'.
+ * @returns the route handler owning this store.
+ */
+function snapshotsHandler(
+  ctx: Context,
+  state: SnapshotArchiveState,
+  enabled: boolean,
+): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+  return async (req, res) => {
+    if ((req.method ?? 'GET') !== 'POST') {
+      res.writeHead(405, { allow: 'POST' })
+      res.end()
+      return
+    }
+    if (!(req.headers['content-type'] ?? '').toString().toLowerCase().startsWith('application/json')) {
+      res.writeHead(415)
+      res.end('application/json required')
+      return
+    }
+    if (req.headers[PREVIEW_CLIENT_HEADER] !== PREVIEW_CLIENT_HEADER_VALUE) {
+      res.writeHead(415, { 'cache-control': 'no-store' })
+      res.end('snapshot client required')
+      return
+    }
+    const origin = requestOrigin(req)
+    if (origin === undefined) {
+      res.writeHead(403, { 'cache-control': 'no-store' })
+      res.end('same-origin browser request required')
+      return
+    }
+    if (!enabled) {
+      res.writeHead(200, {
+        'cache-control': 'no-store',
+        'content-type': 'application/json; charset=utf-8',
+      })
+      res.end(JSON.stringify({ kind: 'disabled' }))
+      return
+    }
+    let body: string | undefined
+    try {
+      body = await readRequestBody(req, MAX_SNAPSHOT_BODY)
+    } catch (error) {
+      res.writeHead(413)
+      res.end(error instanceof Error ? error.message : 'body too large')
+      return
+    }
+    const parsed = body === undefined ? undefined : parseSnapshotBody(body)
+    if (parsed === undefined) {
+      res.writeHead(400)
+      res.end('bad request')
+      return
+    }
+    let result: SnapshotArchiveResult
+    try {
+      result = await storePageSnapshot(ctx.agents, parsed, PAGE_SNAPSHOT_BASE_DIR, state)
+    } catch (error) {
+      ctx.logger.warn(`page snapshot archival failed for session "${parsed.sessionId}": ${String(error)}`)
+      res.writeHead(409)
+      res.end('snapshot archive unavailable')
+      return
+    }
+    if (result.kind === 'agent-not-found') {
+      res.writeHead(404)
+      res.end('session not found')
+      return
+    }
+    if (result.kind === 'write-failed') {
+      ctx.logger.warn(`page snapshot write failed for session "${parsed.sessionId}"`)
+      res.writeHead(409)
+      res.end('snapshot archive unavailable')
+      return
+    }
+    res.writeHead(200, {
+      'cache-control': 'no-store',
+      'content-type': 'application/json; charset=utf-8',
+    })
+    res.end(JSON.stringify({ kind: 'saved', snapshotId: result.snapshotId, dir: result.dir }))
   }
 }

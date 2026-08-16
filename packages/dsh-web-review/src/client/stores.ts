@@ -16,6 +16,12 @@ export type AnnotationSyncState =
   | { status: 'ready'; snapshotId: AnnotationSnapshotId }
   | { status: 'error'; message: string }
 
+export type SnapshotSyncState =
+  | { status: 'idle' }
+  | { status: 'capturing' }
+  | { status: 'saved'; dir: string }
+  | { status: 'error'; message: string }
+
 export interface WebviewState {
   /** Current loaded URL used by the iframe and annotation evidence. */
   url: string
@@ -37,6 +43,10 @@ export interface WebviewState {
   focusPickId: string | null
   /** Browser → host context commit state shown by the composer capsule. */
   annotationSync: AnnotationSyncState
+  /** Send-time page snapshot archive state shown under the panel toolbar. */
+  snapshotSync: SnapshotSyncState
+  /** Monotonic capture request signal: the dock bumps it on annotated sends. */
+  snapshotRequestRevision: number
 }
 
 /**
@@ -57,6 +67,8 @@ export function createWebviewStore() {
       error: null,
       focusPickId: null,
       annotationSync: { status: 'idle' },
+      snapshotSync: { status: 'idle' },
+      snapshotRequestRevision: 0,
     }),
     actions: {
       setUrl: (d, url: string) => {
@@ -92,6 +104,8 @@ export function createWebviewStore() {
       setError: (d, error: string | null) => { d.error = error },
       setFocusPickId: (d, id: string | null) => { d.focusPickId = id },
       setAnnotationSync: (d, state: AnnotationSyncState) => { d.annotationSync = state },
+      setSnapshotSync: (d, state: SnapshotSyncState) => { d.snapshotSync = state },
+      requestSnapshot: (d) => { d.snapshotRequestRevision += 1 },
     },
   })
 }

@@ -46,6 +46,7 @@ import { activateConversationTab } from './preview-link.ts'
 import { isUiSkillName, UI_SKILLS, type UiSkillName } from '../ui-skills.ts'
 import { browserCommentsContextSourceOf } from '../browser-comments-context.ts'
 import { BrowserCommentsContext } from './BrowserCommentsContext.tsx'
+import { makeUploadSnapshot } from './snapshot-sync.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -256,6 +257,7 @@ export function apply(ctx: ClientContext): void {
       returnToChat: () => { activateConversationTab(document, t('view.chat')) },
       createPreviewSession,
       releasePreviewSessions,
+      uploadPageSnapshot: makeUploadSnapshot(sessionId),
     }),
   }, WebviewView))
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({

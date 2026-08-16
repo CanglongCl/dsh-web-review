@@ -8,7 +8,7 @@ describe('bundled UI optimization Skill provider', () => {
   it('publishes all eight as user-invocable and only the Cordis selection as model-visible', async () => {
     const ctx = new Context()
     await ctx.plugin(SkillRegistry)
-    registerUiSkillProvider(ctx, { autoLoadSkills: [...DEFAULT_AUTO_LOAD_SKILLS] })
+    registerUiSkillProvider(ctx, { autoLoadSkills: [...DEFAULT_AUTO_LOAD_SKILLS], pageSnapshotEnabled: true })
 
     const candidates = await ctx.skills.list()
     expect(candidates.map(candidate => candidate.name)).toEqual([...UI_SKILL_NAMES].sort())
@@ -26,10 +26,10 @@ describe('bundled UI optimization Skill provider', () => {
   it('honors a dynamically supplied selection and rejects duplicates', async () => {
     const ctx = new Context()
     await ctx.plugin(SkillRegistry)
-    registerUiSkillProvider(ctx, { autoLoadSkills: ['better-colors'] })
+    registerUiSkillProvider(ctx, { autoLoadSkills: ['better-colors'], pageSnapshotEnabled: true })
     expect((await ctx.skills.list()).filter(candidate => candidate.invocation.modelInvocable).map(candidate => candidate.name))
       .toEqual(['better-colors'])
-    expect(() => registerUiSkillProvider(ctx, { autoLoadSkills: ['better-ui', 'better-ui'] }))
+    expect(() => registerUiSkillProvider(ctx, { autoLoadSkills: ['better-ui', 'better-ui'], pageSnapshotEnabled: true }))
       .toThrow('must not contain duplicate names')
     await ctx.fiber.dispose()
   })

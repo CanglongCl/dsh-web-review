@@ -11,6 +11,7 @@
     "src/annotation-properties.ts",
     "src/preview-contract.ts",
     "src/proxy-url.ts",
+    "src/snapshot-contract.ts",
     "src/client/contract.ts",
     "src/client/element-navigation.ts",
     "src/client/live-patch.ts",

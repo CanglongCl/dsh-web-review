@@ -22,12 +22,14 @@ import {
   type PreviewElementHandle,
   type PreviewElementTarget,
   type PreviewHostMessage,
+  type PreviewPageSnapshot,
   type PreviewSessionDescriptor,
   type PreviewSessionId,
 } from '../src/preview-contract.ts'
+import { PageSnapshotId } from '../src/snapshot-contract.ts'
 import { encodeTarget } from '../src/proxy-url.ts'
 import { DraftOverlayBar, type WebviewDockInjected } from '../src/client/DraftOverlayBar.tsx'
-import { WebviewView } from '../src/client/WebviewView.tsx'
+import { WebviewView, type WebviewSlotProps } from '../src/client/WebviewView.tsx'
 import type { PickItem } from '../src/client/contract.ts'
 import { zh, type WebviewKey } from '../src/client/locales.ts'
 import { activateConversationTab } from '../src/client/preview-link.ts'
@@ -175,9 +177,22 @@ function previewTarget(
   }
 }
 
+function minimalCapture(): PreviewPageSnapshot {
+  return {
+    html: '<!doctype html><html><body>Example Domain</body></html>',
+    viewport: { width: 800, height: 600 },
+    scroll: { x: 0, y: 0 },
+    screenshot: {
+      dataUrl: 'data:image/png;base64,iVBORw0KGgo=', width: 800, height: 600, truncated: false,
+    },
+    screenshotError: null,
+  }
+}
+
 function installFrameBridge(options: {
   openTarget?: PreviewElementTarget
   navigateTarget?: PreviewElementTarget
+  captureSnapshot?: PreviewPageSnapshot
 } = {}) {
   const descriptor = activeDescriptor
   const frame = document.querySelector('iframe') as HTMLIFrameElement | null
@@ -205,6 +220,7 @@ function installFrameBridge(options: {
     if (command.command.name === 'open-pick') value = options.openTarget ?? previewTarget()
     if (command.command.name === 'navigate-element') value = options.navigateTarget ?? null
     if (command.command.name === 'select-element') value = options.navigateTarget ?? null
+    if (command.command.name === 'capture-snapshot') value = options.captureSnapshot ?? minimalCapture()
     if (command.command.name === 'read-tree') {
       const target = options.navigateTarget ?? options.openTarget ?? previewTarget()
       value = {
@@ -252,12 +268,24 @@ function installFrameBridge(options: {
   }
 }
 
+type InputPhase = 'plain' | 'adjudicating' | 'claimed' | 'submitting'
+
+function successfulUpload() {
+  return vi.fn(async (_payload: unknown) => ({
+    kind: 'saved' as const,
+    snapshotId: PageSnapshotId('snap-1'),
+    dir: '/tmp/dsh-web-review/snapshots/20260816-1200000000-abcd',
+  }))
+}
+
 function renderView(
   sendAnnotationsWithoutDraft: () => Promise<void> = vi.fn(async () => {}),
   draft = '',
   submit = vi.fn(),
-  phase: 'plain' | 'adjudicating' | 'claimed' | 'submitting' = 'plain',
+  phase: InputPhase = 'plain',
   returnToChat = vi.fn(),
+  uploadPageSnapshot: WebviewSlotProps['uploadPageSnapshot'] = successfulUpload() as unknown as WebviewSlotProps['uploadPageSnapshot'],
+  useInput?: WebviewSlotProps['useInput'],
 ) {
   const store = createWebviewStore().create()
   const session = sessionSource()
@@ -292,12 +320,13 @@ function renderView(
       useStore={hookFor(store)}
       actions={store.actions}
       useSession={session.useSession}
-      useInput={(selector) => selector(input)}
+      useInput={useInput ?? ((selector) => selector(input))}
       inputActions={{ setDraft: vi.fn(), submit }}
       sendAnnotationsWithoutDraft={sendAnnotationsWithoutDraft}
       returnToChat={returnToChat}
       createPreviewSession={createPreviewSession}
       releasePreviewSessions={vi.fn(async () => {})}
+      uploadPageSnapshot={uploadPageSnapshot}
       t={t}
     />,
   )
@@ -581,7 +610,7 @@ describe('WebviewView', () => {
     expect(store.getSnapshot().picks).toHaveLength(1)
   })
 
-  it('submits a non-empty composer draft through the stock input machine', () => {
+  it('submits a non-empty composer draft through the stock input machine', async () => {
     const fallback = vi.fn(async () => {})
     const submit = vi.fn()
     const returnToChat = vi.fn()
@@ -592,7 +621,7 @@ describe('WebviewView', () => {
       store.actions.setAnnotationSync({ status: 'ready', snapshotId: AnnotationSnapshotId('manual-2') })
       store.actions.togglePickMode()
     })
-    fireEvent.click(screen.getByRole('button', { name: '发送 1' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '发送 1' })) })
     expect(submit).toHaveBeenCalledOnce()
     expect(returnToChat).toHaveBeenCalledOnce()
     expect(fallback).not.toHaveBeenCalled()
@@ -682,6 +711,93 @@ describe('WebviewView', () => {
     fireEvent.click(forwardButton)
     expect(bridge.commandNames()).toContain('history-back')
     expect(bridge.commandNames()).toContain('history-forward')
+  })
+
+  it('captures the page on the annotation send and surfaces the saved archive', async () => {
+    const fallback = vi.fn(async () => {})
+    const submit = vi.fn()
+    const upload = successfulUpload()
+    const store = renderView(fallback, 'apply this', submit, 'plain', vi.fn(), upload)
+    act(() => {
+      store.actions.setUrl('http://localhost:5173/')
+      store.actions.addPick(pick('p1', 'Apply me'))
+      store.actions.setAnnotationSync({ status: 'ready', snapshotId: AnnotationSnapshotId('snap-send-1') })
+      store.actions.togglePickMode()
+    })
+    const bridge = installFrameBridge()
+    act(() => { bridge.ready() })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '发送 1' })) })
+    expect(bridge.commandNames()).toContain('capture-snapshot')
+    expect(upload).toHaveBeenCalledOnce()
+    expect(upload.mock.calls[0]?.[0]).toMatchObject({
+      page: { url: 'http://localhost:5173/', title: 'Example Domain' },
+      html: expect.stringContaining('Example Domain'),
+      screenshot: { dataUrl: expect.stringContaining('data:image/png;base64,') },
+    })
+    const status = document.querySelector('[data-webview-snapshot-status]')
+    expect(status?.getAttribute('data-webview-snapshot-status')).toBe('saved')
+    expect(status?.getAttribute('data-webview-snapshot-dir'))
+      .toBe('/tmp/dsh-web-review/snapshots/20260816-1200000000-abcd')
+    expect(submit).toHaveBeenCalledOnce()
+  })
+
+  it('captures on a dock snapshot request once the bridge is ready', async () => {
+    const store = renderView()
+    act(() => { store.actions.setUrl('http://localhost:5173/') })
+    const bridge = installFrameBridge()
+    act(() => { bridge.ready() })
+    act(() => { store.actions.requestSnapshot() })
+    expect(bridge.commandNames()).toContain('capture-snapshot')
+  })
+
+  it('dedupes the capture across the awaited send and a follow-up dock request', async () => {
+    const fallback = vi.fn(async () => {})
+    const upload = successfulUpload()
+    const store = renderView(fallback, '', vi.fn(), 'plain', vi.fn(), upload)
+    act(() => {
+      store.actions.setUrl('http://localhost:5173/')
+      store.actions.addPick(pick('p1', 'Apply me'))
+      store.actions.setAnnotationSync({ status: 'ready', snapshotId: AnnotationSnapshotId('snap-dedupe-1') })
+      store.actions.togglePickMode()
+    })
+    const bridge = installFrameBridge()
+    act(() => { bridge.ready() })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '发送 1' })) })
+    // A dock request inside the dedupe window must not capture again.
+    act(() => { store.actions.requestSnapshot() })
+    expect(bridge.commandNames().filter(name => name === 'capture-snapshot')).toHaveLength(1)
+  })
+
+  it('keeps the send when the snapshot fails and reports the error status', async () => {
+    const fallback = vi.fn(async () => {})
+    const upload = vi.fn(async (_payload: unknown) => { throw new Error('archive offline') })
+    const store = renderView(fallback, '', vi.fn(), 'plain', vi.fn(), upload)
+    act(() => {
+      store.actions.setUrl('http://localhost:5173/')
+      store.actions.addPick(pick('p1', 'Apply me'))
+      store.actions.setAnnotationSync({ status: 'ready', snapshotId: AnnotationSnapshotId('snap-fail-1') })
+      store.actions.togglePickMode()
+    })
+    const bridge = installFrameBridge()
+    act(() => { bridge.ready() })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '发送 1' })) })
+    expect(document.querySelector('[data-webview-snapshot-status]')
+      ?.getAttribute('data-webview-snapshot-status')).toBe('error')
+    expect(fallback).toHaveBeenCalledOnce()
+  })
+
+  it('resets the snapshot status on navigation', async () => {
+    const store = renderView()
+    act(() => {
+      store.actions.setSnapshotSync({
+        status: 'saved', dir: '/tmp/dsh-web-review/snapshots/20260816-1200000000-abcd',
+      })
+    })
+    expect(document.querySelector('[data-webview-snapshot-status]')).not.toBeNull()
+    const input = screen.getByPlaceholderText(zh['panel.urlPlaceholder'])
+    fireEvent.change(input, { target: { value: 'http://localhost:5173/' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(store.getSnapshot().snapshotSync).toEqual({ status: 'idle' })
   })
 
 })
@@ -892,5 +1008,19 @@ describe('DraftOverlayBar', () => {
     fireEvent.click(document.querySelector('[data-webview-annotation-capsule] button') as HTMLButtonElement)
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(3))
     await waitFor(() => expect(store.getSnapshot().annotationSync).toMatchObject({ status: 'ready' }))
+  })
+
+  it('requests a page snapshot when a new user message arrives with pending annotations', async () => {
+    const session = sessionSource()
+    const store = renderDock(undefined, session.useSession)
+    // The first user message without annotations never requests a snapshot.
+    act(() => { session.appendHuman(1) })
+    expect(store.getSnapshot().snapshotRequestRevision).toBe(0)
+    // With pending annotations each new user message requests one capture.
+    act(() => { store.actions.addPick(pick('p1', 'Apply me')) })
+    act(() => { session.appendHuman(2) })
+    expect(store.getSnapshot().snapshotRequestRevision).toBe(1)
+    act(() => { session.appendHuman(3) })
+    expect(store.getSnapshot().snapshotRequestRevision).toBe(2)
   })
 })

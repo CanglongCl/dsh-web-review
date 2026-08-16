@@ -199,6 +199,16 @@ capsule visible for retry.
   successful send, navigation, and unmount restore the original DOM. Text is
   editable only for an element with one safe direct text node.
 - Preview refresh after workspace edits is manual.
+- **Page snapshots archive with annotated sends only.** When the user sends
+  page comments, the plugin captures the page at send time (cleaned HTML tree
+  plus a screenshot) into the OS temp directory
+  `<os.tmpdir()>/dsh-web-review/snapshots/` (newest 20 retained, root mode
+  0700) and names the archive in the injected Browser Comments context so the
+  model can read `manifest.json`, `page.html`, and `page.png` to confirm
+  intent. Plain sends never capture. Capture exists only while the Preview tab
+  is mounted; screenshots fall back to system fonts, cross-origin images taint
+  the canvas (recorded as an error, HTML still archived), and OS temp is
+  ephemeral.
 - HTML rewriting uses a parser and intentionally touches only the documented
   URL-bearing attributes. Cross-Origin subresources retain browser-native CORS
   behavior rather than being promoted into the Preview Origin.

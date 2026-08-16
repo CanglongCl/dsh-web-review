@@ -16,6 +16,11 @@ import {
   type EditableStyleProperty,
 } from './annotation-properties.ts'
 import { decodeTarget, isPreviewableUrl } from './proxy-url.ts'
+import {
+  MAX_SNAPSHOT_HTML,
+  SNAPSHOT_LIMITS,
+  type PageSnapshotScreenshot,
+} from './snapshot-contract.ts'
 
 export type PreviewElementNavigationAction = 'child' | 'parent' | 'previous-sibling' | 'next-sibling'
 export type PreviewElementTreeDetail =
@@ -166,6 +171,7 @@ export type PreviewBridgeCommand =
   | { name: 'history-back'; payload: null }
   | { name: 'history-forward'; payload: null }
   | { name: 'reload'; payload: null }
+  | { name: 'capture-snapshot'; payload: null }
 
 export interface PreviewHostMessage {
   protocol: typeof PREVIEW_BRIDGE_PROTOCOL
@@ -194,6 +200,60 @@ export type PreviewFrameEvent =
     } }
   | { name: 'shortcut'; payload: { action: PreviewElementNavigationAction } }
   | { name: 'handoff'; payload: PreviewSessionDescriptor }
+
+/** Bounded page-capture evidence crossing the isolated-frame bridge. */
+export interface PreviewPageSnapshot {
+  html: string
+  viewport: AnnotationViewport
+  scroll: { x: number; y: number }
+  screenshot: PageSnapshotScreenshot | null
+  screenshotError: string | null
+}
+
+function pageSnapshotScreenshotOf(value: unknown): PageSnapshotScreenshot | undefined {
+  const record = recordOf(value)
+  if (record === undefined || !exactKeys(record, ['dataUrl', 'width', 'height', 'truncated'])
+    || typeof record.truncated !== 'boolean') return undefined
+  const dataUrl = boundedString(record.dataUrl, SNAPSHOT_LIMITS.dataUrl, false)
+  const width = finiteDimension(record.width)
+  const height = finiteDimension(record.height)
+  if (dataUrl === undefined || !dataUrl.startsWith('data:image/png;base64,')
+    || width === undefined || height === undefined || width < 1 || height < 1) return undefined
+  return { dataUrl, width: Math.round(width), height: Math.round(height), truncated: record.truncated }
+}
+
+/** Strictly decode one bounded page-capture response from an untrusted frame. */
+export function previewPageSnapshotOf(value: unknown): PreviewPageSnapshot | undefined {
+  const record = recordOf(value)
+  if (record === undefined || !exactKeys(record, [
+    'html', 'viewport', 'scroll', 'screenshot', 'screenshotError',
+  ])) return undefined
+  const html = boundedString(record.html, MAX_SNAPSHOT_HTML, false)
+  const viewport = viewportOf(record.viewport)
+  const scroll = recordOf(record.scroll)
+  const screenshot = record.screenshot
+  const screenshotError = record.screenshotError
+  if (html === undefined || viewport === undefined || scroll === undefined
+    || !exactKeys(scroll, ['x', 'y'])) return undefined
+  const x = finiteDimension(scroll.x, SNAPSHOT_LIMITS.scroll)
+  const y = finiteDimension(scroll.y, SNAPSHOT_LIMITS.scroll)
+  if (x === undefined || y === undefined || x < 0 || y < 0) return undefined
+  const parsedScreenshot = screenshot === null ? null : pageSnapshotScreenshotOf(screenshot)
+  const parsedError = screenshotError === null ? null : boundedString(
+    screenshotError,
+    SNAPSHOT_LIMITS.screenshotError,
+    false,
+  )
+  if (parsedScreenshot === undefined || parsedError === undefined
+    || (parsedScreenshot === null) === (parsedError === null)) return undefined
+  return {
+    html,
+    viewport,
+    scroll: { x: Math.round(x), y: Math.round(y) },
+    screenshot: parsedScreenshot,
+    screenshotError: parsedError,
+  }
+}
 
 export interface PreviewFrameEventMessage {
   protocol: typeof PREVIEW_BRIDGE_PROTOCOL
