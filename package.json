@@ -14,6 +14,7 @@
     "build:watch": "pnpm --filter ./packages/dsh-web-review watch",
     "dev": "tsx scripts/dev.ts",
     "dev:acceptance": "tsx scripts/acceptance.ts",
+    "media": "tsx scripts/readme-media.ts",
     "demo": "tsx demo/server.ts",
     "test": "pnpm build && vitest run",
     "test:watch": "vitest",
@@ -37,13 +38,14 @@
     "@types/node": "^22.0.0",
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.0",
+    "ffmpeg-static": "^5.3.0",
     "jsdom": "^25.0.0",
+    "playwright": "^1.61.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "tsdown": "^0.22.2",
-    "typescript": "^6.0.0",
-    "vitest": "^3.0.0",
     "tsx": "^4.22.4",
-    "playwright": "^1.61.1"
+    "typescript": "^6.0.0",
+    "vitest": "^3.0.0"
   }
 }
