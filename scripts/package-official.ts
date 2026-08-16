@@ -44,13 +44,7 @@ const manifest = {
 }
 
 writeFileSync(join(staging, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`)
-writeFileSync(join(staging, 'cordis.patch.yml'), [
-  '# Official DSH profile bundle layer.',
-  '- insert:',
-  '    - id: dsh-web-review',
-  `      name: ${JSON.stringify(sourceManifest.name)}`,
-  '',
-].join('\n'))
+cpSync(join(source, 'cordis.patch.yml'), join(staging, 'cordis.patch.yml'))
 cpSync(join(root, 'README.md'), join(staging, 'README.md'))
 cpSync(join(root, 'README_en.md'), join(staging, 'README_en.md'))
 for (const file of ['web-review-demo.gif', 'web-review-preview.jpg', 'web-review-annotation-editor.jpg']) {
