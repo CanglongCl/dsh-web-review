@@ -170,13 +170,24 @@ pnpm package:official
 3. 发布 Job 使用前一 Job 已校验的 tarball，不重新构建。
 4. 发布 Job 通过 npm Trusted Publishing 使用短期 GitHub OIDC 身份，并显式保持 `public`。
 
-候选版本使用 `next` dist-tag，稳定版本使用 `latest`。创建 tag 前必须单独完成显式 Harness E2E：
+dist-tag 规则：`x.y.z-beta.N` 发布到 `beta`，其他候选版本（如 `-rc`）发布到 `next`，稳定版本发布到 `latest`。创建 tag 前必须单独完成显式 Harness E2E：
 
 ```sh
 DSH_HARNESS='/绝对路径/deepseek-harness' pnpm check:e2e
 git tag -a v<version> -m "dsh-web-review v<version>"
 git push personal v<version>
 ```
+
+### Beta 渠道
+
+`pnpm release:beta [基础版本] [--dry-run]` 完成 beta 发布的本地前置步骤：
+
+- 校验两份 manifest 版本一致且为合法 semver，工作区干净；
+- 计算下一个 beta 版本：当前是 `x.y.z-beta.N` 时递增为 `x.y.z-beta.(N+1)`；否则从当前稳定版本的下一个 minor（或显式给出的基础版本）开始，即 `x.y.z-beta.0`；
+- 校验新版本高于 npm 上已发布的 `beta` / `latest`；
+- 写入两份 manifest，运行 `pnpm release:verify`，提交 `release: bump <version>`，打 `v<version>` 注释 tag 并推送到 origin。
+
+tag 推送后 CI 自动打包并发布到 `beta` dist-tag，用户可用 `npm i @canglongcl/dsh-web-review@beta` 安装。`--dry-run` 只打印计划，不修改任何文件。
 
 Trusted Publisher 与 CI 边界的详细配置以 [AGENTS.md](./AGENTS.md) 为准。发布 workflow 不保存 npm 写令牌。
 

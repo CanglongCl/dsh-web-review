@@ -147,7 +147,10 @@ jobs:
             if (manifest.name !== "@canglongcl/dsh-web-review") throw new Error(`unexpected package ${manifest.name}`);
             if (manifest.publishConfig?.access !== "public") throw new Error("package is not public");
             if (`refs/tags/v${manifest.version}` !== process.env.GITHUB_REF) throw new Error("tag/version mismatch");
-            const tag = String(manifest.version).includes("-") ? "next" : "latest";
+            const version = String(manifest.version);
+            // vX.Y.Z-beta.N tags publish to the beta dist-tag; other
+            // prereleases keep next and stable releases keep latest.
+            const tag = /^\d+\.\d+\.\d+-beta(?:\.|$)/u.test(version) ? "beta" : version.includes("-") ? "next" : "latest";
             const tarball = `${process.env.GITHUB_WORKSPACE}/release/${process.env.PACKAGE_FILE}`;
             fs.appendFileSync(process.env.GITHUB_OUTPUT, `tarball=${tarball}\ntag=${tag}\n`);
           ' "$RUNNER_TEMP/dsh-web-review-package.json"

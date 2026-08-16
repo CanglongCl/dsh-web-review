@@ -1,5 +1,5 @@
 /** Verify the immutable identity and GitHub ref used by the npm release workflow. */
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -7,6 +7,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const repositoryManifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
   version?: unknown
   packageManager?: unknown
+  scripts?: Record<string, unknown>
 }
 const packageManifest = JSON.parse(readFileSync(
   join(root, 'packages', 'dsh-web-review', 'package.json'),
@@ -68,6 +69,7 @@ for (const required of [
   'npm publish "${{ steps.artifact.outputs.tarball }}"',
   '--access public',
   'id-token: write',
+  '? "beta" : version.includes("-") ? "next" : "latest"',
 ]) {
   if (!workflow.includes(required)) fail(`release workflow is missing ${required}`)
 }
@@ -92,6 +94,14 @@ for (const forbidden of [
 }
 if (workflow.includes('pull_request_target')) fail('release workflow must never use pull_request_target')
 if (workflow.includes('secrets.NPM_TOKEN')) fail('release workflow must not use a generic npm token')
+if (repositoryManifest.scripts?.['release:beta'] !== 'tsx scripts/release-beta.ts') {
+  fail('root manifest must expose release:beta as tsx scripts/release-beta.ts')
+}
+const releaseBetaPath = join(root, 'scripts', 'release-beta.ts')
+const releaseBeta = existsSync(releaseBetaPath) ? readFileSync(releaseBetaPath, 'utf8') : ''
+for (const required of ['--dry-run', '-beta.', 'release: bump ', '`v${next}`', 'verify-release.ts']) {
+  if (!releaseBeta.includes(required)) fail(`scripts/release-beta.ts is missing ${JSON.stringify(required)}`)
+}
 const actionRefs = [...workflow.matchAll(/^\s*uses:\s+\S+@([^\s#]+)/gmu)].map(match => match[1])
 if (actionRefs.length === 0 || actionRefs.some(ref => !/^[0-9a-f]{40}$/u.test(ref ?? ''))) {
   fail('every third-party action must be pinned to a full commit SHA')
