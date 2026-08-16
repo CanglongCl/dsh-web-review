@@ -1,0 +1,149 @@
+{
+  "sessionId": "session-bbf7a199-0286-4621-a9c9-c58cac9fd933",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:64063/",
+    "title": "用户信息表单"
+  },
+  "comments": [
+    {
+      "id": "a20edb86-28f3-401b-9a2e-9d559481d5ca",
+      "comment": "把提交按钮文案从“提交”改成“立即提交”，鼠标悬停时背景加深为 #3b5bdb",
+      "tagName": "button",
+      "role": "button",
+      "label": "提交",
+      "cssPath": "button",
+      "fullPath": "html > body > form.form > button",
+      "stableClasses": [],
+      "textContent": "提交",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    },
+    {
+      "id": "d6b986a5-e976-4451-b833-be4cf693bcba",
+      "comment": "给顶部搜索输入框补上可访问名称“搜索”",
+      "tagName": "input",
+      "role": "textbox",
+      "label": "",
+      "cssPath": ".search-input",
+      "fullPath": "html > body > div.topbar > input.search-input",
+      "stableClasses": [
+        "search-input"
+      ],
+      "textContent": "",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 694
+      }
+    },
+    {
+      "id": "2ac30543-1daf-4c06-b4bb-359770f702e6",
+      "comment": "把错误提示文字的颜色改成 #d64545，并把邮箱错误提示文案改成“请填写有效的邮箱地址”",
+      "tagName": "div",
+      "role": "",
+      "label": "邮箱格式不正确",
+      "cssPath": ".error",
+      "fullPath": "html > body > form.form > div.form-field:nth-of-type(2) > div.error",
+      "stableClasses": [
+        "error"
+      ],
+      "textContent": "邮箱格式不正确",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 694
+      }
+    },
+    {
+      "id": "900c33c2-f51f-4c4a-8d47-035103de9c80",
+      "comment": "加大表单项之间的垂直间距",
+      "tagName": "input",
+      "role": "textbox",
+      "label": "请输入姓名",
+      "cssPath": "#name",
+      "fullPath": "html > body > form.form > div.form-field > input#name",
+      "stableClasses": [],
+      "textContent": "",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 694
+      }
+    },
+    {
+      "id": "84913ecb-535c-4ab2-b9f8-d7b5adf30757",
+      "comment": "让表单容器水平居中并限制最大宽度为 480px",
+      "tagName": "form",
+      "role": "",
+      "label": "姓名 邮箱 邮箱格式不正确 提交",
+      "cssPath": ".form",
+      "fullPath": "html > body > form.form",
+      "stableClasses": [
+        "form"
+      ],
+      "textContent": "\n    \n      姓名\n      \n    \n    \n      邮箱\n      \n      邮箱格式不正确\n    \n    提交\n  ",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 694
+      }
+    },
+    {
+      "id": "79d40b37-ec11-4078-b07a-412cdbc2b954",
+      "comment": "给输入框聚焦时增加淡蓝色阴影，并把所有输入框的圆角统一改成 8px",
+      "tagName": "input",
+      "role": "textbox",
+      "label": "请输入邮箱",
+      "cssPath": "#email",
+      "fullPath": "html > body > form.form > div.form-field:nth-of-type(2) > input#email",
+      "stableClasses": [],
+      "textContent": "",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 694
+      }
+    },
+    {
+      "id": "1288e864-9065-4086-8a35-95addd231104",
+      "comment": "把表单标签的字号加大到 15px 并加粗到 600",
+      "tagName": "label",
+      "role": "",
+      "label": "姓名",
+      "cssPath": "div:nth-of-type(1).form-field label",
+      "fullPath": "html > body > form.form > div.form-field > label",
+      "stableClasses": [],
+      "textContent": "姓名",
+      "inToolChrome": false,
+      "anchor": null,
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 694
+      }
+    }
+  ]
+}

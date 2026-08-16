@@ -1,0 +1,114 @@
+{
+  "sessionId": "session-0d7b0185-324a-4c13-a2e7-b8a27b5597b2",
+  "selectedSkills": [],
+  "page": {
+    "url": "http://127.0.0.1:63912/",
+    "title": "魔法商店"
+  },
+  "comments": [
+    {
+      "id": "9508e054-24bd-42b3-9f00-4d1a887cb75e",
+      "comment": "把价格文字的颜色改成 #e8590c",
+      "tagName": "p",
+      "role": "",
+      "label": "¥129",
+      "cssPath": "article:nth-of-type(1) .price",
+      "fullPath": "html > body > div#root > div.page > main.products > article.product-card > p.price",
+      "stableClasses": [
+        "price"
+      ],
+      "textContent": "¥129",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App",
+        "file": "src/App.tsx",
+        "line": 46
+      },
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 736
+      }
+    },
+    {
+      "id": "b9f9788a-98a8-48bf-bf34-b169199ae701",
+      "comment": "把商品标题的字重加粗到 700",
+      "tagName": "h2",
+      "role": "heading",
+      "label": "星空投影灯",
+      "cssPath": "article:nth-of-type(1) .product-title",
+      "fullPath": "html > body > div#root > div.page > main.products > article.product-card > h2.product-title",
+      "stableClasses": [
+        "product-title"
+      ],
+      "textContent": "星空投影灯",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App",
+        "file": "src/App.tsx",
+        "line": 45
+      },
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 694
+      }
+    },
+    {
+      "id": "324c3b13-4405-4d35-9eb2-c812d5d35605",
+      "comment": "加大商品卡片之间的间距，并把商品网格改成每行三列",
+      "tagName": "main",
+      "role": "",
+      "label": "星空投影灯¥129加入购物车磁悬浮音箱¥299加入购物车复古机械键盘¥459加入购物车桌面苔藓…",
+      "cssPath": ".products",
+      "fullPath": "html > body > div#root > div.page > main.products",
+      "stableClasses": [
+        "products"
+      ],
+      "textContent": "星空投影灯¥129加入购物车磁悬浮音箱¥299加入购物车复古机械键盘¥459加入购物车桌面苔藓盆栽¥89加入购物车便携咖啡手冲壶¥158加入购物车云朵氛围夜灯¥69加入购物车",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App",
+        "file": "src/App.tsx",
+        "line": 42
+      },
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 694
+      }
+    },
+    {
+      "id": "004c3c86-ee03-42e6-ab48-e65a70040576",
+      "comment": "把所有“加入购物车”按钮的圆角统一改成 999px",
+      "tagName": "button",
+      "role": "button",
+      "label": "加入购物车",
+      "cssPath": "article:nth-of-type(1) .buy",
+      "fullPath": "html > body > div#root > div.page > main.products > article.product-card > button.buy",
+      "stableClasses": [
+        "buy"
+      ],
+      "textContent": "加入购物车",
+      "inToolChrome": false,
+      "anchor": {
+        "framework": "react",
+        "component": "App",
+        "file": "src/App.tsx",
+        "line": 47
+      },
+      "changes": [],
+      "textChange": null,
+      "viewport": {
+        "width": 1392,
+        "height": 694
+      }
+    }
+  ]
+}

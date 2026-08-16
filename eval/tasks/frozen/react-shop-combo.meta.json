@@ -1,0 +1,10 @@
+{
+  "viewport": {
+    "width": 1680,
+    "height": 1000
+  },
+  "pluginCommit": "43f771493882e8b1a1c31a0bd849ce5a19b3a1b6",
+  "harnessCommit": "7b9644f2b664e46c9518506035aa6c8d5af4d8e8",
+  "capturedAt": "2026-08-16T17:11:10.826Z",
+  "fixtureRevision": "3c31e9e4270df84a864fd3c470bd5eea70b2ca40"
+}
