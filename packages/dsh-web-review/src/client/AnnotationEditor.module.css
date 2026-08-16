@@ -14,7 +14,7 @@
   outline: none;
   border: 1px solid var(--dsw-alias-border-l1, rgb(0 0 0 / 8%));
   border-radius: 18px;
-  background: #fff;
+  background: var(--dsw-alias-bg-base, #fff);
   box-shadow:
     0 22px 56px rgb(15 23 42 / 24%),
     0 8px 20px rgb(15 23 42 / 16%),
@@ -55,7 +55,7 @@
   gap: 6px;
   min-height: 52px;
   padding: 6px 9px;
-  background: #fff;
+  background: var(--dsw-alias-bg-base, #fff);
 }
 
 .composeRowExpanded {
@@ -100,7 +100,7 @@
 
 .dragHandle:hover,
 .editor[data-editor-dragging] .dragHandle {
-  background: color-mix(in srgb, var(--dsw-alias-state-business-primary, #4176e6) 13%, #fff);
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary, #4176e6) 13%, var(--dsw-alias-bg-base, #fff));
   color: var(--dsw-alias-state-business-primary, #4176e6);
 }
 
@@ -157,7 +157,7 @@
   place-items: center;
   border: 1px solid var(--dsw-alias-border-l1, rgb(0 0 0 / 8%));
   border-radius: 999px;
-  background: #fff;
+  background: var(--dsw-alias-bg-base, #fff);
   box-shadow: 0 6px 18px rgb(0 0 0 / 16%), 0 1px 4px rgb(0 0 0 / 8%);
   color: var(--dsw-alias-label-secondary, #4b4f57);
   cursor: pointer;
@@ -192,7 +192,7 @@
   padding: 0 2px;
   border: 0;
   outline: 0;
-  background: #fff;
+  background: var(--dsw-alias-bg-base, #fff);
   color: var(--dsw-alias-label-primary, #17191c);
   font: var(--dsw-font-s-14, 14px/22px system-ui, sans-serif);
 }
@@ -215,7 +215,7 @@
   padding: 0 12px;
   overflow: hidden;
   border-top: 1px solid rgb(65 118 230 / 10%);
-  background: #f2f6ff;
+  background: var(--dsw-alias-bg-module-platform, #f4f5f6);
   color: var(--dsw-alias-label-secondary, #4b4f57);
   font: 500 11px/16px system-ui, sans-serif;
   white-space: nowrap;
@@ -242,7 +242,7 @@
   overflow: auto;
   padding-bottom: 8px;
   border-top: 1px solid var(--dsw-alias-border-l1, rgb(0 0 0 / 8%));
-  background: #fff;
+  background: var(--dsw-alias-bg-base, #fff);
 }
 
 .footer {
@@ -254,7 +254,7 @@
   justify-content: space-between;
   padding: 8px 12px;
   border-top: 1px solid var(--dsw-alias-border-l1, rgb(0 0 0 / 8%));
-  background: #fff;
+  background: var(--dsw-alias-bg-base, #fff);
   box-shadow: 0 -6px 14px rgb(0 0 0 / 4%);
 }
 
@@ -264,7 +264,7 @@
   padding: 0 12px;
   border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 12%));
   border-radius: 999px;
-  background: #fff;
+  background: var(--dsw-alias-bg-base, #fff);
   color: var(--dsw-alias-label-primary, #17191c);
   font: 500 13px/20px system-ui, sans-serif;
 }
