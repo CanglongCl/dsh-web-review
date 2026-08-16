@@ -5,7 +5,7 @@
  * full process: injected context, turn/step timeline, thinking, tool calls,
  * token usage, workspace diff, and grader evidence.
  */
-import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, readdirSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { REPO_ROOT, RESULTS_PATH } from './runner/runner.ts'
 import { loadTasks } from './tasks/register.ts'
@@ -122,6 +122,7 @@ async function main(): Promise<void> {
     : `${passedTasks}/${reportTaskIds.size} 个评测任务通过，${passedRuns}/${headlineDetails.length} 次有效运行通过。所有批注均由插件真实生成。`
   const generatedAt = new Date().toISOString()
   const headlineRecords = headlineDetails.length === 0 ? details : headlineDetails
+  const measuredRepo = latestEligible?.repoCommit ?? 'unknown'
   // Per-pair token attribution for the A/B view. Token estimates are labeled:
   // guide cost from the production text length, file-read cost from the frozen
   // artifact byte sizes (≈4 chars/token); the residual is behavior difference.
@@ -280,7 +281,7 @@ async function main(): Promise<void> {
 <body>
 <header>
   <h1>dsh-web-review · 插件评测报告</h1>
-  <div class="meta">模型配置：<span id="model"></span> · DSH 版本：<span id="runtime"></span> · 生成时间：<span id="generatedAt"></span></div>
+  <div class="meta">代码提交：<span id="repoCommit">${measuredRepo}</span> · 模型配置：<span id="model"></span> · DSH 版本：<span id="runtime"></span> · 生成时间：<span id="generatedAt"></span></div>
   <nav class="tabs">
     <button class="tab active" data-view="overview">评测概览</button>
     <button class="tab" data-view="tasks">任务结果<span class="count">${reportTaskIds.size}</span></button>
@@ -582,7 +583,30 @@ renderArms(); renderTasks(); render(); renderAb();
   const persist = process.argv.includes('--persist')
   if (persist) {
     const measured = latestEligible?.repoCommit ?? 'unknown'
-    const archiveDir = join(REPO_ROOT, 'eval', 'reports', measured)
+    // Numbered archives (001, 002, ...): reuse the number when this exact
+    // measured commit already has one, otherwise take the next sequence.
+    const reportRoot = join(REPO_ROOT, 'eval', 'reports')
+    let archiveDir: string | undefined
+    if (existsSync(reportRoot)) {
+      for (const entry of readdirSync(reportRoot, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue
+        const summaryPath = join(reportRoot, entry.name, 'summary.json')
+        if (!existsSync(summaryPath)) continue
+        try {
+          const existing = JSON.parse(readFileSync(summaryPath, 'utf8')) as { measuredRepoCommit?: unknown }
+          if (existing.measuredRepoCommit === measured) { archiveDir = join(reportRoot, entry.name); break }
+        } catch {
+          // Unreadable summary — fall through to a fresh number.
+        }
+      }
+    }
+    if (archiveDir === undefined) {
+      const names = existsSync(reportRoot)
+        ? readdirSync(reportRoot, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => entry.name)
+        : []
+      const highest = names.reduce((max, name) => /^\d+$/u.test(name) ? Math.max(max, Number(name)) : max, 0)
+      archiveDir = join(reportRoot, String(highest + 1).padStart(3, '0'))
+    }
     mkdirSync(archiveDir, { recursive: true })
     writeFileSync(join(archiveDir, 'report.html'), html)
     const armAggregates: Record<string, unknown> = {}
@@ -606,6 +630,7 @@ renderArms(); renderTasks(); render(); renderAb();
     }
     writeFileSync(join(archiveDir, 'summary.json'), JSON.stringify({
       format: 'dsh-web-review-eval-report',
+      archiveId: archiveDir.split('/').at(-1) ?? '',
       generatedAt,
       measuredRepoCommit: latestEligible?.repoCommit ?? 'unknown',
       harnessCommit: latestEligible?.harnessCommit ?? 'unknown',

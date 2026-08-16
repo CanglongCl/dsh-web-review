@@ -63,23 +63,26 @@ pnpm eval:report
 committed archive keyed by the measured repo commit:
 
 ```
-eval/reports/<repoCommit>/
-  report.html    # single-file HTML (A/B tab included)
-  summary.json   # machine-readable aggregates per arm + model/commit metadata
+eval/reports/<NNN>/
+  report.html    # single-file HTML (A/B tab included; header shows the measured commit hash)
+  summary.json   # archiveId, measuredRepoCommit, harnessCommit, per-arm aggregates
 ```
 
-The archive directory name is the `repoCommit` the eval runs measured
-(`git rev-parse HEAD` at batch start), so every archived report is traceable
-to the exact code state that produced it; `executionRevision` in the run
-records still distinguishes uncommitted working-tree changes. Live run data
-lives under `.artifacts/eval-results/` (gitignored) and is the only mutable
-state; archived reports are immutable snapshots. To open an archived report,
-serve `eval/reports/<commit>` over any static HTTP server.
+Archive directories use sequential numbers (`001`, `002`, …); the exact
+code state is recorded INSIDE the report — the header line 代码提交 shows the
+`repoCommit` the eval runs measured, and `summary.json` carries the same
+hash machine-readably. Re-persisting the same measured commit reuses its
+number (in-place update); a new commit gets the next number.
+`executionRevision` in the run records still distinguishes uncommitted
+working-tree changes. Live run data lives under `.artifacts/eval-results/`
+(gitignored) and is the only mutable state; archived reports are immutable
+snapshots. To open an archived report, serve `eval/reports` over any static
+HTTP server.
 
 Archived reports committed so far:
 
-- `eval/reports/d3fd482…/` — full bank A/B (43 tasks × full/snapshot × 3) at the snapshot-feature commit.
-- `eval/reports/f11362b…/` — combined multi-target long tasks (todo/shop/landing/forms combos × full/snapshot × 3).
+- `eval/reports/001/` — full bank A/B (43 tasks × full/snapshot × 3), measured `d3fd482…`.
+- `eval/reports/002/` — combined multi-target long tasks (4 combos × full/snapshot × 3), measured `f11362b…`.
 
 Model defaults: `deepseek-official` / `deepseek-v4-flash` / reasoning `high`;
 override with `EVAL_PROVIDER`, `EVAL_MODEL`, `EVAL_REASONING` or the
