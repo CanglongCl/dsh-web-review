@@ -78,7 +78,8 @@ serve `eval/reports/<commit>` over any static HTTP server.
 
 Archived reports committed so far:
 
-- `eval/reports/` — populated by `pnpm eval:report -- --persist` after a run.
+- `eval/reports/d3fd482…/` — full bank A/B (43 tasks × full/snapshot × 3) at the snapshot-feature commit.
+- `eval/reports/f11362b…/` — combined multi-target long tasks (todo/shop/landing/forms combos × full/snapshot × 3).
 
 Model defaults: `deepseek-official` / `deepseek-v4-flash` / reasoning `high`;
 override with `EVAL_PROVIDER`, `EVAL_MODEL`, `EVAL_REASONING` or the
