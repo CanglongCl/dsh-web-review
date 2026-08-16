@@ -35,7 +35,12 @@ export function formatTextOnlyContext(snapshot: ValidatedSnapshot): string {
   return lines.join('\n')
 }
 
-/** Produce the logged plugin context messages for one diagnostic arm. */
+/**
+ * Produce the logged plugin context messages for one diagnostic arm. The
+ * 'snapshot' arm uses the full production context here; its snapshot guide
+ * message is injected separately by the runner (agent.inject, production
+ * ordering) with the per-run staged archive directory.
+ */
 export function armContextTexts(arm: EvalArm, snapshot: ValidatedSnapshot, productionContext: string, oracleContext?: string): ArmContextText[] {
   const primary = arm === 'text-only'
     ? { plugin: 'dsh-web-review', text: formatTextOnlyContext(snapshot) }

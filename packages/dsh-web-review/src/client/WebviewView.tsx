@@ -156,6 +156,8 @@ export function WebviewView({
   const captureInFlightRef = useRef(false)
   const pickerReadyRef = useRef(false)
   const handledSnapshotRequestRef = useRef(0)
+  /** Deployment switch stamped onto the current session descriptor. */
+  const snapshotsEnabledRef = useRef(false)
 
   useEffect(() => { pickerReadyRef.current = pickerReady }, [pickerReady])
 
@@ -312,6 +314,7 @@ export function WebviewView({
   useEffect(() => {
     const frame = frameRef.current
     if (descriptor === null || frame === null) return
+    snapshotsEnabledRef.current = descriptor.snapshotsEnabled
     const bridge = new PreviewBridgeClient(frame, descriptor, {
       onReady: (ready: PreviewReadyState) => {
         setPickerReady(true)
@@ -335,7 +338,8 @@ export function WebviewView({
           : { ...current, target: { ...current.target, rect, viewport } })
       },
       onShortcut: action => { onShortcutRef.current(action) },
-      onHandoff: () => {
+      onHandoff: (next) => {
+        snapshotsEnabledRef.current = next.snapshotsEnabled
         setPickerReady(false)
         setHistoryState({ canGoBack: false, canGoForward: false })
         actionsRef.current.setTitle('')
@@ -442,7 +446,8 @@ export function WebviewView({
   const capturePageSnapshot = async (): Promise<void> => {
     const bridge = bridgeRef.current
     const current = stateRef.current
-    if (bridge === null || !pickerReadyRef.current || current.url === '' || captureInFlightRef.current) return
+    if (bridge === null || !pickerReadyRef.current || current.url === ''
+      || captureInFlightRef.current || !snapshotsEnabledRef.current) return
     captureInFlightRef.current = true
     lastCaptureAtRef.current = Date.now()
     actionsRef.current.setSnapshotSync({ status: 'capturing' })

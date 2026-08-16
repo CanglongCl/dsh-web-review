@@ -12,7 +12,10 @@
   "include": [
     "scripts",
     "demo",
-    "eval"
+    "eval",
+    "packages/dsh-web-review/src/snapshot-contract.ts",
+    "packages/dsh-web-review/src/snapshot-archive.ts",
+    "packages/dsh-web-review/src/proxy-url.ts"
   ],
   "exclude": [
     "eval/fixtures",

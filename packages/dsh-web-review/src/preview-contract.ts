@@ -111,6 +111,8 @@ export interface PreviewSessionDescriptor {
   /** Server-bound target Origin used to reject page-forged address changes. */
   targetOrigin: string
   channel: PreviewChannel
+  /** Page snapshot archival enabled for this session (deployment config). */
+  snapshotsEnabled: boolean
 }
 
 export interface PreviewInlineDeclaration {
@@ -334,7 +336,7 @@ function elementHandleOf(value: unknown): PreviewElementHandle | undefined {
 export function previewSessionDescriptorOf(value: unknown): PreviewSessionDescriptor | undefined {
   const record = recordOf(value)
   if (record === undefined || !exactKeys(record, [
-    'sessionId', 'frameUrl', 'frameOrigin', 'targetOrigin', 'channel',
+    'sessionId', 'frameUrl', 'frameOrigin', 'targetOrigin', 'channel', 'snapshotsEnabled',
   ])) return undefined
   const sessionId = sessionIdOf(record.sessionId)
   const channel = channelOf(record.channel)
@@ -342,7 +344,8 @@ export function previewSessionDescriptorOf(value: unknown): PreviewSessionDescri
   const frameOrigin = boundedString(record.frameOrigin, 2_048, false)
   const targetOrigin = boundedString(record.targetOrigin, 2_048, false)
   if (sessionId === undefined || channel === undefined || frameUrl === undefined
-    || frameOrigin === undefined || targetOrigin === undefined) return undefined
+    || frameOrigin === undefined || targetOrigin === undefined
+    || typeof record.snapshotsEnabled !== 'boolean') return undefined
   try {
     const url = new URL(frameUrl)
     const target = new URL(decodeTarget(url.pathname.slice(PREVIEW_ENTRY_PREFIX.length)))
@@ -355,7 +358,7 @@ export function previewSessionDescriptorOf(value: unknown): PreviewSessionDescri
   } catch {
     return undefined
   }
-  return { sessionId, frameUrl, frameOrigin, targetOrigin, channel }
+  return { sessionId, frameUrl, frameOrigin, targetOrigin, channel, snapshotsEnabled: record.snapshotsEnabled }
 }
 
 function treeDetailOf(value: unknown): PreviewElementTreeDetail | undefined {

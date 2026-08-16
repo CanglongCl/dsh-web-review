@@ -15,7 +15,7 @@
  * is byte-identical to a real annotated send.
  */
 import { randomUUID } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -32,6 +32,7 @@ import {
   formatAnnotationContext,
   parseAnnotationBody,
 } from '../../../packages/dsh-web-review/src/annotation-context.ts'
+import { formatSnapshotGuide } from '../../../packages/dsh-web-review/src/snapshot-archive.ts'
 import { isUiSkillName, type UiSkillName } from '../../../packages/dsh-web-review/src/ui-skills.ts'
 import { skillBody } from '../../../packages/dsh-web-review/src/skill-provider.ts'
 import type { EvalArm } from '../../types.ts'
@@ -70,6 +71,8 @@ interface RunnerTaskPayload {
     prompt: string
     snapshot: unknown
     oracleContext?: string
+    /** Staged snapshot archive directory (snapshot arm only). */
+    snapshotDir?: string
   }[]
 }
 
@@ -150,7 +153,7 @@ async function run(ctx: Context, config: Config, io: RunnerIo): Promise<void> {
     fail(io, `invalid taskJson: ${config.taskJson.slice(0, 80)}…`)
     return
   }
-  if (!['full', 'text-only', 'oracle'].includes(payload.arm) || !Array.isArray(payload.rounds) || payload.rounds.length === 0) {
+  if (!['full', 'text-only', 'oracle', 'snapshot'].includes(payload.arm) || !Array.isArray(payload.rounds) || payload.rounds.length === 0) {
     fail(io, `task ${payload.taskId}: invalid arm or empty rounds`)
     return
   }
@@ -161,6 +164,16 @@ async function run(ctx: Context, config: Config, io: RunnerIo): Promise<void> {
     if (typeof round.prompt !== 'string' || round.prompt.trim() === '') throw new Error(`task ${payload.taskId} round ${index + 1}: empty prompt`)
     if (payload.arm === 'oracle' && (typeof round.oracleContext !== 'string' || round.oracleContext.trim() === '')) {
       throw new Error(`task ${payload.taskId} round ${index + 1}: oracle arm needs source hints`)
+    }
+    if (payload.arm === 'snapshot') {
+      if (typeof round.snapshotDir !== 'string' || round.snapshotDir.trim() === '') {
+        throw new Error(`task ${payload.taskId} round ${index + 1}: snapshot arm needs a staged archive directory`)
+      }
+      for (const file of ['page.html', 'page.png', 'manifest.json']) {
+        if (!existsSync(join(round.snapshotDir, file))) {
+          throw new Error(`task ${payload.taskId} round ${index + 1}: staged snapshot archive is missing ${file}`)
+        }
+      }
     }
     return { ...round, snapshot }
   })
@@ -213,6 +226,14 @@ async function run(ctx: Context, config: Config, io: RunnerIo): Promise<void> {
     injections.push(...armContextTexts(payload.arm, round.snapshot, formatAnnotationContext(round.snapshot), round.oracleContext)
       .map(context => contextMessage(context.plugin, context.text)))
     setRoundInjections(injections)
+    // Production ordering: the snapshot guide rides the live agent's
+    // next-step inbox before the user message wakes the driver.
+    if (payload.arm === 'snapshot' && round.snapshotDir !== undefined) {
+      agent.inject(createUserMessage({
+        source: { kind: 'plugin', plugin: 'dsh-web-review' },
+        content: [{ type: 'text', text: formatSnapshotGuide(round.snapshotDir) }],
+      }))
+    }
     agent.followup(createUserMessage({
       source: { kind: 'user' },
       content: [{ type: 'text', text: round.prompt }],

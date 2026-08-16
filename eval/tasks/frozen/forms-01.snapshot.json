@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-b341bca0-724c-4d96-92e8-fb59ac3abb4a",
+  "sessionId": "session-8ec081b1-3737-4129-a1c8-7271d229ec8a",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:64373/",
+    "url": "http://127.0.0.1:51758/",
     "title": "用户信息表单"
   },
   "comments": [
     {
-      "id": "5e72845d-4204-42f1-972e-e7b60d22c0ae",
+      "id": "9b1690e6-b4f1-45b2-9c17-447a157f39a7",
       "comment": "把提交按钮文案从“提交”改成“立即提交”",
       "tagName": "button",
       "role": "button",

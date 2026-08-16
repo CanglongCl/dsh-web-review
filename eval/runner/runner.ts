@@ -29,7 +29,8 @@ import { runnerTaskPayload } from './payload.ts'
 export const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
 export const FIXTURES_ROOT = join(REPO_ROOT, 'eval', 'fixtures')
 export const ARTIFACTS_ROOT = join(REPO_ROOT, '.artifacts', 'eval-runs')
-export const RESULTS_PATH = join(REPO_ROOT, 'eval', 'results')
+/** Live run data (results.jsonl, report.html) — ephemeral, gitignored. */
+export const RESULTS_PATH = join(REPO_ROOT, '.artifacts', 'eval-results')
 
 /** Fixture metadata per app. */
 const FIXTURE_KINDS: Record<string, FixtureKind> = {
@@ -158,8 +159,9 @@ export function writeOverlay(
   task: LoadedEvalTask,
   options: RunOptions,
   skillRoot = join(REPO_ROOT, 'packages', 'dsh-web-review', 'skills'),
+  snapshotDirs: readonly string[] = [],
 ): string {
-  const taskJson = JSON.stringify(runnerTaskPayload(task, options.arm))
+  const taskJson = JSON.stringify(runnerTaskPayload(task, options.arm, snapshotDirs))
   const overlay = [
     '- id: headless-runner',
     '  disabled: true',

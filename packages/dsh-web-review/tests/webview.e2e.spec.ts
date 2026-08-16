@@ -817,16 +817,21 @@ describe('dsh-web-review e2e', () => {
       async () => page.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
       { message: 'annotation send should activate Chat' },
     ).toBe('true')
+    // The running turn swaps the composer placeholder (steer-queue hint), so
+    // the cleared draft is asserted through the stable seat textarea instead.
+    await expect.poll(
+      async () => page.locator('[data-composer-seat] textarea').inputValue(),
+      { timeout: 10_000, message: 'dedicated send should clear the composer draft' },
+    ).toBe('')
     await expect.poll(
       async () => page.locator('[data-webview-annotation-toolbar]').count(),
       { timeout: 15_000, message: 'successful dedicated send should exit annotation mode' },
     ).toBe(0)
-    expect(await composer.inputValue()).toBe('')
-
-    const user = page.locator('[data-chat-flow-kind="user"]')
-      .filter({ hasText: 'apply this annotated draft' }).last()
-    await user.waitFor({ timeout: 30_000 })
-    expect(await user.textContent()).toContain('apply this annotated draft')
+    // The annotated batch entered a turn: its Page comments context row is the
+    // deterministic proof (a raw user row can stay queued while the probe turn
+    // is still running, so it is not asserted here).
+    const contextText = await (await openLastContext(page)).textContent()
+    expect(contextText).toContain('Make the button color darker.')
     await page.close()
   })
 
@@ -844,10 +849,11 @@ describe('dsh-web-review e2e', () => {
       async () => page.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
       { message: 'annotation send should activate Chat' },
     ).toBe('true')
-    const user = page.locator('[data-chat-flow-kind="user"]')
-      .filter({ hasText: 'Please apply the page comments to the frontend implementation.' }).last()
-    await user.waitFor({ timeout: 30_000 })
-    expect(await user.textContent()).toContain('Please apply the page comments to the frontend implementation.')
+    // The fallback request entered a turn: the Page comments context row is
+    // the deterministic proof (a raw user row can stay queued while the probe
+    // turn is still running, so it is not asserted here).
+    const contextText = await (await openLastContext(page)).textContent()
+    expect(contextText).toContain('Make the button color darker.')
     await page.close()
   })
 
@@ -883,14 +889,20 @@ describe('dsh-web-review e2e', () => {
     const composer = page.getByPlaceholder('Message the agent')
     await composer.fill('apply this annotated draft')
     await page.getByRole('button', { name: 'Send 1' }).click()
-    // The dedicated send awaited its capture before switching to Chat, so the
-    // archive must exist shortly after the click; the file set is the ack.
-    await assertSnapshotFiles(join(SNAPSHOT_BASE, await waitForNewSnapshotDir(snapshotBefore)))
+    // Read the cleared draft immediately (the running turn later swaps the
+    // composer placeholder); the dedicated send awaited its capture BEFORE
+    // submitting, so the archive already exists when the tab flips.
     await expect.poll(
       async () => page.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
       { message: 'annotation send should activate Chat' },
     ).toBe('true')
-    expect(await composer.inputValue()).toBe('')
+    // The running turn swaps the composer placeholder (steer-queue hint), so
+    // the cleared draft is asserted through the stable seat textarea instead.
+    await expect.poll(
+      async () => page.locator('[data-composer-seat] textarea').inputValue(),
+      { timeout: 10_000, message: 'dedicated send should clear the composer draft' },
+    ).toBe('')
+    await assertSnapshotFiles(join(SNAPSHOT_BASE, await waitForNewSnapshotDir(snapshotBefore)))
     await page.close()
   })
 

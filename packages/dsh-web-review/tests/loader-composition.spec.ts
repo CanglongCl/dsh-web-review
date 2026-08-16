@@ -14,7 +14,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
@@ -25,7 +25,6 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import SkillService from '@deepseek-ai/dsh-skill'
 import * as plugin from '../src/index.ts'
 import { PAGE_SNAPSHOT_BASE_DIR, PAGE_SNAPSHOTS_PATH, PREVIEW_GUIDANCE } from '../src/index.ts'
-import { previewGuidanceWithSnapshotRoot } from '../src/preview-guidance.ts'
 import {
   MAX_SNAPSHOT_BODY,
   type PageSnapshotPayload,
@@ -147,13 +146,20 @@ afterAll(async () => {
 })
 
 /** Boot a test cordis.yml (webserver + dsh-web-review) through the real Loader. */
-async function loadComposition(): Promise<Context> {
+async function loadComposition(pluginConfig?: Record<string, unknown>): Promise<Context> {
   root = await mkdtemp(join(tmpdir(), 'dsh-web-review-loader-'))
   const dist = join(root, 'dist')
   await mkdir(dist)
   const distIndex = join(dist, 'index.html')
   await writeFile(distIndex, '<head></head><body>shell</body>')
   const configPath = join(root, 'cordis.yml')
+  const pluginRow = pluginConfig === undefined
+    ? ["- name: 'dsh-web-review-test'"]
+    : [
+      "- name: 'dsh-web-review-test'",
+      '  config:',
+      ...Object.entries(pluginConfig).map(([key, value]) => `    ${key}: ${JSON.stringify(value)}`),
+    ]
   await writeFile(configPath, [
     "- name: '@deepseek-ai/dsh-agent'",
     '',
@@ -167,7 +173,7 @@ async function loadComposition(): Promise<Context> {
     '    port: 0',
     `    distIndex: '${distIndex}'`,
     '',
-    "- name: 'dsh-web-review-test'",
+    ...pluginRow,
     '',
   ].join('\n'))
 
@@ -243,15 +249,18 @@ function annotationSnapshot(sessionId = 'session-1', comments = 1): AnnotationSn
 
 function registerStubAgent(rawId = 'session-1'): {
   dispose: () => void
+  inject: ReturnType<typeof vi.fn>
 } {
   if (context === undefined) throw new Error('composition is not loaded')
   const id = SessionId(rawId)
+  const inject = vi.fn()
   const agent = {
     id,
     session: Session.create(id),
     ctx: new Context(),
+    inject,
   } as unknown as Agent
-  return { dispose: context.agents.register(agent) }
+  return { dispose: context.agents.register(agent), inject }
 }
 
 describe('isolated preview Origin (real Loader + webserver composition)', () => {
@@ -259,8 +268,7 @@ describe('isolated preview Origin (real Loader + webserver composition)', () => 
     const loaded = await loadComposition()
     const section = (await loaded.systemPrompt.assemble()).sections
       .find(candidate => candidate.name === 'plugin:dsh-web-review-preview')
-    expect(section?.text).toBe(previewGuidanceWithSnapshotRoot(PAGE_SNAPSHOT_BASE_DIR))
-    expect(section?.text).toContain(PREVIEW_GUIDANCE)
+    expect(section?.text).toBe(PREVIEW_GUIDANCE)
   })
 
   it('creates a distinct random Origin and injects the bridge before page scripts', async () => {
@@ -557,9 +565,9 @@ describe('/webview-snapshots (real Loader + webserver composition)', () => {
     })
   }
 
-  it('archives a validated payload for a live agent and answers saved', async () => {
+  it('archives a validated payload and injects the exact-directory guide after the save', async () => {
     await loadComposition()
-    registerStubAgent()
+    const stub = registerStubAgent()
     const response = await postSnapshot(snapshotPayload())
     expect(response.status).toBe(200)
     const receipt = await response.json() as { kind: string; snapshotId: string; dir: string }
@@ -572,6 +580,12 @@ describe('/webview-snapshots (real Loader + webserver composition)', () => {
     expect(manifest.page).toEqual({ url: 'http://localhost:5173/', title: 'Example Domain' })
     expect(manifest.screenshot).toMatchObject({ file: 'page.png' })
     expect(await readFile(join(receipt.dir, 'page.html'), 'utf8')).toContain('Example')
+    // The guide rides the live agent's next-step inbox right after the save.
+    expect(stub.inject).toHaveBeenCalledOnce()
+    const message = stub.inject.mock.calls[0]?.[0] as { content: Array<{ type: string; text: string }> }
+    expect(message.content[0]?.text).toContain(receipt.dir + '/page.html')
+    expect(message.content[0]?.text).toContain(receipt.dir + '/page.png')
+    expect(message.content[0]?.text).not.toContain('latest.json')
     await rm(receipt.dir, { recursive: true, force: true })
   })
 
@@ -590,6 +604,17 @@ describe('/webview-snapshots (real Loader + webserver composition)', () => {
     expect((await postSnapshot('not json')).status).toBe(400)
     expect((await postSnapshot(snapshotPayload('missing'))).status).toBe(404)
     expect((await fetch(`http://127.0.0.1:${port}${PAGE_SNAPSHOTS_PATH}`)).status).toBe(405)
+  })
+
+  it('answers disabled, archives nothing and stamps the descriptor off when configured off', async () => {
+    await loadComposition({ pageSnapshotEnabled: false })
+    const stub = registerStubAgent()
+    const response = await postSnapshot(snapshotPayload())
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ kind: 'disabled' })
+    expect(stub.inject).not.toHaveBeenCalled()
+    const descriptor = await createPreview(fixtureUrl + '/')
+    expect(descriptor.snapshotsEnabled).toBe(false)
   })
 
   it('rejects oversized bodies with 413', async () => {

@@ -74,13 +74,15 @@ function parseFlags(argv: string[]): Flags {
     else if (arg === '--skip-grading') flags.skipGrading = true
     else if (arg === '--arm') {
       const value = next()
-      flags.arms = value === 'all' ? ['full', 'text-only', 'oracle'] : [value as EvalArm]
+      flags.arms = value === 'all'
+        ? ['full', 'text-only', 'oracle']
+        : value.split(',').map(arm => arm.trim()) as EvalArm[]
     }
     else if (arg === '--repeat') flags.repeat = Number(next())
     else if (arg === '--dsh-cli') flags.dshCli = next()
     else throw new Error(`unknown flag ${arg}`)
   }
-  if (flags.arms.some(arm => !['full', 'text-only', 'oracle'].includes(arm))) throw new Error(`invalid --arm ${flags.arms.join(',')}`)
+  if (flags.arms.some(arm => !['full', 'text-only', 'oracle', 'snapshot'].includes(arm))) throw new Error(`invalid --arm ${flags.arms.join(',')}`)
   if (!Number.isInteger(flags.repeat) || flags.repeat < 1) throw new Error('--repeat must be a positive integer')
   return flags
 }
@@ -127,8 +129,12 @@ async function main(): Promise<void> {
       if (record.experimentId !== undefined && record.executionStatus === 'completed') finished.add(record.experimentId)
     }
   }
+  // The snapshot arm is universal: every task with frozen snapshots can run
+  // it, so the pageSnapshotEnabled on/off A/B covers the whole bank.
   const queue = selected.flatMap(task => flags.arms
-    .filter(arm => task.arms.includes(arm))
+    .filter(arm => arm === 'snapshot'
+      ? task.rounds.every(round => round.snapshot !== undefined)
+      : task.arms.includes(arm))
     .flatMap(arm => Array.from({ length: flags.repeat }, (_, index) => ({ task, arm, repetition: index + 1 }))))
     .filter(run => !finished.has(experimentId({ task: run.task, arm: run.arm, repetition: run.repetition, model, repoCommit: currentRepoCommit, harnessCommit: currentHarnessCommit })))
   console.log(`${selected.length} task(s) selected, ${queue.length} to run, ${flags.concurrency} concurrent`)

@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-b0f33de4-4d71-4402-a7e3-8cf9db2978e0",
+  "sessionId": "session-8c7d72ef-333a-47b2-bb60-1aa6cb85ba2c",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:52360/",
+    "url": "http://127.0.0.1:52021/",
     "title": "魔法 UI 演示页"
   },
   "comments": [
     {
-      "id": "7f7ec853-4c9b-475b-9c9b-ea0557d36d0c",
+      "id": "d280172f-b0b1-4746-8b88-dd1d5e411d1b",
       "comment": "把卡片之间的间距从 16px 加大到 24px",
       "tagName": "main",
       "role": "",

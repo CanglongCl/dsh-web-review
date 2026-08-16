@@ -62,8 +62,9 @@ dsh web
 ### Page Snapshot Archival
 
 - Sending comments also archives the page at send time — its full HTML tree and a screenshot — into the OS temp directory (<os.tmpdir()>/dsh-web-review/snapshots/, newest 20 retained).
-- The injected comment context names the snapshot location and how to read it, so the agent can open manifest.json, page.html, and page.png to further confirm your intent.
+- After the archive lands, the plugin injects the snapshot directory and file paths as a separate context, so the agent can open page.html, page.png, and manifest.json to further confirm your intent.
 - Snapshots are ephemeral: the system clears the temp directory over time, and plain sends without comments never capture.
+- The feature defaults to on and can be switched off entirely with the Cordis config item `pageSnapshotEnabled: false` (no capture, no archive, no injection).
 
 ### UI Design Skills
 

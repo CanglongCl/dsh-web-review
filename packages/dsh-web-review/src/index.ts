@@ -12,6 +12,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-skill'
+import { createUserMessage } from '@deepseek-ai/dsh-llm/message'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { MAX_ANNOTATION_BODY } from './annotation-contract.ts'
 import {
   acknowledgeAnnotationEvent,
@@ -22,7 +24,7 @@ import {
   storeAnnotationSnapshot,
   type AnnotationCommitState,
 } from './annotation-context.ts'
-import { previewGuidanceWithSnapshotRoot } from './preview-guidance.ts'
+import { PREVIEW_GUIDANCE } from './preview-guidance.ts'
 import {
   PREVIEW_CLIENT_HEADER,
   PREVIEW_CLIENT_HEADER_VALUE,
@@ -32,10 +34,9 @@ import {
 import {
   MAX_SNAPSHOT_BODY,
   PAGE_SNAPSHOTS_PATH,
-  type SnapshotArchiveState,
 } from './snapshot-contract.ts'
 import {
-  forgetAgentSnapshots,
+  formatSnapshotGuide,
   parseSnapshotBody,
   storePageSnapshot,
   type SnapshotArchiveResult,
@@ -68,12 +69,11 @@ export const PAGE_SNAPSHOT_BASE_DIR = join(tmpdir(), 'dsh-web-review', 'snapshot
  */
 export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
   const annotations: AnnotationCommitState = new Map()
-  const snapshotState: SnapshotArchiveState = new Map()
   registerUiSkillProvider(ctx, config)
   let previewServer: IsolatedPreviewServer | undefined
   await ctx.effect(async () => {
     const bridgeSource = await readBridgeSource()
-    previewServer = await startIsolatedPreviewServer(bridgeSource)
+    previewServer = await startIsolatedPreviewServer(bridgeSource, config.pageSnapshotEnabled)
     ctx.logger.info(`isolated preview server listening on 127.0.0.1:${String(previewServer.port)}`)
     return async () => { await previewServer?.close() }
   }, 'dsh-web-review: isolated preview server')
@@ -81,7 +81,7 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
   ctx.systemPrompt.section({
     name: 'plugin:dsh-web-review-preview',
     order: -97,
-    text: previewGuidanceWithSnapshotRoot(PAGE_SNAPSHOT_BASE_DIR),
+    text: PREVIEW_GUIDANCE,
   })
   const livePreviewServer = previewServer
   ctx.effect(() => ctx.webServer.register({
@@ -101,19 +101,16 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
     () => ctx.webServer.register({
       kind: 'exact',
       path: PAGE_SNAPSHOTS_PATH,
-      handler: snapshotsHandler(ctx, snapshotState, config.pageSnapshotEnabled),
+      handler: snapshotsHandler(ctx, config.pageSnapshotEnabled),
     }),
     'dsh-web-review: /webview-snapshots route',
   )
   ctx.on('agent/pre-step', ({ agent, messages, signal }, next) =>
-    attachPendingAnnotationContext(annotations, snapshotState, PAGE_SNAPSHOT_BASE_DIR, agent, ctx.skills, signal, messages, next))
+    attachPendingAnnotationContext(annotations, agent, ctx.skills, signal, messages, next))
   ctx.on('session/event', (session, event) => {
     acknowledgeAnnotationEvent(annotations, session.id, event)
   })
-  ctx.on('agent/disposed', ({ agent }) => {
-    forgetAgent(annotations, agent)
-    forgetAgentSnapshots(snapshotState, agent)
-  })
+  ctx.on('agent/disposed', ({ agent }) => { forgetAgent(annotations, agent) })
 }
 
 async function readBridgeSource(): Promise<string> {
@@ -300,13 +297,11 @@ function annotationsHandler(
  * Route handler for `/webview-snapshots`: validate the structured page
  * capture and archive it under the OS temp root for the live agent.
  * @param ctx - context carrying the live-agent registry.
- * @param state - per-agent newest-snapshot records consumed at pre-step.
  * @param enabled - deployment switch; a disabled archive answers 'disabled'.
  * @returns the route handler owning this store.
  */
 function snapshotsHandler(
   ctx: Context,
-  state: SnapshotArchiveState,
   enabled: boolean,
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   return async (req, res) => {
@@ -353,18 +348,21 @@ function snapshotsHandler(
       res.end('bad request')
       return
     }
+    // The agent lookup runs before any disk write so this route cannot act
+    // as a session-state oracle, exactly like the annotations route.
+    const agent = ctx.agents.get(SessionId(parsed.sessionId))
+    if (agent === undefined) {
+      res.writeHead(404)
+      res.end('session not found')
+      return
+    }
     let result: SnapshotArchiveResult
     try {
-      result = await storePageSnapshot(ctx.agents, parsed, PAGE_SNAPSHOT_BASE_DIR, state)
+      result = await storePageSnapshot(parsed, PAGE_SNAPSHOT_BASE_DIR)
     } catch (error) {
       ctx.logger.warn(`page snapshot archival failed for session "${parsed.sessionId}": ${String(error)}`)
       res.writeHead(409)
       res.end('snapshot archive unavailable')
-      return
-    }
-    if (result.kind === 'agent-not-found') {
-      res.writeHead(404)
-      res.end('session not found')
       return
     }
     if (result.kind === 'write-failed') {
@@ -373,6 +371,14 @@ function snapshotsHandler(
       res.end('snapshot archive unavailable')
       return
     }
+    // The guide is injected only after the save is durable. With an idle
+    // driver (the dedicated send awaited this upload before submitting) the
+    // next pre-step claims it together with the user message; with a running
+    // driver (stock-composer send) it joins the nearest later step boundary.
+    agent.inject(createUserMessage({
+      source: { kind: 'plugin', plugin: 'dsh-web-review' },
+      content: [{ type: 'text', text: formatSnapshotGuide(result.dir) }],
+    }))
     res.writeHead(200, {
       'cache-control': 'no-store',
       'content-type': 'application/json; charset=utf-8',

@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-56598de5-5db8-4b7a-b03f-49a1227546ca",
+  "sessionId": "session-53fcaa5c-b1e4-4cb1-a7a8-a426cc92e1b2",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:64592/",
+    "url": "http://127.0.0.1:52248/",
     "title": "数据看板"
   },
   "comments": [
     {
-      "id": "797bd9c6-06e9-4f6a-91bc-c967f5ac5dc0",
+      "id": "50019e2f-72fd-4778-bde1-6e53bf818b86",
       "comment": "把用户头像的尺寸改成 48px",
       "tagName": "div",
       "role": "",

@@ -62,8 +62,9 @@ dsh web
 ### 页面快照存档
 
 - 带批注发送时，插件会自动把当时页面的完整 HTML 树与一张截图存档到系统临时目录（<os.tmpdir()>/dsh-web-review/snapshots/，仅保留最近 20 份）。
-- 发送的批注上下文会附带快照位置与读取方式，Agent 可以阅读 manifest.json、page.html、page.png 进一步确认你的修改意图。
+- 快照落盘后，插件会把快照目录与文件路径注入为一条独立上下文，Agent 可以直接阅读 page.html、page.png、manifest.json 进一步确认你的修改意图。
 - 快照是临时存档：系统清理临时目录后会自动消失；普通（无批注）发送不会产生快照。
+- 该功能默认打开，可通过 Cordis 配置项 `pageSnapshotEnabled: false` 整体关闭（关闭后不做捕获、不落盘、不注入）。
 
 ### UI 优化 Skills
 

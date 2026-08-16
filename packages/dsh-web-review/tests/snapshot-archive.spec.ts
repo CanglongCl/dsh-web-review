@@ -2,22 +2,17 @@
 import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Agent, AgentRegistry } from '@deepseek-ai/dsh-agent'
-import { Session, SessionId, type SessionId as SessionIdType } from '@deepseek-ai/dsh-session'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   MAX_SNAPSHOT_HTML,
   SNAPSHOT_HTML_TRUNCATION_MARKER,
-  SNAPSHOT_LATEST,
   SNAPSHOT_MANIFEST,
   SNAPSHOT_RETENTION,
   type PageSnapshotPayload,
-  type SnapshotArchiveState,
-  type SnapshotLatestPointer,
   type SnapshotManifest,
 } from '../src/snapshot-contract.ts'
 import {
-  forgetAgentSnapshots,
+  formatSnapshotGuide,
   parseSnapshotBody,
   storePageSnapshot,
 } from '../src/snapshot-archive.ts'
@@ -36,20 +31,6 @@ afterEach(async () => {
   await Promise.all(tempRoots.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
 })
 
-function harness(rawId = 'session-1'): {
-  agent: Agent
-  agents: Pick<AgentRegistry, 'get'>
-} {
-  const agent = {
-    id: SessionId(rawId),
-    session: Session.create(SessionId(rawId)),
-  } as unknown as Agent
-  const agents: Pick<AgentRegistry, 'get'> = {
-    get: (id: SessionIdType) => id === agent.id ? agent : undefined,
-  }
-  return { agent, agents }
-}
-
 function payload(overrides: Partial<PageSnapshotPayload> = {}): PageSnapshotPayload {
   return {
     sessionId: 'session-1',
@@ -65,10 +46,6 @@ function payload(overrides: Partial<PageSnapshotPayload> = {}): PageSnapshotPayl
 
 async function manifestOf(dir: string): Promise<SnapshotManifest> {
   return JSON.parse(await readFile(join(dir, SNAPSHOT_MANIFEST), 'utf8')) as SnapshotManifest
-}
-
-async function latestOf(baseDir: string): Promise<SnapshotLatestPointer> {
-  return JSON.parse(await readFile(join(baseDir, SNAPSHOT_LATEST), 'utf8')) as SnapshotLatestPointer
 }
 
 describe('parseSnapshotBody', () => {
@@ -108,11 +85,9 @@ describe('parseSnapshotBody', () => {
 })
 
 describe('storePageSnapshot', () => {
-  it('archives HTML, PNG and manifest, updates latest and the per-agent record', async () => {
+  it('archives HTML, PNG and manifest for the resolved agent', async () => {
     const baseDir = await tempBaseDir()
-    const { agent, agents } = harness()
-    const state: SnapshotArchiveState = new Map()
-    const result = await storePageSnapshot(agents, payload(), baseDir, state)
+    const result = await storePageSnapshot(payload(), baseDir)
     expect(result.kind).toBe('saved')
     if (result.kind !== 'saved') return
     const manifest = await manifestOf(result.dir)
@@ -128,17 +103,14 @@ describe('storePageSnapshot', () => {
     })
     expect(await readFile(join(result.dir, 'page.html'), 'utf8')).toBe(payload().html)
     expect((await stat(result.dir)).mode & 0o777).toBe(0o700)
-    expect((await latestOf(baseDir)).dir).toBe(result.dir.split('/').pop())
-    expect(state.get(agent.id)?.dir).toBe(result.dir)
+    expect(result.dir.startsWith(baseDir)).toBe(true)
   })
 
   it('records a screenshot error instead of writing an invalid PNG', async () => {
     const baseDir = await tempBaseDir()
-    const { agents } = harness()
-    const state: SnapshotArchiveState = new Map()
-    const result = await storePageSnapshot(agents, payload({
+    const result = await storePageSnapshot(payload({
       screenshot: { dataUrl: 'data:image/png;base64,AAAA', width: 1, height: 1, truncated: false },
-    }), baseDir, state)
+    }), baseDir)
     expect(result.kind).toBe('saved')
     if (result.kind !== 'saved') return
     expect((await manifestOf(result.dir)).screenshot).toEqual({ error: 'invalid PNG payload' })
@@ -147,11 +119,10 @@ describe('storePageSnapshot', () => {
 
   it('keeps the capture error when the frame supplied no screenshot', async () => {
     const baseDir = await tempBaseDir()
-    const { agents } = harness()
-    const result = await storePageSnapshot(agents, payload({
+    const result = await storePageSnapshot(payload({
       screenshot: null,
       screenshotError: 'screenshot canvas tainted by cross-origin content',
-    }), baseDir, new Map())
+    }), baseDir)
     expect(result.kind).toBe('saved')
     if (result.kind !== 'saved') return
     expect((await manifestOf(result.dir)).screenshot)
@@ -160,42 +131,33 @@ describe('storePageSnapshot', () => {
 
   it('marks HTML truncation from the bridge marker', async () => {
     const baseDir = await tempBaseDir()
-    const { agents } = harness()
     const html = 'a'.repeat(64) + '\n' + SNAPSHOT_HTML_TRUNCATION_MARKER + ' 128 bytes -->'
-    const result = await storePageSnapshot(agents, payload({ html }), baseDir, new Map())
+    const result = await storePageSnapshot(payload({ html }), baseDir)
     expect(result.kind).toBe('saved')
     if (result.kind !== 'saved') return
     expect((await manifestOf(result.dir)).html.truncated).toBe(true)
   })
 
-  it('refuses to archive for an unknown live agent without touching disk', async () => {
-    const baseDir = await tempBaseDir()
-    const { agents } = harness()
-    const result = await storePageSnapshot(agents, payload({ sessionId: 'missing' }), baseDir, new Map())
-    expect(result.kind).toBe('agent-not-found')
-    expect(await readdir(baseDir)).toEqual([])
-  })
-
   it('retains only the newest snapshot directories', async () => {
     const baseDir = await tempBaseDir()
-    const { agents } = harness()
     for (let index = 0; index < SNAPSHOT_RETENTION + 3; index += 1) {
-      const result = await storePageSnapshot(agents, payload(), baseDir, new Map())
+      const result = await storePageSnapshot(payload(), baseDir)
       expect(result.kind).toBe('saved')
     }
     const entries = await readdir(baseDir, { withFileTypes: true })
-    const directories = entries.filter(entry => entry.isDirectory())
-    expect(directories).toHaveLength(SNAPSHOT_RETENTION)
-    expect(entries.some(entry => entry.name === SNAPSHOT_LATEST)).toBe(true)
+    expect(entries.filter(entry => entry.isDirectory())).toHaveLength(SNAPSHOT_RETENTION)
   })
+})
 
-  it('releases per-agent state when the agent leaves', async () => {
-    const baseDir = await tempBaseDir()
-    const { agent, agents } = harness()
-    const state: SnapshotArchiveState = new Map()
-    await storePageSnapshot(agents, payload(), baseDir, state)
-    expect(state.get(agent.id)).toBeDefined()
-    forgetAgentSnapshots(state, agent)
-    expect(state.get(agent.id)).toBeUndefined()
+describe('formatSnapshotGuide', () => {
+  it('names the exact directory and the direct file paths', () => {
+    const dir = '/tmp/dsh-web-review/snapshots/20260816-1200000000-abcd'
+    const guide = formatSnapshotGuide(dir)
+    expect(guide).toContain('## Page snapshot')
+    expect(guide).toContain('Snapshot directory: ' + dir)
+    expect(guide).toContain('- HTML tree: ' + dir + '/page.html')
+    expect(guide).toContain('- Screenshot: ' + dir + '/page.png')
+    expect(guide).toContain('- Metadata: ' + dir + '/manifest.json')
+    expect(guide).not.toContain('latest.json')
   })
 })

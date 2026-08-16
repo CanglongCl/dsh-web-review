@@ -5,10 +5,12 @@
  * full process: injected context, turn/step timeline, thinking, tool calls,
  * token usage, workspace diff, and grader evidence.
  */
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { REPO_ROOT, RESULTS_PATH } from './runner/runner.ts'
 import { loadTasks } from './tasks/register.ts'
+import { formatSnapshotGuide } from '../packages/dsh-web-review/src/snapshot-archive.ts'
+import { frozenPagePath, snapshotManifestOf } from './snapshot-stage.ts'
 import type { LoadedEvalTask, RunRecord, TokenBudget } from './types.ts'
 
 interface TaskRequirement {
@@ -106,17 +108,86 @@ async function main(): Promise<void> {
   const currentCohortKey = latestEligible === undefined ? undefined : cohortKey(latestEligible)
   const eligibleDiagnostic = currentCohortKey === undefined ? [] : allEligibleDiagnostic.filter(record => cohortKey(record) === currentCohortKey)
   const smoke = details.filter(record => record.category === 'protocol-smoke')
-  const reportDetails = [...smoke, ...eligibleDiagnostic.filter(record => record.arm === 'full')]
+  // Every arm enters the report (runs view + arm comparison); the headline
+  // overview and task table keep their established full-arm semantics.
+  const reportDetails = [...smoke, ...eligibleDiagnostic]
     .sort((a, b) => `${a.category}:${a.taskId}:${a.repetition}`.localeCompare(`${b.category}:${b.taskId}:${b.repetition}`))
-  const reportTaskIds = new Set(reportDetails.map(record => record.taskId))
-  const passedRuns = reportDetails.filter(record => record.status === 'pass').length
-  const passedTasks = [...reportTaskIds].filter(taskId => reportDetails.filter(record => record.taskId === taskId).every(record => record.status === 'pass')).length
-  const overallPassed = reportDetails.length > 0 && passedTasks === reportTaskIds.size
-  const reportSummary = reportDetails.length === 0
+  const headlineDetails = reportDetails.filter(record => record.arm === 'full')
+  const reportTaskIds = new Set(headlineDetails.map(record => record.taskId))
+  const passedRuns = headlineDetails.filter(record => record.status === 'pass').length
+  const passedTasks = [...reportTaskIds].filter(taskId => headlineDetails.filter(record => record.taskId === taskId).every(record => record.status === 'pass')).length
+  const overallPassed = headlineDetails.length > 0 && passedTasks === reportTaskIds.size
+  const reportSummary = headlineDetails.length === 0
     ? '当前评测版本暂无有效运行。'
-    : `${passedTasks}/${reportTaskIds.size} 个评测任务通过，${passedRuns}/${reportDetails.length} 次有效运行通过。所有批注均由插件真实生成。`
+    : `${passedTasks}/${reportTaskIds.size} 个评测任务通过，${passedRuns}/${headlineDetails.length} 次有效运行通过。所有批注均由插件真实生成。`
   const generatedAt = new Date().toISOString()
-  const headlineRecords = reportDetails.length === 0 ? details : reportDetails
+  const headlineRecords = headlineDetails.length === 0 ? details : headlineDetails
+  // Per-pair token attribution for the A/B view. Token estimates are labeled:
+  // guide cost from the production text length, file-read cost from the frozen
+  // artifact byte sizes (≈4 chars/token); the residual is behavior difference.
+  const SAMPLE_GUIDE_DIR = join(REPO_ROOT, 'tmp-dsh-web-review-snapshots', '20260817-0000000000-abcd')
+  const guideTokensEstimate = Math.ceil(formatSnapshotGuide(SAMPLE_GUIDE_DIR).length / 4)
+  const tokensOfBytes = (bytes: number): number => Math.ceil(bytes / 4)
+  const abAttribution: Record<string, {
+    guideTokens: number
+    reads: { file: string; bytes: number; tokens: number }[]
+    inputDelta: number
+    outputDelta: number
+    reasoningDelta: number
+    residualInput: number
+  }> = {}
+  const pairKey = (taskId: string, repetition: number): string => taskId + ':' + String(repetition)
+  for (const record of reportDetails) {
+    if (record.arm !== 'snapshot') continue
+    const counterpart = reportDetails.find(candidate => candidate.arm === 'full'
+      && candidate.taskId === record.taskId && candidate.repetition === record.repetition)
+    if (counterpart === undefined) continue
+    const reads: { file: string; bytes: number; tokens: number }[] = []
+    const task = tasks.get(record.taskId)
+    let manifestBytes = 0
+    if (task !== undefined && task.rounds[0] !== undefined && task.rounds[0].snapshot !== undefined) {
+      const htmlPath = frozenPagePath(task.id, 1, 'page.html')
+      const pngPath = frozenPagePath(task.id, 1, 'page.png')
+      if (existsSync(htmlPath) && existsSync(pngPath)) {
+        manifestBytes = Buffer.byteLength(snapshotManifestOf(
+          task.rounds[0],
+          statSync(htmlPath).size,
+          readFileSync(pngPath),
+          'snapshot-id',
+          generatedAt,
+        ), 'utf8')
+      }
+    }
+    for (const path of record.process?.filesRead ?? []) {
+      if (!path.includes('dsh-web-review/snapshots')) continue
+      const file = path.split('/').at(-1) ?? 'unknown'
+      let bytes = 0
+      if (file === 'page.html' && task !== undefined) {
+        const p = frozenPagePath(task.id, 1, 'page.html')
+        if (existsSync(p)) bytes = statSync(p).size
+      } else if (file === 'page.png' && task !== undefined) {
+        const p = frozenPagePath(task.id, 1, 'page.png')
+        if (existsSync(p)) bytes = statSync(p).size
+      } else if (file === 'manifest.json') {
+        bytes = manifestBytes
+      }
+      reads.push({ file, bytes, tokens: tokensOfBytes(bytes) })
+    }
+    const snapshotTokens = record.process?.tokens
+    const fullTokens = counterpart.process?.tokens
+    const inputDelta = (snapshotTokens?.input ?? 0) - (fullTokens?.input ?? 0)
+    const outputDelta = (snapshotTokens?.output ?? 0) - (fullTokens?.output ?? 0)
+    const reasoningDelta = (snapshotTokens?.reasoning ?? 0) - (fullTokens?.reasoning ?? 0)
+    const readTokens = reads.reduce((sum, read) => sum + read.tokens, 0)
+    abAttribution[pairKey(record.taskId, record.repetition)] = {
+      guideTokens: guideTokensEstimate,
+      reads,
+      inputDelta,
+      outputDelta,
+      reasoningDelta,
+      residualInput: Math.max(0, inputDelta - guideTokensEstimate - readTokens),
+    }
+  }
   const modelLabels = [...new Set(headlineRecords.map(record => [record.model.provider, record.model.model, record.model.reasoningEffort ?? 'effort 未记录'].join(' / ')))]
   const runtimeLabels = [...new Set(headlineRecords.map(record => record.harnessCommit))]
 
@@ -139,6 +210,15 @@ async function main(): Promise<void> {
   main { width:100%; min-width:0; padding:24px 28px 48px; }
   .view { display:none; }
   .view.active { display:block; }
+  .ab-cell { line-height:1.5; }
+  .delta-line { color:var(--muted); font-size:11px; margin-top:1px; }
+  .delta-up { color:#9a6700; font-weight:600; }
+  .delta-down { color:#1a7f37; font-weight:600; }
+  .delta-flat { color:var(--muted); }
+  .ab-sep { border-left:2px solid var(--line); }
+  .ab-summary td { text-align:center; }
+  .ab-summary td:first-child { text-align:left; font-weight:600; }
+  .ab-summary .delta-line { display:block; }
   .experiment-head { display:flex; justify-content:space-between; gap:20px; align-items:flex-start; padding:18px 20px; background:var(--card); border:1px solid var(--line); border-radius:12px; }
   .experiment-head h2 { margin:2px 0 7px; font-size:20px; }
   .experiment-head p { margin:0; max-width:850px; line-height:1.55; }
@@ -205,6 +285,7 @@ async function main(): Promise<void> {
     <button class="tab active" data-view="overview">评测概览</button>
     <button class="tab" data-view="tasks">任务结果<span class="count">${reportTaskIds.size}</span></button>
     <button class="tab" data-view="runs">运行记录<span class="count">${reportDetails.length}</span></button>
+    <button class="tab" data-view="ab">A/B 对比<span class="count" id="abCount">0</span></button>
   </nav>
 </header>
 <main>
@@ -226,15 +307,25 @@ async function main(): Promise<void> {
     <div class="experiment-head"><div><h2>有效运行记录</h2><p>记录当前评测范围内的插件运行，用于复现和故障分析。</p></div><div class="verdict${overallPassed ? '' : ' failed'}">${passedRuns}/${reportDetails.length} 次运行通过</div></div>
     <div class="filters">
       <select id="fCategory"><option value="">全部能力类别</option></select><select id="fDifficulty"><option value="">全部难度</option><option value="easy">简单</option><option value="medium">中等</option><option value="hard">困难</option><option value="long">长任务</option></select>
-      <select id="fFixture"><option value="">全部测试页面</option></select><select id="fStatus"><option value="">全部状态</option><option value="pass">通过</option><option value="fail">未通过</option><option value="timeout">超时</option><option value="error">执行错误</option></select><select id="fBudget"><option value="">全部 Token 使用量</option><option value="warning">超过预警阈值</option><option value="normal">未超过预警阈值</option></select><button id="fReset">清除筛选条件</button>
+      <select id="fFixture"><option value="">全部测试页面</option></select><select id="fArm"><option value="">全部上下文臂</option></select><select id="fStatus"><option value="">全部状态</option><option value="pass">通过</option><option value="fail">未通过</option><option value="timeout">超时</option><option value="error">执行错误</option></select><select id="fBudget"><option value="">全部 Token 使用量</option><option value="warning">超过预警阈值</option><option value="normal">未超过预警阈值</option></select><button id="fReset">清除筛选条件</button>
     </div>
+    <div class="section-bar"><div><h2>上下文臂对比（A/B）</h2><p class="meta">同任务不同上下文条件聚合：snapshot = 批注 + 页面快照指引（pageSnapshotEnabled 开启），full = 仅批注（关闭）。对比 Token、步骤与读取路径差异。</p></div></div>
+    <div class="table-scroll"><table><thead><tr><th>上下文臂</th><th>运行数</th><th>通过</th><th>平均执行步骤</th><th>平均 Token</th><th>平均耗时</th><th>平均显式读取文件</th><th>平均工具调用</th></tr></thead><tbody id="armBody"></tbody></table></div>
     <div class="table-scroll"><table class="runs-table">
     <thead><tr>
-      <th>评测任务</th><th>重复序号</th><th>任务摘要</th><th>能力类别</th><th>难度</th><th>测试页面</th><th>验收状态</th>
+      <th>评测任务</th><th>重复序号</th><th>上下文臂</th><th>任务摘要</th><th>能力类别</th><th>难度</th><th>测试页面</th><th>验收状态</th>
       <th>Agent 执行步骤</th><th>工具调用</th><th>首次文件写入步骤</th><th>Token 使用量 / 预警阈值</th><th>Agent 会话耗时</th><th>失败归因</th><th>运行详情</th>
     </tr></thead>
     <tbody id="tbody"></tbody>
     </table></div>
+  </section>
+  <section class="view" id="abView">
+    <div class="experiment-head"><div><h2>页面快照机制 · 开/关 A/B 对比</h2><p>同一任务、同一重复序号的两次运行逐行左右对比：左 = full（关闭，仅批注上下文），右 = snapshot（开启，批注 + 页面快照指引 + 真实归档文件）。每个指标格显示 关 → 开 及变化量 Δ（Token 增加为琥珀色、减少为绿色）。</p></div><div class="verdict">Δ</div></div>
+    <div class="table-scroll"><table class="ab-summary"><thead><tr><th>聚合指标（成对运行）</th><th>关（full）</th><th>开（snapshot）</th><th>Δ 变化量</th></tr></thead><tbody id="abSummary"></tbody></table></div>
+    <div class="filters"><input id="abSearch" type="search" placeholder="搜索任务 id 或标题…" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);font-size:13px;min-width:260px;"></div>
+    <div class="table-scroll"><table class="runs-table"><thead><tr>
+      <th>评测任务</th><th>重复</th><th>通过<br>关 / 开</th><th>执行步骤<br>关 → 开</th><th>输入 Token<br>关 → 开</th><th>输出 Token<br>关 → 开</th><th>推理 Token<br>关 → 开</th><th>总 Token（入+出）<br>关 → 开</th><th>会话耗时<br>关 → 开</th><th>开臂读取快照</th><th>Δ 归因（估算）</th>
+    </tr></thead><tbody id="abBody"></tbody></table></div>
   </section>
 </main>
 <div id="detail"><article>
@@ -243,6 +334,9 @@ async function main(): Promise<void> {
 </article></div>
 <script>
 const DATA = ${JSON.stringify(reportDetails)};
+const HEADLINE = DATA.filter(d => d.arm === 'full');
+const ARM_LABEL = { full:'完整批注', 'text-only':'纯文本批注', oracle:'批注+定位提示', snapshot:'批注+页面快照' };
+const AB_ATTRIBUTION = ${JSON.stringify(abAttribution)};
 document.getElementById('model').textContent = ${JSON.stringify(modelLabels.length === 1 ? modelLabels[0] : `${modelLabels.length} 种（详见运行记录）`)};
 document.getElementById('runtime').textContent = ${JSON.stringify(runtimeLabels.length === 1 ? runtimeLabels[0] : `${runtimeLabels.length} 个（详见运行记录）`)};
 document.getElementById('generatedAt').textContent = new Date(${JSON.stringify(generatedAt)}).toLocaleString('zh-CN', { hour12:false });
@@ -256,8 +350,10 @@ const ATTRIBUTION = { 'not-modified':'未修改目标实现', localization:'源�
 const END_REASON = { completed:'执行完成', 'max-tokens':'达到生成长度限制', cancelled:'执行已取消', error:'执行错误' };
 const categories = [...new Set(DATA.map(d => d.category))].sort();
 const fixtures = [...new Set(DATA.map(d => d.fixture))].sort();
+const arms = [...new Set(DATA.map(d => d.arm))];
 for (const c of categories) { const o = document.createElement('option'); o.value = c; o.textContent = CATEGORY[c] ?? c; document.getElementById('fCategory').appendChild(o); }
 for (const f of fixtures) { const o = document.createElement('option'); o.value = f; o.textContent = f; document.getElementById('fFixture').appendChild(o); }
+for (const arm of arms) { const o = document.createElement('option'); o.value = arm; o.textContent = ARM_LABEL[arm] ?? arm; document.getElementById('fArm').appendChild(o); }
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const executionKey = d => d.experimentId ?? [d.taskId,d.arm,d.repetition,d.model?.provider,d.model?.model,d.model?.reasoningEffort ?? 'unknown',d.repoCommit,d.harnessCommit].join(':');
 const value = (n, digits) => n === undefined || Number.isNaN(n) ? '—' : n.toFixed(digits ?? 0);
@@ -274,19 +370,28 @@ const average = (rows, read) => rows.length ? rows.reduce((sum,row) => sum + (re
 const assertionSummary = rows => { const results=rows.flatMap(d=>d.grader?.results??[]); return { passed:results.filter(result=>result.ok).length, total:results.length }; };
 const aggregate = rows => ({ attempts:rows.length, passes:rows.filter(d => d.status === 'pass').length, assertions:assertionSummary(rows), steps:average(rows,d => d.process?.steps), tokens:average(rows,d => budgeted(d)), duration:average(rows,d => d.process?.durationMs===undefined?undefined:d.process.durationMs/1000) });
 const taskGroups = new Map();
-for (const d of DATA) { const group=taskGroups.get(d.taskId)??{sample:d,runs:[]}; group.runs.push(d); taskGroups.set(d.taskId,group); }
+for (const d of HEADLINE) { const group=taskGroups.get(d.taskId)??{sample:d,runs:[]}; group.runs.push(d); taskGroups.set(d.taskId,group); }
 const scenarioKind = d => d.category==='protocol-smoke'?'basic':'complex';
 const scenarioLabel = kind => kind==='basic'?'基础场景':'复杂场景';
 const statusBadge = status => '<span class="badge '+esc(status)+'">'+esc(STATUS[status]??status)+'</span>';
 const taskStatus = runs => runs.every(d=>d.status==='pass')?'pass':'fail';
-const summary=aggregate(DATA);
+const summary=aggregate(HEADLINE);
 const taskPassed=[...taskGroups.values()].filter(group=>taskStatus(group.runs)==='pass').length;
-const tokenWarnings=DATA.filter(tokenWarning).length;
+const tokenWarnings=HEADLINE.filter(tokenWarning).length;
 document.getElementById('summaryCards').innerHTML = [
   ['任务通过率',taskPassed+'/'+taskGroups.size],['运行通过率',summary.passes+'/'+summary.attempts],['验收项通过率',summary.assertions.passed+'/'+summary.assertions.total],
   ['Token 预警运行',String(tokenWarnings)],['平均 Agent 执行步骤',value(summary.steps,1)],['平均 Agent 会话耗时',value(summary.duration,1)+' 秒']
 ].map(item=>'<article class="summary-card"><div class="meta">'+esc(item[0])+'</div><div class="value">'+esc(item[1])+'</div></article>').join('');
-document.getElementById('coverageBody').innerHTML = ['basic','complex'].map(kind=>{const rows=DATA.filter(d=>scenarioKind(d)===kind);const tasks=new Set(rows.map(d=>d.taskId));const passed=rows.filter(d=>d.status==='pass').length;return '<tr><td>'+scenarioLabel(kind)+'</td><td>'+tasks.size+'</td><td>'+rows.length+'</td><td>'+passed+'/'+rows.length+'</td><td>'+statusBadge(passed===rows.length?'pass':'fail')+'</td></tr>';}).join('');
+document.getElementById('coverageBody').innerHTML = ['basic','complex'].map(kind=>{const rows=HEADLINE.filter(d=>scenarioKind(d)===kind);const tasks=new Set(rows.map(d=>d.taskId));const passed=rows.filter(d=>d.status==='pass').length;return '<tr><td>'+scenarioLabel(kind)+'</td><td>'+tasks.size+'</td><td>'+rows.length+'</td><td>'+passed+'/'+rows.length+'</td><td>'+statusBadge(passed===rows.length?'pass':'fail')+'</td></tr>';}).join('');
+function renderArms() {
+  document.getElementById('armBody').innerHTML = arms.map(arm => {
+    const rows = DATA.filter(d => d.arm === arm);
+    const stats = aggregate(rows);
+    const files = average(rows, d => d.process?.filesRead.length);
+    const calls = average(rows, d => Object.values(d.process?.toolCalls ?? {}).reduce((a,b)=>a+b,0));
+    return '<tr><td>' + esc(ARM_LABEL[arm] ?? arm) + '</td><td>' + rows.length + '</td><td>' + stats.passes + '/' + stats.attempts + '</td><td>' + value(stats.steps,1) + '</td><td>' + fmt(Math.round(stats.tokens ?? 0)) + '</td><td>' + value(stats.duration,1) + ' 秒</td><td>' + value(files,1) + '</td><td>' + value(calls,1) + '</td></tr>';
+  }).join('');
+}
 function renderTasks() {
   const kind=document.getElementById('tKind').value,status=document.getElementById('tStatus').value,difficulty=document.getElementById('tDifficulty').value;
   const rows=[...taskGroups.entries()].filter(([,group])=>(!kind||scenarioKind(group.sample)===kind)&&(!status||taskStatus(group.runs)===status)&&(!difficulty||group.sample.difficulty===difficulty));
@@ -301,12 +406,14 @@ function render() {
   const fCategory = document.getElementById('fCategory').value;
   const fDifficulty = document.getElementById('fDifficulty').value;
   const fFixture = document.getElementById('fFixture').value;
+  const fArm = document.getElementById('fArm').value;
   const fStatus = document.getElementById('fStatus').value;
   const fBudget = document.getElementById('fBudget').value;
   const rows = DATA.filter(d =>
     (!fCategory || d.category === fCategory) &&
     (!fDifficulty || d.difficulty === fDifficulty) &&
     (!fFixture || d.fixture === fFixture) &&
+    (!fArm || d.arm === fArm) &&
     (!fStatus || d.status === fStatus) &&
     (!fBudget || (fBudget === 'warning' ? tokenWarning(d) : !tokenWarning(d))));
   document.getElementById('tbody').innerHTML = rows.map(d => {
@@ -315,7 +422,7 @@ function render() {
     const usage = budgeted(d);
     const warning = tokenWarning(d);
     return '<tr class="row' + (warning ? ' token-warning' : '') + '" data-run-key="' + esc(runKey) + '">'
-      + '<td>' + esc(d.taskId) + '</td><td>' + esc(d.repetition) + '</td>'
+      + '<td>' + esc(d.taskId) + '</td><td>' + esc(d.repetition) + '</td><td>' + esc(ARM_LABEL[d.arm] ?? d.arm) + '</td>'
       + '<td class="task-description"><div class="task-summary"><strong>' + esc(d.title) + '</strong>' + esc(d.taskDescription.overview) + '</div></td>'
       + '<td>' + esc(CATEGORY[d.category] ?? d.category) + '</td><td>' + esc(DIFFICULTY[d.difficulty] ?? d.difficulty) + '</td><td>' + esc(d.fixture) + '</td>'
       + '<td><span class="badge ' + d.status + '">' + esc(STATUS[d.status] ?? d.status) + '</span></td>'
@@ -334,9 +441,10 @@ function wireCommands(root) { for (const button of root.querySelectorAll('.copy-
 document.getElementById('fCategory').onchange = render;
 document.getElementById('fDifficulty').onchange = render;
 document.getElementById('fFixture').onchange = render;
+document.getElementById('fArm').onchange = render;
 document.getElementById('fStatus').onchange = render;
 document.getElementById('fBudget').onchange = render;
-document.getElementById('fReset').onclick = () => { for (const id of ['fCategory','fDifficulty','fFixture','fStatus','fBudget']) document.getElementById(id).value=''; render(); };
+document.getElementById('fReset').onclick = () => { for (const id of ['fCategory','fDifficulty','fFixture','fArm','fStatus','fBudget']) document.getElementById(id).value=''; render(); };
 document.getElementById('tKind').onchange=renderTasks;
 document.getElementById('tStatus').onchange=renderTasks;
 document.getElementById('tDifficulty').onchange=renderTasks;
@@ -367,6 +475,7 @@ function openDetail(runKey, backTaskId) {
   document.getElementById('detailBody').innerHTML =
     (backTaskId ? '<p><button class="link-button" id="backToTask">← 返回任务结果</button></p>' : '') + '<h2>' + esc(d.taskId) + ' · ' + esc(d.title) + '</h2>'
     + '<p class="meta">' + esc(d.fixture) + ' / ' + esc(CATEGORY[d.category] ?? d.category) + ' / ' + esc(DIFFICULTY[d.difficulty] ?? d.difficulty)
+    + ' · ' + esc(ARM_LABEL[d.arm] ?? d.arm)
     + ' · <span class="badge ' + d.status + '">' + esc(STATUS[d.status] ?? d.status) + '</span>'
     + ' · ' + esc(message('第 {number} 次运行',{number:d.repetition})) + '</p>'
     + (d.status === 'pass' ? '' : '<p><strong>失败归因：</strong>' + esc(ATTRIBUTION[d.attribution] ?? d.attribution ?? '尚未归因') + '</p>')
@@ -401,7 +510,66 @@ function openDetail(runKey, backTaskId) {
 }
 document.getElementById('detail').addEventListener('click', e => { if (e.target === document.getElementById('detail')) document.getElementById('detail').classList.remove('open'); });
 for(const tab of document.querySelectorAll('.tab'))tab.addEventListener('click',()=>{for(const item of document.querySelectorAll('.tab'))item.classList.toggle('active',item===tab);for(const view of document.querySelectorAll('.view'))view.classList.toggle('active',view.id===tab.dataset.view+'View')});
-renderTasks(); render();
+const abPairs = (() => { const map = new Map(); for (const d of DATA) { if (d.arm !== 'full' && d.arm !== 'snapshot') continue; const k = d.taskId + ':' + d.repetition; const pair = map.get(k) ?? { sample: d, full: undefined, snapshot: undefined }; if (d.arm === 'full') pair.full = d; else pair.snapshot = d; map.set(k, pair); } return [...map.values()].filter(p => p.full !== undefined && p.snapshot !== undefined).sort((a, b) => (a.sample.taskId + ':' + a.sample.repetition).localeCompare(b.sample.taskId + ':' + b.sample.repetition)); })();
+document.getElementById('abCount').textContent = abPairs.length;
+const snapReadsOf = d => (d.process?.filesRead ?? []).filter(f => f.includes('dsh-web-review/snapshots')).map(f => f.split('/').slice(-2).join('/'));
+const fmtNum = n => String(Math.round(n));
+const fmtTok = n => fmt(Math.round(n));
+const fmtPct = n => n.toFixed(0) + '%';
+const fmtDur = n => n.toFixed(1) + ' 秒';
+const deltaCell = (a, b, fmtFn) => {
+  if (a === undefined || b === undefined || a === null || b === null) return '<span class="delta-flat">—</span>';
+  const diff = b - a;
+  if (diff === 0) return '<span class="delta-flat">±0</span>';
+  const sign = diff > 0 ? '+' : '';
+  const pct = a === 0 ? '' : ' (' + sign + (Math.abs(diff) / Math.abs(a) * 100).toFixed(1) + '%)';
+  return '<span class="delta ' + (diff > 0 ? 'delta-up' : 'delta-down') + '">Δ ' + sign + fmtFn(Math.abs(diff)) + pct + '</span>';
+};
+const abPairCell = (a, b, fmtFn) => '<div class="ab-cell">' + (a === undefined ? '—' : fmtFn(a)) + ' → ' + (b === undefined ? '—' : fmtFn(b)) + '<div class="delta-line">' + deltaCell(a, b, fmtFn) + '</div></div>';
+function abAggregate(runs) { const arr = runs.filter(Boolean); const avg = f => arr.length ? arr.reduce((s, d) => s + (f(d) ?? 0), 0) / arr.length : undefined; return { n: arr.length, pass: arr.filter(d => d.status === 'pass').length, passRate: arr.length ? arr.filter(d => d.status === 'pass').length / arr.length * 100 : undefined, steps: avg(d => d.process?.steps), in: avg(d => d.process?.tokens?.input), out: avg(d => d.process?.tokens?.output), reasoning: avg(d => d.process?.tokens?.reasoning), total: avg(d => budgeted(d)), dur: avg(d => d.process?.durationMs === undefined ? undefined : d.process.durationMs / 1000), reads: arr.filter(d => snapReadsOf(d).length > 0).length }; }
+function renderAb() {
+  const q = (document.getElementById('abSearch').value ?? '').toLowerCase();
+  const rows = abPairs.filter(p => !q || (p.sample.taskId + ' ' + p.sample.title).toLowerCase().includes(q));
+  const f = abAggregate(rows.map(p => p.full)); const s = abAggregate(rows.map(p => p.snapshot));
+  const line = (label, a, b, fmtFn) => '<tr><td>' + label + '</td><td>' + (a === undefined ? '—' : fmtFn(a)) + '</td><td>' + (b === undefined ? '—' : fmtFn(b)) + '</td><td class="ab-sep">' + deltaCell(a, b, fmtFn) + '</td></tr>';
+  document.getElementById('abSummary').innerHTML =
+    line('成对运行数（任务 × 重复）', f.n, s.n, fmtNum)
+    + line('通过率', f.passRate, s.passRate, fmtPct)
+    + line('平均执行步骤', f.steps, s.steps, fmtNum)
+    + line('平均输入 Token', f.in, s.in, fmtTok)
+    + line('平均输出 Token', f.out, s.out, fmtTok)
+    + line('平均推理 Token', f.reasoning, s.reasoning, fmtTok)
+    + line('平均总 Token（入 + 出）', f.total, s.total, fmtTok)
+    + line('平均会话耗时', f.dur, s.dur, fmtDur)
+    + line('开臂读取快照文件的运行', f.reads, s.reads, fmtNum);
+  document.getElementById('abBody').innerHTML = rows.map(p => {
+    const f0 = p.full, s0 = p.snapshot;
+    const ft = f0.process?.tokens, st = s0.process?.tokens;
+    return '<tr>'
+      + '<td>' + esc(p.sample.taskId) + '<div class="meta">' + esc(p.sample.title) + '</div></td>'
+      + '<td>' + esc(p.sample.repetition) + '</td>'
+      + '<td>' + statusBadge(f0.status) + '<br>' + statusBadge(s0.status) + '</td>'
+      + '<td>' + abPairCell(f0.process?.steps, s0.process?.steps, fmtNum) + '</td>'
+      + '<td>' + abPairCell(ft?.input, st?.input, fmtTok) + '</td>'
+      + '<td>' + abPairCell(ft?.output, st?.output, fmtTok) + '</td>'
+      + '<td>' + abPairCell(ft?.reasoning, st?.reasoning, fmtTok) + '</td>'
+      + '<td>' + abPairCell(budgeted(f0), budgeted(s0), fmtTok) + '</td>'
+      + '<td>' + abPairCell(f0.process?.durationMs === undefined ? undefined : f0.process.durationMs / 1000, s0.process?.durationMs === undefined ? undefined : s0.process.durationMs / 1000, fmtDur) + '</td>'
+      + '<td>' + (snapReadsOf(s0).map(esc).join('<br>') || '—') + '</td>'
+      + '<td>' + abAttributionCell(p) + '</td>'
+      + '</tr>';
+  }).join('');
+}
+function abAttributionCell(p) {
+  const key = p.sample.taskId + ':' + p.sample.repetition;
+  const a = AB_ATTRIBUTION[key];
+  if (!a) return '<span class="delta-flat">—</span>';
+  const readLines = a.reads.length ? a.reads.map(r => '读取 ' + esc(r.file) + ' ≈' + fmtTok(r.tokens) + ' tok（' + (r.bytes >= 1024 ? (r.bytes / 1024).toFixed(1) + 'KB' : r.bytes + 'B') + '）').join('<br>') : '未读取快照文件';
+  const behavior = '行为差异 其余输入 ≈' + fmtTok(a.residualInput) + ' tok · 输出 Δ ' + (a.outputDelta >= 0 ? '+' : '') + fmtTok(a.outputDelta) + ' · 推理 Δ ' + (a.reasoningDelta >= 0 ? '+' : '') + fmtTok(a.reasoningDelta);
+  return '<div class="ab-cell">指引 ≈' + fmtTok(a.guideTokens) + ' tok<br>' + readLines + '<br>' + behavior + '</div>';
+}
+document.getElementById('abSearch').addEventListener('input', renderAb);
+renderArms(); renderTasks(); render(); renderAb();
 </script>
 </body>
 </html>
@@ -411,6 +579,42 @@ renderTasks(); render();
   const out = join(outDir, 'report.html')
   writeFileSync(out, html)
   console.log(`report written: ${out} (${reportTaskIds.size} task(s), ${passedRuns}/${reportDetails.length} run(s) passing)`)
+  const persist = process.argv.includes('--persist')
+  if (persist) {
+    const measured = latestEligible?.repoCommit ?? 'unknown'
+    const archiveDir = join(REPO_ROOT, 'eval', 'reports', measured)
+    mkdirSync(archiveDir, { recursive: true })
+    writeFileSync(join(archiveDir, 'report.html'), html)
+    const armAggregates: Record<string, unknown> = {}
+    for (const arm of ['full', 'text-only', 'oracle', 'snapshot']) {
+      const rows = reportDetails.filter(record => record.arm === arm)
+      if (rows.length === 0) continue
+      const avg = (read: (record: RunRecord) => number | undefined): number => {
+        const total = rows.reduce((sum, record) => sum + (read(record) ?? 0), 0)
+        return Math.round((total / rows.length) * 10) / 10
+      }
+      armAggregates[arm] = {
+        runs: rows.length,
+        passes: rows.filter(record => record.status === 'pass').length,
+        avgSteps: avg(record => record.process?.steps),
+        avgInput: avg(record => record.process?.tokens?.input),
+        avgOutput: avg(record => record.process?.tokens?.output),
+        avgReasoning: avg(record => record.process?.tokens?.reasoning),
+        avgDurationMs: avg(record => record.process?.durationMs),
+        snapshotReads: rows.filter(record => (record.process?.filesRead ?? []).some(path => path.includes('dsh-web-review/snapshots'))).length,
+      }
+    }
+    writeFileSync(join(archiveDir, 'summary.json'), JSON.stringify({
+      format: 'dsh-web-review-eval-report',
+      generatedAt,
+      measuredRepoCommit: latestEligible?.repoCommit ?? 'unknown',
+      harnessCommit: latestEligible?.harnessCommit ?? 'unknown',
+      model: latestEligible === undefined ? undefined : { provider: latestEligible.model.provider, model: latestEligible.model.model, reasoningEffort: latestEligible.model.reasoningEffort },
+      headline: { taskCount: reportTaskIds.size, passedTasks, passedRuns, totalRuns: headlineDetails.length },
+      arms: armAggregates,
+    }, null, 2) + '\n')
+    console.log(`report archived: ${join(archiveDir, 'report.html')}`)
+  }
 }
 
 void main()

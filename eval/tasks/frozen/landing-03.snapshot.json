@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-77bbc6de-1d9b-4174-b77d-4e27f5dbcf5a",
+  "sessionId": "session-4a16af3c-a9f8-4f5a-9d6a-2f6a009b3079",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:51787/",
+    "url": "http://127.0.0.1:52002/",
     "title": "魔法 UI 演示页"
   },
   "comments": [
     {
-      "id": "f47bce15-7fd4-40de-a29b-0ba91e6d29b3",
+      "id": "89ef5b61-5ae9-42b4-83a3-7cbdaaabfacf",
       "comment": "把首页主标题的字号从 28px 加大到 32px",
       "tagName": "h1",
       "role": "heading",

@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-296c51ca-b77f-46d1-a369-5141516691f9",
+  "sessionId": "session-dce5cc22-0aa2-49f9-9149-b20607cf6316",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:53280/",
+    "url": "http://127.0.0.1:52040/",
     "title": "魔法 UI 演示页"
   },
   "comments": [
     {
-      "id": "7934b972-6ed2-4836-a546-526c7ca5e046",
+      "id": "5c2fa7ff-2388-48ab-8d3f-563635d3a9b0",
       "comment": "让首页宣传区的内容改为左对齐",
       "tagName": "h1",
       "role": "heading",

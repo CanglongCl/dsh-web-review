@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-63a94bb3-9e34-41e3-8536-63c2ab5dcbe7",
+  "sessionId": "session-1fc59882-1bd7-4638-a373-f0d108916d4c",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:62402/",
+    "url": "http://127.0.0.1:52631/",
     "title": "魔法商店"
   },
   "comments": [
     {
-      "id": "86ddbfe0-88ad-4f97-aaea-932c035a46b9",
+      "id": "ee6aea1b-8b99-4af1-a0c2-9edda2b3cc8f",
       "comment": "把价格文字的颜色改成 #e8590c",
       "tagName": "p",
       "role": "",

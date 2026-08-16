@@ -1,15 +1,15 @@
 {
-  "sessionId": "session-d4c7f5f3-d1d3-4f78-b728-9a51dbc88795",
+  "sessionId": "session-fdde7f85-39d8-4b9a-8480-780aee34f22f",
   "selectedSkills": [
     "better-accessibility"
   ],
   "page": {
-    "url": "http://127.0.0.1:63043/",
+    "url": "http://127.0.0.1:53073/",
     "title": "春季产品目录"
   },
   "comments": [
     {
-      "id": "6425fc6f-737c-4bcd-af68-6a071242d078",
+      "id": "b79535f9-3b8e-4d14-823f-54aefea8cb0d",
       "comment": "只有缺货商品的按钮文案改成“到货提醒”，其余三个商品按钮保持原样。",
       "tagName": "button",
       "role": "button",
@@ -33,7 +33,7 @@
       }
     },
     {
-      "id": "c95cbcaf-4abc-4bd3-8819-4221ef1a1e9e",
+      "id": "603d971a-eb27-4cc1-8605-1c166e54e5be",
       "comment": "所有商品价格都提升到 18px，不要改商品标题和描述字号。",
       "tagName": "strong",
       "role": "",
@@ -60,7 +60,7 @@
       }
     },
     {
-      "id": "999e3388-0182-4923-8678-0ff3969aa59b",
+      "id": "badf1b22-09b5-418f-bbb9-aed8c2245ecc",
       "comment": "这些心形按钮没有可访问名称。每张卡都按“收藏 + 商品名”补上 aria-label，图标继续对读屏隐藏。",
       "tagName": "span",
       "role": "",
@@ -79,7 +79,7 @@
       }
     },
     {
-      "id": "a3766624-00f4-4734-a625-d90513222f33",
+      "id": "2fa89a5b-f306-44c8-b5ff-3ea70eaa6fb5",
       "comment": "只给精选的第一张卡增加 2px 的 #7a5af8 边框，其他产品卡不变。",
       "tagName": "article",
       "role": "",
@@ -101,7 +101,7 @@
       }
     },
     {
-      "id": "b36e354e-8bbe-4348-91a6-68646974a341",
+      "id": "e2914520-11f0-4187-bdaf-d39957cea37c",
       "comment": "手机端一行只显示一张产品卡；桌面端仍然保持四列。",
       "tagName": "section",
       "role": "",

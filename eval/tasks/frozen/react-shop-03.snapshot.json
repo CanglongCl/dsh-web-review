@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-0b9ff1ec-0412-4ed9-b551-2d36bdd764fd",
+  "sessionId": "session-c971d786-da99-4610-a4b3-057fa98761b2",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:62758/",
+    "url": "http://127.0.0.1:52717/",
     "title": "魔法商店"
   },
   "comments": [
     {
-      "id": "de1c4f80-30d6-4697-8772-e09df3024207",
+      "id": "c59db431-1bae-4610-8b4e-63fdd470bd05",
       "comment": "加大商品卡片之间的间距",
       "tagName": "main",
       "role": "",

@@ -286,6 +286,7 @@ function renderView(
   returnToChat = vi.fn(),
   uploadPageSnapshot: WebviewSlotProps['uploadPageSnapshot'] = successfulUpload() as unknown as WebviewSlotProps['uploadPageSnapshot'],
   useInput?: WebviewSlotProps['useInput'],
+  snapshotsEnabled = true,
 ) {
   const store = createWebviewStore().create()
   const session = sessionSource()
@@ -304,6 +305,7 @@ function renderView(
       frameOrigin,
       frameUrl: `${frameOrigin}${PREVIEW_ENTRY_PREFIX}${encodeTarget(target)}`,
       targetOrigin: new URL(target).origin,
+      snapshotsEnabled,
     }
     activeDescriptor = descriptor
     return {
@@ -748,6 +750,28 @@ describe('WebviewView', () => {
     act(() => { bridge.ready() })
     act(() => { store.actions.requestSnapshot() })
     expect(bridge.commandNames()).toContain('capture-snapshot')
+  })
+
+  it('never captures when the session descriptor disables snapshots', async () => {
+    const upload = successfulUpload()
+    const store = renderView(
+      vi.fn(async () => {}), 'apply this', vi.fn(), 'plain', vi.fn(), upload, undefined, false,
+    )
+    act(() => {
+      store.actions.setUrl('http://localhost:5173/')
+      store.actions.addPick(pick('p1', 'Apply me'))
+      store.actions.setAnnotationSync({ status: 'ready', snapshotId: AnnotationSnapshotId('snap-off-1') })
+      store.actions.togglePickMode()
+    })
+    const bridge = installFrameBridge()
+    act(() => { bridge.ready() })
+    act(() => { store.actions.requestSnapshot() })
+    expect(bridge.commandNames()).not.toContain('capture-snapshot')
+    expect(upload).not.toHaveBeenCalled()
+    expect(store.getSnapshot().snapshotSync).toEqual({ status: 'idle' })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '发送 1' })) })
+    expect(bridge.commandNames()).not.toContain('capture-snapshot')
+    expect(upload).not.toHaveBeenCalled()
   })
 
   it('dedupes the capture across the awaited send and a follow-up dock request', async () => {

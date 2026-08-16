@@ -98,7 +98,11 @@ function sessionOrigin(id: PreviewSessionId, port: number): string {
   return `http://${id}.localhost:${String(port)}`
 }
 
-function descriptorOf(session: PreviewSession, port: number): PreviewSessionDescriptor {
+function descriptorOf(
+  session: PreviewSession,
+  port: number,
+  snapshotsEnabled: boolean,
+): PreviewSessionDescriptor {
   const frameOrigin = sessionOrigin(session.id, port)
   return {
     sessionId: session.id,
@@ -106,6 +110,7 @@ function descriptorOf(session: PreviewSession, port: number): PreviewSessionDesc
     frameUrl: `${frameOrigin}${PREVIEW_ENTRY_PREFIX}${encodeTarget(session.initialTarget)}`,
     targetOrigin: session.targetOrigin,
     channel: session.channel,
+    snapshotsEnabled,
   }
 }
 
@@ -273,8 +278,15 @@ function noStoreHeaders(extra: Record<string, string> = {}): Record<string, stri
   }
 }
 
-/** Start the independent loopback listener after the bridge artifact is built. */
-export async function startIsolatedPreviewServer(bridgeSource: string): Promise<IsolatedPreviewServer> {
+/**
+ * Start the independent loopback listener after the bridge artifact is built.
+ * @param bridgeSource - compiled bridge artifact served into every frame.
+ * @param snapshotsEnabled - deployment switch stamped onto every descriptor.
+ */
+export async function startIsolatedPreviewServer(
+  bridgeSource: string,
+  snapshotsEnabled: boolean,
+): Promise<IsolatedPreviewServer> {
   const sessions = new Map<PreviewSessionId, PreviewSession>()
   const sockets = new Set<Socket>()
   let port = 0
@@ -303,7 +315,7 @@ export async function startIsolatedPreviewServer(bridgeSource: string): Promise<
       handoffDepth,
     }
     sessions.set(id, session)
-    return descriptorOf(session, port)
+    return descriptorOf(session, port, snapshotsEnabled)
   }
 
   const sessionFor = (req: IncomingMessage): PreviewSession | undefined => {

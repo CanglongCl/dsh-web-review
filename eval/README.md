@@ -37,14 +37,14 @@ pnpm eval:smoke [-- --capture]
 DSH_HARNESS=<abs harness root> pnpm eval:verify-headline-captures
 
 # Full run (real model): filter by task/category/difficulty/fixture,
-# 4-6-way concurrency, resumable via eval/results/results.jsonl
+# 4-6-way concurrency, resumable via .artifacts/eval-results/results.jsonl
 DSH_HARNESS=<abs harness root> pnpm eval:run [-- --task react-operations-01 --arm all --repeat 3 --concurrency 3]
 
 # Published production DSH instead of a Harness source checkout
 pnpm eval:run -- --dsh-cli /opt/homebrew/bin/dsh --task react-operations-01 --arm all --repeat 3
 
-# Single-file HTML report with per-task process detail
-pnpm eval:report
+# Single-file HTML report with per-task process detail + A/B comparison view
+pnpm eval:report [-- --persist]
 
 # Open one harvested transcript in the published DSH Web conversation UI.
 # The input can be a run directory or its session.jsonl. Close the browser
@@ -56,6 +56,29 @@ pnpm eval:view .artifacts/eval-runs/run-<uuid>
 pnpm eval:regrade [-- react-operations-01 static-catalog-01]
 pnpm eval:report
 ```
+
+## Report archive (versioned reports)
+
+`pnpm eval:report -- --persist` additionally writes the report into the
+committed archive keyed by the measured repo commit:
+
+```
+eval/reports/<repoCommit>/
+  report.html    # single-file HTML (A/B tab included)
+  summary.json   # machine-readable aggregates per arm + model/commit metadata
+```
+
+The archive directory name is the `repoCommit` the eval runs measured
+(`git rev-parse HEAD` at batch start), so every archived report is traceable
+to the exact code state that produced it; `executionRevision` in the run
+records still distinguishes uncommitted working-tree changes. Live run data
+lives under `.artifacts/eval-results/` (gitignored) and is the only mutable
+state; archived reports are immutable snapshots. To open an archived report,
+serve `eval/reports/<commit>` over any static HTTP server.
+
+Archived reports committed so far:
+
+- `eval/reports/` — populated by `pnpm eval:report -- --persist` after a run.
 
 Model defaults: `deepseek-official` / `deepseek-v4-flash` / reasoning `high`;
 override with `EVAL_PROVIDER`, `EVAL_MODEL`, `EVAL_REASONING` or the
@@ -71,6 +94,25 @@ load time: their duplicated `instruction` is ignored, while their real frozen
 snapshot becomes a generic-prompt round. The smoke gate also validates every
 snapshot with the production parser and checks fixture revision, comment order,
 and selected skills before grading.
+
+The `snapshot` arm is the pageSnapshotEnabled on/off A/B and is available for
+EVERY task with frozen captures: it keeps the full production context and
+additionally injects the production-identical page snapshot guide
+(`agent.inject` ordering) pointing at a per-run staged archive with the real
+frozen `page.html`, `page.png`, and `manifest.json`. The capture tool
+freezes those page artifacts (cleaned HTML tree + full-page screenshot)
+alongside each snapshot. Compare it against `full` (off): the report's arm
+comparison table aggregates passes, steps, tokens, duration, files read, and
+tool calls per arm, and each run detail lists the model's explicit reads and
+tool-call mix.
+
+```sh
+# A/B: snapshot off (full) vs on (snapshot) across the whole bank, interleaved
+DSH_HARNESS=<abs harness root> pnpm eval:run -- --arm full,snapshot --repeat 3
+
+# One task, one arm, three repeats
+DSH_HARNESS=<abs harness root> pnpm eval:run -- --task react-todo-01 --arm snapshot --repeat 3
+```
 
 The Full/Text-only comparison is blinded at the model boundary: both primary
 messages use the production plugin source and `# Browser comments` heading,

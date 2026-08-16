@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-9ab6f401-a302-4118-9894-a3e5bb53910c",
+  "sessionId": "session-72214d83-b95f-4b2d-b764-15efce0167a4",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:64589/",
+    "url": "http://127.0.0.1:51845/",
     "title": "用户信息表单"
   },
   "comments": [
     {
-      "id": "1bc9579e-c2fe-4bf6-bb65-cde30694a6c5",
+      "id": "d7e84f7f-7cbf-4695-8a86-cf5746536e58",
       "comment": "让表单容器水平居中并限制最大宽度为 480px",
       "tagName": "input",
       "role": "textbox",

@@ -20,9 +20,9 @@ playwright-report/
 .DS_Store
 .artifacts/
 
-# Eval suite artifacts (question bank and scripts are committed; outputs are not)
+# Eval suite artifacts (question bank, frozen captures, and committed report
+# archives under eval/reports/ are versioned; live run outputs are not)
 eval/fixtures/node_modules/
-eval/results/
 
 # Vite dep-optimizer cache inside fixture/workspace copies
 eval/fixtures/**/.vite/

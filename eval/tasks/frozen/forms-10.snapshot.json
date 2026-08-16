@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-2b98eb37-9d27-4345-8243-42db822f2354",
+  "sessionId": "session-b0482c91-be15-4dbe-83ae-ec1074a54884",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:64843/",
+    "url": "http://127.0.0.1:51944/",
     "title": "用户信息表单"
   },
   "comments": [
     {
-      "id": "387e1e95-0402-4e76-b750-0db4bf127341",
+      "id": "16d6b69e-9a2c-4ba6-b046-241b0f75253e",
       "comment": "把所有输入框的圆角统一改成 8px",
       "tagName": "input",
       "role": "textbox",

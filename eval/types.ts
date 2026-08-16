@@ -22,8 +22,13 @@ export type LegacyFrontendCategory =
 
 export type Difficulty = 'easy' | 'medium' | 'hard' | 'long'
 
-/** One controlled context condition for a plugin capability comparison. */
-export type EvalArm = 'full' | 'text-only' | 'oracle'
+/**
+ * One controlled context condition for a plugin capability comparison.
+ * 'snapshot' = full production context plus the archived page snapshot guide
+ * (staged real page.html/page.png/manifest.json) — the pageSnapshotEnabled
+ * on/off A/B arm; available for every task with a frozen snapshot.
+ */
+export type EvalArm = 'full' | 'text-only' | 'oracle' | 'snapshot'
 
 /** One inspector edit driven through the real property controls at capture time. */
 export interface AdjustAction {

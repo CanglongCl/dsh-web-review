@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-f8a09fd2-ec43-41a4-b2f8-870e9f88aabe",
+  "sessionId": "session-e30bd6c3-6885-4beb-9c33-844aa71f3bce",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:64797/",
+    "url": "http://127.0.0.1:51921/",
     "title": "用户信息表单"
   },
   "comments": [
     {
-      "id": "f2c6fd36-eea3-46c4-92ae-65694488cdbd",
+      "id": "ef71fdac-0881-4e86-99e1-403153790690",
       "comment": "把表单标签的字号加大到 15px 并加粗到 600",
       "tagName": "label",
       "role": "",

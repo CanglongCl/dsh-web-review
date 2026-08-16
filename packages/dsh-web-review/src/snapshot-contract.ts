@@ -17,14 +17,10 @@ export const MAX_SNAPSHOT_HTML = 4 * 1024 * 1024
 export const MAX_SNAPSHOT_PNG = 2 * 1024 * 1024
 /** Number of newest snapshot directories retained under the archive root. */
 export const SNAPSHOT_RETENTION = 20
-/** Name of the pointer file naming the newest snapshot directory. */
-export const SNAPSHOT_LATEST = 'latest.json'
 /** Manifest commit marker (written last; presence = complete archive). */
 export const SNAPSHOT_MANIFEST = 'manifest.json'
 /** Marker appended by the frame when the HTML tree exceeded the cap. */
 export const SNAPSHOT_HTML_TRUNCATION_MARKER = '<!-- dsh-web-review: html truncated at'
-/** Freshness window deciding exact-directory vs latest-pointer guide text. */
-export const SNAPSHOT_FRESH_WINDOW_MS = 15_000
 
 export const SNAPSHOT_LIMITS = {
   sessionId: 512,
@@ -114,19 +110,3 @@ export interface SnapshotManifest {
     | { error: string }
 }
 
-/** Durable latest.json pointer shape naming the newest archived directory. */
-export interface SnapshotLatestPointer {
-  dir: string
-  capturedAt: string
-  page: { url: string; title: string }
-}
-
-/** Per-agent in-memory record of the newest durable snapshot. */
-export interface SnapshotArchiveRecord {
-  snapshotId: PageSnapshotId
-  dir: string
-  capturedAt: number
-}
-
-/** Per-agent map consumed by the annotation pre-step guide block. */
-export type SnapshotArchiveState = Map<import('@deepseek-ai/dsh-session/types').SessionId, SnapshotArchiveRecord>

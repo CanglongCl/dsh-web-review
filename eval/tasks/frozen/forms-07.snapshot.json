@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-c31013c9-f565-42a2-8cbe-1e857162834e",
+  "sessionId": "session-cd254658-7ed0-4fe4-8e5b-349143b71f68",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:64711/",
+    "url": "http://127.0.0.1:51883/",
     "title": "用户信息表单"
   },
   "comments": [
     {
-      "id": "cd3868ac-d17a-4b40-bcf9-5853cb0b8a7c",
+      "id": "6c3a0740-2623-4ac9-b0ee-d8e87052722b",
       "comment": "把邮箱错误提示文案改成“请填写有效的邮箱地址”",
       "tagName": "div",
       "role": "",

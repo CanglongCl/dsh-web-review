@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-3b90c161-1fe5-4919-a46d-48ddf417dceb",
+  "sessionId": "session-d33bf26e-5ea8-4613-b648-f9784b084b21",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:60744/",
+    "url": "http://127.0.0.1:52503/",
     "title": "个人主页"
   },
   "comments": [
     {
-      "id": "2ffdb8b0-f288-4c7a-a57c-1b36d6572476",
+      "id": "eaee7435-2ea8-470c-a152-81eaaa5319d5",
       "comment": "把头像尺寸改成 96px",
       "tagName": "img",
       "role": "img",

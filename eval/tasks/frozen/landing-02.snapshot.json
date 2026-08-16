@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-ec02e0c0-d45b-4948-bc5c-92de4a40735c",
+  "sessionId": "session-0fa6be45-264d-44be-bb39-0325d7fb8849",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:51704/",
+    "url": "http://127.0.0.1:51982/",
     "title": "魔法 UI 演示页"
   },
   "comments": [
     {
-      "id": "41505928-88ef-4dc5-ba81-01343a5eff0d",
+      "id": "e45830d5-d82c-4a5a-b512-89371681f107",
       "comment": "把第三个卡片里的“了解更多”按钮文案改成“查看详情”",
       "tagName": "button",
       "role": "button",

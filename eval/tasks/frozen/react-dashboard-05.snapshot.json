@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-639525bf-207c-4288-8144-a75a1785be5b",
+  "sessionId": "session-671a00f8-4ee6-4526-a5c8-a70d75cac264",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:64717/",
+    "url": "http://127.0.0.1:52329/",
     "title": "数据看板"
   },
   "comments": [
     {
-      "id": "89874272-b047-40d0-bac3-66851acfee34",
+      "id": "1d34709e-9de2-4baf-a3f3-cfb51da0a0f7",
       "comment": "给统计卡片加上更明显的阴影",
       "tagName": "div",
       "role": "",
