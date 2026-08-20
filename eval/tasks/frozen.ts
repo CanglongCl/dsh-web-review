@@ -7,13 +7,18 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { CaptureMeta, FrozenSnapshot } from '../types.ts'
 
+/** Stable artifact stem for one round (round one keeps the legacy names). */
+export function frozenStem(taskId: string, round: number): string {
+  return round === 1 ? taskId : `${taskId}.round-${round}`
+}
+
 /** Load one round, accepting the original single-round file names for round one. */
 export function loadFrozenRound(taskId: string, round: number, moduleUrl: string): {
   snapshot: FrozenSnapshot | undefined
   captureMeta: CaptureMeta | undefined
 } {
   const here = dirname(fileURLToPath(moduleUrl))
-  const stem = round === 1 ? taskId : `${taskId}.round-${round}`
+  const stem = frozenStem(taskId, round)
   const snapshotPath = join(here, 'frozen', `${stem}.snapshot.json`)
   const metaPath = join(here, 'frozen', `${stem}.meta.json`)
   if (!existsSync(snapshotPath) || !existsSync(metaPath)) {

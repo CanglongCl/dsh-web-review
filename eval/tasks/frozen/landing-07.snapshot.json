@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-996b2a06-219a-4f00-9300-a0cd9ac5919c",
+  "sessionId": "session-270492ff-1474-4cdd-bd80-486dd4e2b48c",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:51831/",
+    "url": "http://127.0.0.1:52081/",
     "title": "魔法 UI 演示页"
   },
   "comments": [
     {
-      "id": "4c02d5b7-a238-4781-a92b-3a9293088dfa",
+      "id": "e563e6cd-9307-44ec-8ad1-5fdf00f09c76",
       "comment": "把“取消”按钮的背景改成浅灰色 #d7dbe0",
       "tagName": "button",
       "role": "button",

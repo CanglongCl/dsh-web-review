@@ -463,7 +463,7 @@ export async function attachPendingAnnotationContext(
     presentation: pending.presentation,
   }
   const annotation = createUserMessage({
-    // Public rc.6 predates merge-extensible Context forms; the reviewed
+    // Public rc.8 supports merge-extensible Context forms; the reviewed
     // Harness source validates this exact augmentation directly.
     source: annotationSource as unknown as UserMessage['source'],
     content: [{ type: 'text', text: pending.context }],

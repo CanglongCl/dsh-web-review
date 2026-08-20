@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-34ad9c8c-4aa0-46ea-9647-b361bfda1693",
+  "sessionId": "session-bd94d182-190a-433d-9789-d3d40f051c10",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:63070/",
+    "url": "http://127.0.0.1:52759/",
     "title": "魔法商店"
   },
   "comments": [
     {
-      "id": "8a8ebe3a-fa3f-4944-845c-22c2be98a920",
+      "id": "8d94861d-1868-40a8-b339-04d7915dbacb",
       "comment": "把商品网格改成每行三列",
       "tagName": "main",
       "role": "",

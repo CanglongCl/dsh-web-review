@@ -14,6 +14,7 @@
     "src/browser-comments-context.ts",
     "src/preview-contract.ts",
     "src/proxy-url.ts",
+    "src/snapshot-contract.ts",
     "src/ui-skills.ts"
   ]
 }

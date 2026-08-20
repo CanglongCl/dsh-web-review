@@ -10,7 +10,8 @@ import {
   IconQueueOutline14,
   IconWarningOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
+import type { BakedActions, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ConversationNode } from '@deepseek-ai/dsh-client-runtime/client'
 import {
   annotationSnapshotIdOfSource,
@@ -19,7 +20,7 @@ import {
 } from '../annotation-contract.ts'
 import { annotationDraft } from './annotation-snapshot.ts'
 import type { ElementSnapshot, PickItem } from './contract.ts'
-import type { WebviewStore } from './stores.ts'
+import type { WebviewActions, WebviewState } from './stores.ts'
 import { elementLabel } from './element-label.ts'
 import { previewHrefFromClick } from './preview-link.ts'
 import css from './DraftOverlayBar.module.css'
@@ -30,12 +31,23 @@ export interface WebviewDockInjected {
   openPreview: (url: string) => void
 }
 
-/** Full composed props: dock runtime + shared store + locale + inject. */
+/**
+ * The engine share delivered through the inject face (see WebviewStoreShare
+ * in WebviewView.tsx): the bare observable source bound into the
+ * `useWebviewStore` selector hook plus the baked write set. The store seat
+ * is deliberately not used — the dock, the conversation view, and the
+ * sidebar tab share one plugin-owned per-session engine.
+ */
+export interface WebviewDockStoreShare {
+  hooks: { webviewStore: ObservableSnapshot<WebviewState> }
+  actions: BakedActions<WebviewState, WebviewActions>
+}
+
+/** Full composed props: dock runtime + engine share (inject) + locale + inject. */
 export type WebviewDockProps =
   & PropsRuntime<'conversation.input.dock'>
-  & PropsStore<WebviewStore>
+  & InjectFace<WebviewDockInjected & WebviewDockStoreShare>
   & PropsLocale<'webview'>
-  & WebviewDockInjected
 
 function kindOf(snapshot: ElementSnapshot): string {
   return snapshot.role.trim() || snapshot.tagName.trim() || 'element'
@@ -57,11 +69,15 @@ function annotationContextId(node: ConversationNode): ReturnType<typeof annotati
 }
 
 /** Annotation composer capsule and hover/focus detail card. */
-export function DraftOverlayBar({ useStore, useSession, actions, syncAnnotations, openPreview, t }: WebviewDockProps) {
-  const state = useStore((s) => s)
+export function DraftOverlayBar({ useWebviewStore, useSession, actions, syncAnnotations, openPreview, t }: WebviewDockProps) {
+  const state = useWebviewStore((s) => s)
   const latestAnnotationContextId = useSession((session) => {
     const node = session.nodes.findLast(candidate => annotationContextId(candidate) !== undefined)
     return node === undefined ? undefined : annotationContextId(node)
+  })
+  const lastUserMessageSeq = useSession((session) => {
+    const node = session.nodes.findLast(candidate => candidate.kind === 'user')
+    return node === undefined ? undefined : node.seq
   })
   const [open, setOpen] = useState(false)
   const [retry, setRetry] = useState(0)
@@ -73,6 +89,24 @@ export function DraftOverlayBar({ useStore, useSession, actions, syncAnnotations
   tRef.current = t
   const openPreviewRef = useRef(openPreview)
   openPreviewRef.current = openPreview
+  // The input machine's submit phases can complete inside one React batch, so
+  // no render-time edge observes them. The dock watches the session's user
+  // message node instead: a NEW user node while annotations are pending asks
+  // the Preview view to archive the page (stock-composer annotated sends).
+  // Declared before the capsule-acknowledgement effect so it reads the picks
+  // before a same-batch acknowledgement clears them.
+  const seenUserSeqRef = useRef<number | undefined>(undefined)
+  const userSeqInitializedRef = useRef(false)
+  useEffect(() => {
+    if (!userSeqInitializedRef.current) {
+      userSeqInitializedRef.current = true
+      seenUserSeqRef.current = lastUserMessageSeq
+      return
+    }
+    if (lastUserMessageSeq === undefined || lastUserMessageSeq === seenUserSeqRef.current) return
+    seenUserSeqRef.current = lastUserMessageSeq
+    if (state.picks.length > 0) actions.requestSnapshot()
+  }, [lastUserMessageSeq, state.picks.length, actions])
 
   // The dock entry stays mounted even while it renders no annotation chrome,
   // so it owns the session-wide assistant-link delegation. The browser's

@@ -3,6 +3,9 @@
  * Fixed sleeps are deliberately absent: the composer capsule's ready state
  * is the browser-visible host acknowledgement boundary.
  */
+import { readFile, readdir } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 import type { Browser, FrameLocator, Page } from 'playwright'
 import {
@@ -92,13 +95,58 @@ async function sendViaComposer(page: Page, text: string): Promise<void> {
 }
 
 async function openLastContext(page: Page): Promise<import('playwright').Locator> {
-  const rows = page.locator('[data-chat-flow-kind="context"]').filter({ hasText: 'Page comments' })
+  // rc.8 renders injected context through the harness's ContextInjectionRow:
+  // an expandable fold row whose opaque body shows the model-facing content
+  // verbatim (our browser-comments source has no dedicated form arm).
+  const rows = page.locator('[data-chat-flow-kind="context"]').filter({ hasText: '# Browser comments' })
   await expect.poll(async () => rows.count(), { timeout: 30_000 }).toBeGreaterThan(0)
   const row = rows.last()
-  await row.getByText('Page comments', { exact: true }).click()
-  const body = row.locator('[data-browser-comments-context]')
+  await clickWhenStable(page, row)
+  const body = row.locator('[data-context-injection-body]')
   await body.waitFor({ timeout: 10_000 })
   return body
+}
+
+const SNAPSHOT_BASE = join(tmpdir(), 'dsh-web-review', 'snapshots')
+
+async function snapshotDirs(): Promise<string[]> {
+  try {
+    const entries = await readdir(SNAPSHOT_BASE, { withFileTypes: true })
+    return entries.filter(entry => entry.isDirectory()).map(entry => entry.name)
+  } catch {
+    return []
+  }
+}
+
+async function waitForNewSnapshotDir(before: readonly string[]): Promise<string> {
+  let newest = ''
+  await expect.poll(
+    async () => {
+      const current = await snapshotDirs()
+      newest = current.find(name => !before.includes(name)) ?? ''
+      return newest
+    },
+    { timeout: 20_000, message: 'annotated send should archive a new page snapshot directory' },
+  ).not.toBe('')
+  return newest
+}
+
+async function assertSnapshotFiles(dir: string): Promise<void> {
+  const manifest = JSON.parse(await readFile(join(dir, 'manifest.json'), 'utf8')) as {
+    page: { url: string; title: string }
+    html: { file: string; bytes: number }
+    screenshot: { file: string } | { error: string }
+  }
+  expect(manifest.page.title).toBe('魔法 UI 演示页')
+  expect(manifest.page.url.startsWith(services.demoUrl)).toBe(true)
+  const html = await readFile(join(dir, 'page.html'), 'utf8')
+  expect(html).toContain('魔法 UI 演示页')
+  if (!('file' in manifest.screenshot)) {
+    throw new Error('expected a screenshot file in the demo page snapshot')
+  }
+  const png = await readFile(join(dir, manifest.screenshot.file))
+  expect(png.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  expect(png.length).toBeGreaterThan(0)
 }
 
 describe('dsh-web-review e2e', () => {
@@ -407,9 +455,9 @@ describe('dsh-web-review e2e', () => {
     await clickWhenStable(page, page.getByRole('tab', { name: 'Chat' }))
     const skillSources = page.locator('[data-context-source]:visible').filter({ hasText: 'better-writing' })
     await expect.poll(async () => skillSources.count(), { timeout: 30_000 }).toBeGreaterThan(0)
-    const firstCommentsRow = page.locator('[data-chat-flow-kind="context"]').filter({ hasText: 'Page comments' }).first()
-    await firstCommentsRow.getByText('Page comments', { exact: true }).click()
-    expect(await firstCommentsRow.locator('[data-browser-comments-context]').textContent())
+    const firstCommentsRow = page.locator('[data-chat-flow-kind="context"]').filter({ hasText: '# Browser comments' }).first()
+    await clickWhenStable(page, firstCommentsRow)
+    expect(await firstCommentsRow.locator('[data-context-injection-body]').textContent())
       .toContain('Apply the selected writing guidance.')
     await page.close()
   })
@@ -675,11 +723,11 @@ describe('dsh-web-review e2e', () => {
     await clickWhenStable(page, page.getByRole('tab', { name: 'Chat' }))
     const contextText = await (await openLastContext(page)).textContent()
     expect(contextText).toContain('Use the reviewed heading treatment.')
-    expect(contextText).toContain('colorrgb(255, 255, 255)→#613838')
-    expect(contextText).toContain(`width${original.width}→auto`)
-    expect(contextText).toContain('Text魔法 UI 演示页→Reviewed magic UI')
-    expect(contextText).not.toContain('Visible viewport at edit time:')
-    expect(contextText).not.toContain('font-size24px')
+    expect(contextText).toContain('- color: rgb(255, 255, 255) -> #613838')
+    expect(contextText).toContain(`- width: ${original.width} -> auto`)
+    expect(contextText).toContain('- text: "魔法 UI 演示页" -> "Reviewed magic UI"')
+    expect(contextText).toContain('Visible viewport at edit time:')
+    expect(contextText).not.toContain('font-size')
     await page.close()
   })
 
@@ -717,7 +765,16 @@ describe('dsh-web-review e2e', () => {
     const frame = await loadDemoPage(page)
     await annotate(page, frame, 'button.btn-primary', 'Make the button color darker.')
     await waitForAnnotationSync(page)
+    const snapshotBefore = await snapshotDirs()
     await sendViaComposer(page, 'apply')
+    // The Preview tab stays mounted for stock sends, so the archive status
+    // line is the browser-visible acknowledgement boundary; the files land
+    // under the OS temp archive root.
+    await expect.poll(
+      async () => page.locator('[data-webview-snapshot-status="saved"]').count(),
+      { timeout: 20_000, message: 'annotated stock send should archive the page snapshot' },
+    ).toBeGreaterThan(0)
+    await assertSnapshotFiles(join(SNAPSHOT_BASE, await waitForNewSnapshotDir(snapshotBefore)))
     await expect.poll(
       async () => page.locator('[data-webview-annotations]').count(),
       { timeout: 30_000, message: 'accepted user prompt should consume the prepared annotation capsule' },
@@ -763,16 +820,21 @@ describe('dsh-web-review e2e', () => {
       async () => page.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
       { message: 'annotation send should activate Chat' },
     ).toBe('true')
+    // The running turn swaps the composer placeholder (steer-queue hint), so
+    // the cleared draft is asserted through the stable seat textarea instead.
+    await expect.poll(
+      async () => page.locator('[data-composer-seat] textarea').inputValue(),
+      { timeout: 10_000, message: 'dedicated send should clear the composer draft' },
+    ).toBe('')
     await expect.poll(
       async () => page.locator('[data-webview-annotation-toolbar]').count(),
       { timeout: 15_000, message: 'successful dedicated send should exit annotation mode' },
     ).toBe(0)
-    expect(await composer.inputValue()).toBe('')
-
-    const user = page.locator('[data-chat-flow-kind="user"]')
-      .filter({ hasText: 'apply this annotated draft' }).last()
-    await user.waitFor({ timeout: 30_000 })
-    expect(await user.textContent()).toContain('apply this annotated draft')
+    // The annotated batch entered a turn: its Page comments context row is the
+    // deterministic proof (a raw user row can stay queued while the probe turn
+    // is still running, so it is not asserted here).
+    const contextText = await (await openLastContext(page)).textContent()
+    expect(contextText).toContain('Make the button color darker.')
     await page.close()
   })
 
@@ -790,10 +852,11 @@ describe('dsh-web-review e2e', () => {
       async () => page.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
       { message: 'annotation send should activate Chat' },
     ).toBe('true')
-    const user = page.locator('[data-chat-flow-kind="user"]')
-      .filter({ hasText: 'Please apply the page comments to the frontend implementation.' }).last()
-    await user.waitFor({ timeout: 30_000 })
-    expect(await user.textContent()).toContain('Please apply the page comments to the frontend implementation.')
+    // The fallback request entered a turn: the Page comments context row is
+    // the deterministic proof (a raw user row can stay queued while the probe
+    // turn is still running, so it is not asserted here).
+    const contextText = await (await openLastContext(page)).textContent()
+    expect(contextText).toContain('Make the button color darker.')
     await page.close()
   })
 
@@ -814,6 +877,53 @@ describe('dsh-web-review e2e', () => {
     await clickWhenStable(page, page.getByRole('tab', { name: 'Chat' }))
     expect(await page.locator('[data-chat-flow-kind="user"]').filter({ hasText: 'apply' }).last().textContent())
       .not.toContain('# Browser comments')
+    await page.close()
+  })
+
+  it('archives the page snapshot with an annotated toolbar send', async () => {
+    const page = await newPage(browser)
+    onTestFailed(() => saveFailureShot(page, 'annotation-snapshot-toolbar-send'))
+    await bootWithPanel(page, 'annotation-snapshot-toolbar-send')
+    const frame = await loadDemoPage(page)
+    await annotate(page, frame, 'button.btn-primary', 'Make the button color darker.')
+    await waitForAnnotationSync(page)
+
+    const snapshotBefore = await snapshotDirs()
+    const composer = page.getByPlaceholder('Message the agent')
+    await composer.fill('apply this annotated draft')
+    await page.getByRole('button', { name: 'Send 1' }).click()
+    // Read the cleared draft immediately (the running turn later swaps the
+    // composer placeholder); the dedicated send awaited its capture BEFORE
+    // submitting, so the archive already exists when the tab flips.
+    await expect.poll(
+      async () => page.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
+      { message: 'annotation send should activate Chat' },
+    ).toBe('true')
+    // The running turn swaps the composer placeholder (steer-queue hint), so
+    // the cleared draft is asserted through the stable seat textarea instead.
+    await expect.poll(
+      async () => page.locator('[data-composer-seat] textarea').inputValue(),
+      { timeout: 10_000, message: 'dedicated send should clear the composer draft' },
+    ).toBe('')
+    await assertSnapshotFiles(join(SNAPSHOT_BASE, await waitForNewSnapshotDir(snapshotBefore)))
+    await page.close()
+  })
+
+  it('does not archive a snapshot for plain sends without annotations', async () => {
+    const page = await newPage(browser)
+    onTestFailed(() => saveFailureShot(page, 'plain-send-no-snapshot'))
+    await bootWithPanel(page, 'plain-send-no-snapshot')
+    await loadDemoPage(page)
+    const snapshotBefore = await snapshotDirs()
+    await sendViaComposer(page, 'apply')
+    // The turn round-trip (user row in Chat) settles after any capture would
+    // have fired; no new snapshot directory may exist by then.
+    await clickWhenStable(page, page.getByRole('tab', { name: 'Chat' }))
+    await expect.poll(
+      async () => page.locator('[data-chat-flow-kind="user"]').filter({ hasText: 'apply' }).last().count(),
+      { timeout: 30_000 },
+    ).toBeGreaterThan(0)
+    expect(new Set(await snapshotDirs())).toEqual(new Set(snapshotBefore))
     await page.close()
   })
 })

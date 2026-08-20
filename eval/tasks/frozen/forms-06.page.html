@@ -1,0 +1,38 @@
+<!doctype html><html lang="zh-CN" class="dsh-wv-picking"><head><base href="/.dsh-web-review/proxy/http%3A//127.0.0.1%3A51864/">
+  <meta charset="utf-8">
+  <title>用户信息表单</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; background: #f6f7f9; color: #24292f; padding: 32px 16px; }
+    .page-title { text-align: center; font-size: 20px; margin: 0 0 20px; }
+    .topbar { max-width: 480px; margin: 0 auto 24px; }
+    .topbar-title { font-size: 13px; color: #57606a; margin-bottom: 6px; }
+    .search-input { width: 100%; padding: 8px 12px; font-size: 14px; border: 1px solid #d0d7de; border-radius: 4px; }
+    .form { width: 100%; background: #fff; padding: 24px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .form-field { margin-bottom: 12px; }
+    label { display: block; font-size: 13px; color: #24292f; margin-bottom: 6px; }
+    input[type="text"], input[type="email"] { width: 100%; padding: 8px 12px; font-size: 14px; border: 1px solid #d0d7de; border-radius: 4px; }
+    .error { color: #e03131; font-size: 12px; margin-top: 4px; }
+    button[type="submit"] { background: #4c6ef5; color: #fff; border: 0; border-radius: 6px; padding: 10px 18px; font-size: 14px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1 class="page-title">用户信息表单</h1>
+  <div class="topbar">
+    <div class="topbar-title">搜索用户</div>
+    <input type="search" class="search-input">
+  </div>
+  <form class="form">
+    <div class="form-field">
+      <label for="name">姓名</label>
+      <input type="text" id="name" name="name" placeholder="请输入姓名">
+    </div>
+    <div class="form-field">
+      <label for="email">邮箱</label>
+      <input type="email" id="email" name="email" placeholder="请输入邮箱">
+      <div class="error">邮箱格式不正确</div>
+    </div>
+    <button type="submit">提交</button>
+  </form>
+
+
+</body></html>

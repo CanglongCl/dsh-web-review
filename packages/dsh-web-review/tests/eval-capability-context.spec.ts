@@ -48,6 +48,28 @@ describe('plugin capability eval contexts', () => {
     expect(oracle[1]?.text).toContain('Inspect src/OrderTable.tsx.')
   })
 
+  it('keeps the full production context for the snapshot arm (guide injected separately)', () => {
+    const production = formatAnnotationContext(snapshot)
+    const full = armContextTexts('full', snapshot, production)
+    const snapshotArm = armContextTexts('snapshot', snapshot, production)
+    expect(snapshotArm).toEqual(full)
+    expect(snapshotArm[0]?.text).toContain('# Browser comments')
+  })
+
+  it('accepts the snapshot arm with staged directories and rejects mismatches', () => {
+    const round = (id: string) => ({ prompt: '请根据页面批注修改前端实现。', capture: [], snapshot: { ...snapshot, sessionId: id }, captureMeta: undefined })
+    const task = {
+      id: 'snapshot-ab', fixture: 'landing', fixtureKind: 'static', category: 'trust', difficulty: 'easy', title: 'ab',
+      tokenBudget: { expected: 20_000, warnAbove: 30_000 },
+      arms: ['full'], rounds: [round('r1')],
+      grader: { pass: [] }, golden: { kind: 'html-dir', dir: 'golden' },
+    } satisfies EvalTask
+    const payload = runnerTaskPayload(task, 'snapshot', ['/tmp/dsh-web-review/snapshots/20260816-1200000000-abcd'])
+    expect(payload.rounds[0]?.snapshotDir).toBe('/tmp/dsh-web-review/snapshots/20260816-1200000000-abcd')
+    expect(() => runnerTaskPayload(task, 'snapshot', [])).toThrow('one staged archive per round')
+    expect(() => runnerTaskPayload(task, 'snapshot', ['/a', '/b'])).toThrow('one staged archive per round')
+  })
+
   it('preserves generic prompts and round order in runner payloads', () => {
     const round = (id: string) => ({ prompt: '请根据页面批注修改前端实现。', capture: [], snapshot: { ...snapshot, sessionId: id }, captureMeta: undefined })
     const task = {

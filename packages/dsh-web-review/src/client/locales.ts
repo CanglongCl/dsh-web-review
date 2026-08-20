@@ -6,6 +6,7 @@
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
   'view.tab': '网页预览',
+  'sidebar.tab': '网页预览',
   'view.chat': '对话',
   'command.skills.description': '选择一个 UI 优化 Skill',
   'dock.count': '{count} 条注释',
@@ -46,6 +47,9 @@ export const zh = {
   'panel.pick.remove': '移除该元素',
   'panel.pick.limit': '每个页面最多保留 {count} 条注释',
   'panel.comment.float': '注释，回车确认…',
+  'panel.snapshot.capturing': '正在存档页面…',
+  'panel.snapshot.saved': '页面快照已存档：{dir}',
+  'panel.snapshot.error': '页面快照存档失败',
   'panel.noUrl': '请输入网址',
   'panel.loading': '正在建立隔离预览…',
   'panel.frame': '网页预览',
@@ -177,6 +181,7 @@ export const zh = {
 /** English dictionary (same keys as {@link zh}). */
 export const en: Record<WebviewKey, string> = {
   'view.tab': 'Web Preview',
+  'sidebar.tab': 'Web Preview',
   'view.chat': 'Chat',
   'command.skills.description': 'Choose one UI optimization Skill',
   'dock.count': '{count} comments',
@@ -217,6 +222,9 @@ export const en: Record<WebviewKey, string> = {
   'panel.pick.remove': 'Remove element',
   'panel.pick.limit': 'Keep at most {count} comments per page',
   'panel.comment.float': 'Comment, Enter to confirm…',
+  'panel.snapshot.capturing': 'Archiving page snapshot…',
+  'panel.snapshot.saved': 'Page snapshot saved: {dir}',
+  'panel.snapshot.error': 'Could not archive the page snapshot',
   'panel.noUrl': 'Enter a URL first',
   'panel.loading': 'Starting isolated preview…',
   'panel.frame': 'Web preview',

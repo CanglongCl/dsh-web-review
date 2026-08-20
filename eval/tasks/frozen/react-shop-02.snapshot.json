@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-deca98c0-c7d4-48ef-871a-023cf799efc1",
+  "sessionId": "session-664e84b8-ca60-4595-b1c4-17b95a473039",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:62583/",
+    "url": "http://127.0.0.1:52673/",
     "title": "魔法商店"
   },
   "comments": [
     {
-      "id": "34650d09-48e4-4afe-8f61-3567a0fcee38",
+      "id": "c38a28a9-5ec4-4f3d-94fd-f28c070fb416",
       "comment": "把商品标题的字重加粗到 700",
       "tagName": "h2",
       "role": "heading",

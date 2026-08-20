@@ -18,13 +18,13 @@
  * and follows the declaring ui-conversation entry across reloads. The inject
  * face stays thin: one serialized, acknowledged per-session annotation sync.
  */
-import type { ClientContext, ContextMessageNode, ISessions, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, ISessions, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the ui-conversation SlotMap merge (the view/dock entries).
 import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-commands/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
+import type { BakedActions } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   annotationSyncReceiptOf,
   type AnnotationSyncReceipt,
@@ -39,13 +39,18 @@ import {
 } from '../preview-contract.ts'
 import { en, zh, type WebviewKey } from './locales.ts'
 import { createWebviewStore } from './stores.ts'
-import { WebviewView, type WebviewViewInjected } from './WebviewView.tsx'
-import { DraftOverlayBar, type WebviewDockInjected } from './DraftOverlayBar.tsx'
+import type { WebviewActions, WebviewState } from './stores.ts'
+import { createWebviewStoreRegistry } from './webview-session-store.ts'
+import { WebviewView, type WebviewViewInjected, type WebviewStoreShare } from './WebviewView.tsx'
+import { DraftOverlayBar, type WebviewDockInjected, type WebviewDockStoreShare } from './DraftOverlayBar.tsx'
 import { normalizePreviewUrl } from './navigation-url.ts'
 import { activateConversationTab } from './preview-link.ts'
+import { createSidebarIntegrationState, type SidebarIntegrationState } from './sidebar/integration.ts'
+import { watchBetterSidebar } from './sidebar/detect.ts'
+import { PREVIEW_TAB_ID, registerSidebarPreviewTab } from './sidebar/tab.tsx'
+import type { SidebarTabDeps } from './sidebar/SidebarPreviewTab.tsx'
 import { isUiSkillName, UI_SKILLS, type UiSkillName } from '../ui-skills.ts'
-import { browserCommentsContextSourceOf } from '../browser-comments-context.ts'
-import { BrowserCommentsContext } from './BrowserCommentsContext.tsx'
+import { makeUploadSnapshot } from './snapshot-sync.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -53,12 +58,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     webview: WebviewKey
   }
   interface SlotMap {
-    /** Producer-owned presentation chain declared by the reviewed Harness Context renderer. */
-    'conversation.chat.contextview': {
-      kind: 'chain'
-      scope: 'session'
-      owner: { readonly node: ContextMessageNode }
-    }
+    // rc.8 removed the conversation.chat.contextview chain slot; the
+    // browser-comments fold now renders through the harness's own
+    // ContextInjectionRow (opaque body). Keep the namespace declaration.
   }
 }
 
@@ -205,7 +207,48 @@ export async function releasePreviewSessions(sessionIds: readonly PreviewSession
   if (!response.ok) throw new Error(`preview session release failed (${String(response.status)})`)
 }
 
-/** The plugin body: dictionaries and the two shared-store registrations. */
+/**
+ * Open one normalized preview URL through the active surface: the sidebar
+ * tab when the better-sidebar integration is engaged, otherwise the
+ * conversation-pane view tab. Shared by the dock's openPreview and the
+ * assistant-link delegation (which routes through the dock callback).
+ */
+function openPreviewUrl(
+  ctx: ClientContext,
+  t: (key: WebviewKey) => string,
+  actions: BakedActions<WebviewState, WebviewActions>,
+  integration: SidebarIntegrationState,
+  url: string,
+): void {
+  const normalized = normalizePreviewUrl(url)
+  if (normalized === undefined) return
+  actions.setError(null)
+  actions.setUrl(normalized)
+  actions.setTitle('')
+  actions.clearPicks()
+  ctx.layout.closeDetails()
+  const service = integration.service
+  if (service !== null && service.isTabEnabled(PREVIEW_TAB_ID)) {
+    service.openTab({ type: PREVIEW_TAB_ID, url: normalized })
+    return
+  }
+  // The sidebar tab may be disabled in its settings (openTab no-ops) — never
+  // let the link die after the dock preventDefaulted it.
+  activateConversationTab(document, t('view.tab'))
+}
+
+/**
+ * The plugin body: dictionaries, the plugin-owned per-session engine axis,
+ * and the three surfaces (dock, conversation view, optional sidebar tab).
+ *
+ * The webview store travels through the inject face instead of the store
+ * seat: the slot framework caches engines privately per handle x scope and
+ * foreign render contexts (the sidebar tab) cannot reach them, so the
+ * plugin owns one per-session engine registry shared by the dock, the
+ * conversation view, and the sidebar tab. Better-sidebar is a runtime
+ * capability probe (ctx.get + internal/status), never a cordis inject — an
+ * unsatisfied inject would PENDING the fiber and fail the whole web boot.
+ */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-web-review: dictionaries')
 
@@ -214,16 +257,31 @@ export function apply(ctx: ClientContext): void {
   // re-registration; components read the standard `t` seat instead.
   const t = ctx.locale.bind(NS)
 
-  // Apply-time construction keeps store identity bound to this fiber; both
-  // registrations declare the same handle (one instance per session — the
-  // preview tab and the annotation dock share one pick list).
+  // Apply-time construction keeps store identity bound to this fiber; the
+  // registry gives every surface (dock / view / sidebar tab) ONE engine per
+  // session — the pick list, URL, and sync state are shared by construction.
   const webviewStore = createWebviewStore()
+  const webviewStores = createWebviewStoreRegistry(webviewStore)
 
-  ctx.slots.inject('conversation.chat.contextview', () => ctx.slots.register({
-    name: 'conversation.chat.contextview',
-    select: ({ node }) => browserCommentsContextSourceOf(node.source) ?? null,
-    locale: NS,
-  }, BrowserCommentsContext))
+  // Sidebar engagement state read by the openPreview routing.
+  const integration = createSidebarIntegrationState()
+
+  // Prune per-session engines when their session leaves the live list.
+  // The host SessionStore and the client runtime share the `sessions`
+  // service key; narrow through the runtime face like scopedConversation.
+  const sessions = ctx.sessions as unknown as ISessions
+  ctx.effect(() => sessions.list.subscribe(() => {
+    webviewStores.pruneAbsent(sessions.list.getSnapshot().ids)
+  }), 'dsh-web-review: webview engine pruning')
+
+  /** Session-bound injected face shared by the view and the sidebar tab. */
+  const buildViewFace = (sessionId: SessionId): WebviewViewInjected => ({
+    sendAnnotationsWithoutDraft: () => scopedConversation(ctx, sessionId).send(t('panel.pick.defaultPrompt')),
+    returnToChat: () => { activateConversationTab(document, t('view.chat')) },
+    createPreviewSession,
+    releasePreviewSessions,
+    uploadPageSnapshot: makeUploadSnapshot(sessionId),
+  })
 
   ctx.inject(['commandUi'], (scope: ClientContext) => {
     scope.effect(() => scope.commandUi.register({
@@ -244,38 +302,52 @@ export function apply(ctx: ClientContext): void {
     }), 'dsh-web-review: /skills contribution')
   })
 
-  ctx.slots.inject('conversation.view', () => ctx.slots.register({
-    name: 'conversation.view',
-    id: 'webview',
-    order: 20,
-    label: () => t('view.tab'),
-    locale: NS,
-    store: webviewStore,
-    inject: (sessionId: SessionId): WebviewViewInjected => ({
-      sendAnnotationsWithoutDraft: () => scopedConversation(ctx, sessionId).send(t('panel.pick.defaultPrompt')),
-      returnToChat: () => { activateConversationTab(document, t('view.chat')) },
-      createPreviewSession,
-      releasePreviewSessions,
-    }),
-  }, WebviewView))
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
     name: 'conversation.input.dock',
     id: 'webview-annotations',
     order: 15,
     locale: NS,
-    store: webviewStore,
-    inject: (sessionId: SessionId, actions: BoundActions<typeof webviewStore>): WebviewDockInjected => ({
-      syncAnnotations: makeSyncAnnotations(sessionId),
-      openPreview: (url) => {
-        const normalized = normalizePreviewUrl(url)
-        if (normalized === undefined) return
-        actions.setError(null)
-        actions.setUrl(normalized)
-        actions.setTitle('')
-        actions.clearPicks()
-        ctx.layout.closeDetails()
-        activateConversationTab(document, t('view.tab'))
-      },
-    }),
+    inject: (sessionId: SessionId): WebviewDockInjected & WebviewDockStoreShare => {
+      const engine = webviewStores.instanceFor(sessionId)
+      return {
+        hooks: { webviewStore: engine },
+        actions: engine.actions,
+        syncAnnotations: makeSyncAnnotations(sessionId),
+        openPreview: (url) => openPreviewUrl(ctx, t, engine.actions, integration, url),
+      }
+    },
   }, DraftOverlayBar))
+
+  /**
+   * Re-registrable conversation-view contribution: while the sidebar
+   * integration is engaged it yields (exactly one preview surface per
+   * session), and it is restored when the service disappears.
+   */
+  const registerViewContribution = (): (() => void) =>
+    ctx.slots.inject('conversation.view', () => ctx.slots.register({
+      name: 'conversation.view',
+      id: 'webview',
+      order: 20,
+      label: () => t('view.tab'),
+      locale: NS,
+      inject: (sessionId: SessionId): WebviewViewInjected & WebviewStoreShare => {
+        const engine = webviewStores.instanceFor(sessionId)
+        return { hooks: { webviewStore: engine }, actions: engine.actions, ...buildViewFace(sessionId) }
+      },
+    }, WebviewView))
+
+  let viewDispose: (() => void) = registerViewContribution()
+  let sidebarDispose: (() => void) | null = null
+
+  const sidebarDeps: SidebarTabDeps = { t, webviewStores, buildViewFace }
+  ctx.effect(() => watchBetterSidebar(ctx, (engagement) => {
+    integration.engage(engagement.service)
+    viewDispose()
+    sidebarDispose = registerSidebarPreviewTab(ctx, engagement, sidebarDeps)
+  }, () => {
+    integration.disengage()
+    sidebarDispose?.()
+    sidebarDispose = null
+    viewDispose = registerViewContribution()
+  }).dispose, 'dsh-web-review: sidebar watch')
 }

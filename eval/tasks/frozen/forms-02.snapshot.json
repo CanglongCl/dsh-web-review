@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-0156fd6b-ee41-438d-b716-fab353f74386",
+  "sessionId": "session-a025681f-d669-45eb-ab4f-64ff31790c0e",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:64450/",
+    "url": "http://127.0.0.1:51786/",
     "title": "用户信息表单"
   },
   "comments": [
     {
-      "id": "d7c7be40-746f-408f-8fe4-01ff0fad1a63",
+      "id": "a0a150c0-51d1-437c-8387-27f7c4146dd6",
       "comment": "给顶部搜索输入框补上可访问名称“搜索”",
       "tagName": "input",
       "role": "textbox",

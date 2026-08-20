@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-2a7bd704-0beb-4ff2-abf2-d318e2b170a1",
+  "sessionId": "session-b3da2bb6-0cf8-484e-9d76-5c2173eb5200",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:64661/",
+    "url": "http://127.0.0.1:52287/",
     "title": "数据看板"
   },
   "comments": [
     {
-      "id": "a50b2bdb-0c27-4ffa-bd57-bd2457683176",
+      "id": "8122f058-2c7e-4123-b80b-0b5204b62b17",
       "comment": "窗口宽度小于 768px 时统计卡片堆叠成单列",
       "tagName": "section",
       "role": "",

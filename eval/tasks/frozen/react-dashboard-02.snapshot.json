@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-704682b9-1c48-420e-bece-cbe6fa5ef373",
+  "sessionId": "session-317143bf-40bb-41f8-a9cf-c595ca6f9ccd",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:64325/",
+    "url": "http://127.0.0.1:52205/",
     "title": "数据看板"
   },
   "comments": [
     {
-      "id": "aa720b94-e8f9-4ea2-8d28-8ecfbcc4c209",
+      "id": "afb75405-98a0-4027-a12d-585325ce8844",
       "comment": "把统计卡片的背景改成 #f1f5ff",
       "tagName": "div",
       "role": "",

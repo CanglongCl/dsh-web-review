@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-fcd1d536-faf8-45d6-a604-9b5d33ca0742",
+  "sessionId": "session-5e703ae8-6233-4424-a4bd-4f26c4a73411",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:64663/",
+    "url": "http://127.0.0.1:51864/",
     "title": "用户信息表单"
   },
   "comments": [
     {
-      "id": "b3f69cb7-9804-4dbe-a585-faac0be50217",
+      "id": "49ecc3e1-2164-4743-8676-a4a4acae71b5",
       "comment": "鼠标悬停提交按钮时背景加深为 #3b5bdb",
       "tagName": "button",
       "role": "button",

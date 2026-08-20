@@ -1,15 +1,15 @@
 {
-  "sessionId": "session-f40e2fac-b1e3-442d-9ade-c2311677bbe3",
+  "sessionId": "session-adc6708c-ac10-40ba-8622-8935ae72af05",
   "selectedSkills": [
     "better-interface"
   ],
   "page": {
-    "url": "http://127.0.0.1:54310/",
+    "url": "http://127.0.0.1:52371/",
     "title": "订单运营中心"
   },
   "comments": [
     {
-      "id": "8633c1e5-7275-4f75-8c23-9a5e5ac1c93d",
+      "id": "dee73122-b9c2-491b-9402-70921621c124",
       "comment": "当前所在栏目不够醒目。只增强选中态：增加深一点的底色，并在左侧加一条 #7aa2ff 的强调线；不要改变其他导航项。",
       "tagName": "a",
       "role": "link",
@@ -35,7 +35,7 @@
       }
     },
     {
-      "id": "c57279db-3b37-4ee5-bea4-7c66eb50d2d8",
+      "id": "9b5de56c-809a-4de5-87aa-889e4b0189be",
       "comment": "筛选区和结果卡片混在一起了。把这里做成浅蓝灰色的独立筛选面板，边框也更明确，内部留白增加到 20px。",
       "tagName": "section",
       "role": "",
@@ -67,7 +67,7 @@
       }
     },
     {
-      "id": "d12e9ba8-639f-4334-80bb-d24c905d93f2",
+      "id": "15a6db52-28e3-4634-9f5c-8a69a965b59a",
       "comment": "三张指标卡之间太挤，卡片间距和这一组上下留白都调整到 24px。",
       "tagName": "section",
       "role": "",
@@ -99,7 +99,7 @@
       }
     },
     {
-      "id": "4987e6f2-ad67-4401-bc0f-18e135ab48d4",
+      "id": "e8f9ca58-f388-4263-8c8f-d4c31c3caf98",
       "comment": "“取消订单”是危险操作，所有订单行里的这个操作都使用危险按钮样式；不要影响“导出数据”和“新建订单”。",
       "tagName": "button",
       "role": "button",
@@ -127,7 +127,7 @@
       }
     },
     {
-      "id": "2847926a-616b-425f-b4e3-53d96a554202",
+      "id": "3ad6fcbd-85fc-4708-917a-0ee5d53d2739",
       "comment": "手机宽度下标题太长会挤掉关闭按钮。窄屏时保持单行并用省略号截断，关闭按钮必须始终可见。",
       "tagName": "h2",
       "role": "heading",
@@ -151,7 +151,7 @@
       }
     },
     {
-      "id": "a392f3ff-f451-4f51-b839-2d89e9d227af",
+      "id": "76cc1f27-b815-405a-b603-36d767395bfc",
       "comment": "手机端筛选区只保留标题和说明，状态、搜索框与应用按钮先隐藏；桌面端保持完整。",
       "tagName": "span",
       "role": "",

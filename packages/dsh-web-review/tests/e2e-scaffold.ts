@@ -8,7 +8,7 @@
  * follows the harness's dialog flow, and failure evidence lands in the
  * gitignored `.artifacts/`.
  */
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer } from 'node:net'
@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url'
 import type { Browser, Locator, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { harnessWebLaunch } from '../../../scripts/harness-cli.ts'
-import { resolveHarnessRoot } from '../../../scripts/harness-path.ts'
+import { resolveHarnessCli, resolveHarnessRoot } from '../../../scripts/harness-path.ts'
 import { materializeProfilePluginLink } from '../../../scripts/profile-plugin-link.ts'
 
 /** Onboarding acknowledgement expected by the reviewed 0812 Harness baseline. */
@@ -35,6 +35,12 @@ export interface E2EServices {
   demoUrl: string
   /** Temp dir staged as the connected workspace root. */
   workspaceRoot: string
+  /**
+   * The dsh-better-sidebar version installed into the scratch profile when
+   * {@link StartServicesOptions.installSidebar} is set (the rc.8 pairing
+   * guard); null when the sidebar was not installed.
+   */
+  sidebarVersion: string | null
   stop: () => Promise<void>
 }
 
@@ -106,8 +112,16 @@ async function waitForChildService(
  * Start the dev instance (`dsh web --patch ./cordis.yml`, no bundle
  * watch — the e2e asserts the built bundle) and the demo page server on
  * free ports. Returns the URLs plus a stopper.
+ * @param options.installSidebar - install the rc.8-tested
+ *   `dsh-better-sidebar` into the scratch profile before boot (the
+ *   integration scenarios opt in; the existing scenarios keep a plain
+ *   profile so the conversation-view path stays deterministic).
  */
-export async function startServices(): Promise<E2EServices> {
+export interface StartServicesOptions {
+  installSidebar?: boolean
+}
+
+export async function startServices(options: StartServicesOptions = {}): Promise<E2EServices> {
   const webPort = await probeFreePort()
   const demoPort = await probeFreePort()
   // Isolated harness home: a fresh GUI must boot into the hero (workspace
@@ -144,7 +158,57 @@ export async function startServices(): Promise<E2EServices> {
     `  ${WELCOME_NOTICE_ACK_FIELD}: ${WELCOME_NOTICE_VERSION}`,
     '',
   ].join('\n'))
+  // Install the sidebar FIRST: dsh plugin add initializes the profile and
+  // runs pnpm install, which would prune an undeclared development symlink
+  // — the profile-local plugin link must materialize after it.
+  const harness = resolveHarnessRoot()
+  if (options.installSidebar === true) {
+    // dsh plugin add forwards to pnpm; the first run initializes the
+    // profile but pnpm 11 refuses the install because node-pty's build
+    // script is not allowlisted (ERR_PNPM_IGNORED_BUILDS). initProfile is
+    // idempotent ("existing files are never touched"), so allowlist
+    // node-pty in the generated pnpm-workspace.yaml and re-run: the
+    // sidebar mounts without its terminal (node-pty stays unbuilt — the
+    // plugin degrades to a repair banner by design).
+    const cli = resolveHarnessCli(harness)
+    const runPluginAdd = (): number => spawnSync(
+      process.execPath,
+      [cli, 'plugin', '--profile', 'web', 'add', 'dsh-better-sidebar@0.14.0'],
+      { cwd: REPO_ROOT, stdio: 'pipe', env: { ...process.env, DSH_HOME: dshHome }, timeout: 300_000 },
+    ).status ?? 1
+    const first = runPluginAdd()
+    if (first !== 0) {
+      // pnpm itself wrote the placeholder into the profile's
+      // pnpm-workspace.yaml ("node-pty: set this to true or ..."); flip it
+      // to an explicit ignore instead of appending a duplicate block.
+      const workspaceYaml = join(dshHome, 'profiles', 'web', 'pnpm-workspace.yaml')
+      const existing = readFileSync(workspaceYaml, 'utf8')
+      if (!/node-pty:/.test(existing)) {
+        throw new Error('sidebar install failed: pnpm-workspace.yaml carries no node-pty allowBuilds row')
+      }
+      writeFileSync(workspaceYaml, existing.replace(/node-pty:.*$/m, 'node-pty: false  # types-only; the native binary is never loaded'))
+      const second = runPluginAdd()
+      if (second !== 0) {
+        throw new Error('sidebar install failed after allowlisting node-pty')
+      }
+    }
+  }
   materializeProfilePluginLink(REPO_ROOT, dshHome)
+  // Version pairing guard: the integration is tested against the rc.8-line
+  // dsh-better-sidebar; assert the profile really resolved that pin.
+  const sidebarVersion: string | null = options.installSidebar === true
+    ? (() => {
+        try {
+          const manifest = JSON.parse(readFileSync(
+            join(dshHome, 'profiles', 'web', 'node_modules', 'dsh-better-sidebar', 'package.json'),
+            'utf8',
+          )) as { version?: unknown }
+          return typeof manifest.version === 'string' ? manifest.version : null
+        } catch {
+          return null
+        }
+      })()
+    : null
   const logs: string[] = []
   const capture = (label: string) => (chunk: Buffer) => {
     for (const line of chunk.toString('utf8').split('\n')) {
@@ -185,7 +249,6 @@ export async function startServices(): Promise<E2EServices> {
     '',
   ].join('\n'))
 
-  const harness = resolveHarnessRoot()
   const launch = harnessWebLaunch(harness, overlayPath, '127.0.0.1', webPort, {
     ...process.env,
     DSH_HOME: dshHome,
@@ -234,7 +297,7 @@ export async function startServices(): Promise<E2EServices> {
     await rm(workspaceRoot, { recursive: true, force: true }).catch(() => {})
     await rm(dshHome, { recursive: true, force: true }).catch(() => {})
   }
-  return { webUrl, demoUrl, workspaceRoot, stop }
+  return { webUrl, demoUrl, workspaceRoot, sidebarVersion, stop }
 }
 
 /** Open the standard browser page with the English locale pinned (deterministic locators). */
@@ -265,7 +328,17 @@ export async function newPage(browser: Browser): Promise<Page> {
  * @param page - the page under test (already on the GUI URL).
  * @param root - workspace parent directory (a `workspace` folder is staged inside).
  */
-export async function connectWorkspace(page: Page, root: string, name = 'workspace'): Promise<void> {
+export interface ConnectWorkspaceOptions {
+  /**
+   * Whether the conversation view tablist must show the 'Web Preview' tab.
+   * The better-sidebar integration scenarios pass false: while the sidebar
+   * is engaged the preview surface lives in the sidebar tab and the
+   * conversation view contribution yields, so the tablist shows Chat only.
+   */
+  expectPreviewTab?: boolean
+}
+
+export async function connectWorkspace(page: Page, root: string, name = 'workspace', options: ConnectWorkspaceOptions = {}): Promise<void> {
   mkdirSync(join(root, name), { recursive: true })
   await page.getByRole('button', { name: 'Choose workspace' }).click()
   const dialog = page.getByRole('dialog', { name: 'Select Workspace Directory' })
@@ -304,7 +377,10 @@ export async function connectWorkspace(page: Page, root: string, name = 'workspa
   // tab here so callers never race the remount window.
   await composer.fill('hello')
   await composer.press('Enter')
-  await page.getByRole('tab', { name: 'Web Preview' }).waitFor({ state: 'visible', timeout: 30_000 })
+  const tablistSignal = options.expectPreviewTab === false
+    ? page.getByRole('tab', { name: 'Chat' })
+    : page.getByRole('tab', { name: 'Web Preview' })
+  await tablistSignal.waitFor({ state: 'visible', timeout: 30_000 })
 }
 
 /** Poll until a click succeeds: the session header re-mounts while a turn

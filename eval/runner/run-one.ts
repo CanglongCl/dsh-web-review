@@ -23,6 +23,7 @@ import {
 } from './runner.ts'
 import { materializeEvalRunnerLink } from '../../scripts/eval-profile-link.ts'
 import { REPO_ROOT } from './runner.ts'
+import { cleanupStagedSnapshotDirs, stageRoundSnapshot } from '../snapshot-stage.ts'
 import { executionRevision, experimentId, graderRevision, taskRevision } from '../identity.ts'
 
 export interface RunOneOptions extends RunOptions {
@@ -98,30 +99,39 @@ export async function runTaskOnce(task: LoadedEvalTask, options: RunOneOptions):
   let grader: RunRecord['grader']
   let stats: RunRecord['process']
 
-  if (!options.skipLaunch) {
-    const overlayPath = writeOverlay(controlRoot, task, options, runtimeSkills)
-    const launch = await launchHeadless(workspaceDir, overlayPath, task, dshHome, options)
-    exitCode = launch.exitCode
-    if (launch.timedOut) {
-      status = 'timeout'
-      attribution = 'timeout'
-    } else if (launch.exitCode === 0) {
-      status = 'pass'
-    } else {
-      status = 'error'
-      attribution = 'runtime-error'
-    }
-    writeFileSync(join(runDir, 'stdout.txt'), launch.stdout)
-    writeFileSync(join(runDir, 'stderr.txt'), launch.stderr)
-    const session = collectSessionLog(controlRoot, runDir)
-    if (session !== undefined) {
-      stats = analyzeSession(session, join(runDir, 'trace.md'))
-      writeFileSync(join(runDir, 'process.json'), JSON.stringify(stats, null, 2))
-      if (stats.endReason !== 'completed' && !launch.timedOut) {
+  // The snapshot arm stages the production archive layout (one dir per round)
+  // before the model launch; the dirs are removed once the run settles.
+  const stagedSnapshots = !options.skipLaunch && options.arm === 'snapshot'
+    ? task.rounds.map((_, index) => stageRoundSnapshot(task, index))
+    : []
+  try {
+    if (!options.skipLaunch) {
+      const overlayPath = writeOverlay(controlRoot, task, options, runtimeSkills, stagedSnapshots)
+      const launch = await launchHeadless(workspaceDir, overlayPath, task, dshHome, options)
+      exitCode = launch.exitCode
+      if (launch.timedOut) {
+        status = 'timeout'
+        attribution = 'timeout'
+      } else if (launch.exitCode === 0) {
+        status = 'pass'
+      } else {
         status = 'error'
         attribution = 'runtime-error'
       }
+      writeFileSync(join(runDir, 'stdout.txt'), launch.stdout)
+      writeFileSync(join(runDir, 'stderr.txt'), launch.stderr)
+      const session = collectSessionLog(controlRoot, runDir)
+      if (session !== undefined) {
+        stats = analyzeSession(session, join(runDir, 'trace.md'))
+        writeFileSync(join(runDir, 'process.json'), JSON.stringify(stats, null, 2))
+        if (stats.endReason !== 'completed' && !launch.timedOut) {
+          status = 'error'
+          attribution = 'runtime-error'
+        }
+      }
     }
+  } finally {
+    cleanupStagedSnapshotDirs(stagedSnapshots)
   }
 
   // Grade the agent-modified workspace (or the untouched baseline when the

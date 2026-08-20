@@ -143,6 +143,10 @@ model-visible surface is inserted in canonical Skill form before Browser
 Comments. If its complete instructions are already visible, Browser Comments
 is followed by a short instruction to apply that Skill instead.
 
+Set `pageSnapshotEnabled: false` (default `true`) in the same config block
+to disable the page snapshot archival feature entirely: no in-frame capture,
+no temp archive, no injected snapshot context, no status line.
+
 ## Synchronization semantics
 
 Annotation changes POST immediately and in order; this prepares pending context
@@ -199,6 +203,16 @@ capsule visible for retry.
   successful send, navigation, and unmount restore the original DOM. Text is
   editable only for an element with one safe direct text node.
 - Preview refresh after workspace edits is manual.
+- **Page snapshots archive with annotated sends only.** When the user sends
+  page comments, the plugin captures the page at send time (cleaned HTML tree
+  plus a screenshot) into the OS temp directory
+  `<os.tmpdir()>/dsh-web-review/snapshots/` (newest 20 retained, root mode
+  0700) and, right after the save, injects a page-snapshot context naming the
+  exact directory and direct file paths so the model can read `page.html`,
+  `page.png`, and `manifest.json` to confirm intent. Plain sends never
+  capture. Capture exists only while the Preview tab is mounted; screenshots
+  fall back to system fonts, cross-origin images taint the canvas (recorded as
+  an error, HTML still archived), and OS temp is ephemeral.
 - HTML rewriting uses a parser and intentionally touches only the documented
   URL-bearing attributes. Cross-Origin subresources retain browser-native CORS
   behavior rather than being promoted into the Preview Origin.

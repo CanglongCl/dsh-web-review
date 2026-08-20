@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-439a539d-ab19-4e87-81ad-a68049381c18",
+  "sessionId": "session-78298642-71d3-45c5-8d6c-ce98f2eeadc1",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:64490/",
+    "url": "http://127.0.0.1:51807/",
     "title": "用户信息表单"
   },
   "comments": [
     {
-      "id": "bbf5da43-8cc4-49b4-91b0-d9c4fe6109e3",
+      "id": "61781794-80ed-4ee6-b51b-3b63f682307b",
       "comment": "把错误提示文字的颜色改成 #d64545",
       "tagName": "div",
       "role": "",

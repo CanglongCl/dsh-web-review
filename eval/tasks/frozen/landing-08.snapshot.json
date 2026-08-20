@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-9378014f-bbf4-4614-b681-ed9e0f26610e",
+  "sessionId": "session-4771138c-47e6-4435-af41-fc57b4a4329d",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:51891/",
+    "url": "http://127.0.0.1:52100/",
     "title": "魔法 UI 演示页"
   },
   "comments": [
     {
-      "id": "dbd48e8b-53dd-4002-bcd9-0f4970eb372b",
+      "id": "b003c056-c00b-4d59-9a7d-5ab233373123",
       "comment": "把主按钮的内边距加大到上下 10px、左右 24px",
       "tagName": "button",
       "role": "button",

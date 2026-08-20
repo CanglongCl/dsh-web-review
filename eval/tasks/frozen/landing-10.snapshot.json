@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-bafdfd1a-cbf1-47ed-82ec-5aad56da9261",
+  "sessionId": "session-18a6be60-383f-4bc2-8a57-2c0f30fdf914",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:52302/",
+    "url": "http://127.0.0.1:52142/",
     "title": "魔法 UI 演示页"
   },
   "comments": [
     {
-      "id": "eb53a9f2-9912-4191-b4e8-c4cdbf884e35",
+      "id": "8e46a2b4-1229-42d2-9b16-5bcd567b17f5",
       "comment": "把所有卡片的圆角从 12px 改成 8px",
       "tagName": "div",
       "role": "",

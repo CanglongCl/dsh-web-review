@@ -6,6 +6,7 @@ import {
   PREVIEW_BRIDGE_VERSION,
   previewElementTargetOf,
   previewFrameMessageOf,
+  previewPageSnapshotOf,
   previewSessionDescriptorOf,
   previewTreeOf,
   type PreviewBridgeCommand,
@@ -13,6 +14,7 @@ import {
   type PreviewElementNavigationAction,
   type PreviewElementTarget,
   type PreviewMarker,
+  type PreviewPageSnapshot,
   type PreviewSessionDescriptor,
   type PreviewSessionId,
   type PreviewTreeNode,
@@ -307,6 +309,11 @@ export class PreviewBridgeClient {
 
   async readTree(handle: PreviewElementHandle): Promise<PreviewTreeNode | null> {
     return previewTreeOf(await this.command({ name: 'read-tree', payload: { handle } })) ?? null
+  }
+
+  async captureSnapshot(): Promise<PreviewPageSnapshot | null> {
+    const value = await this.command({ name: 'capture-snapshot', payload: null })
+    return value === null ? null : previewPageSnapshotOf(value) ?? null
   }
 
   previewStyle(handle: PreviewElementHandle, property: EditableStyleProperty, value: string): void {

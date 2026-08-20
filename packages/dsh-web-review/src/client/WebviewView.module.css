@@ -241,6 +241,16 @@
   font: var(--dsw-font-xxxs-11, 11px/14px system-ui, sans-serif);
 }
 
+.snapshotLine {
+  flex: 0 0 auto;
+  padding: 0 10px 6px;
+  overflow: hidden;
+  color: var(--dsw-alias-label-caption, #a0a4ab);
+  font: var(--dsw-font-xxs-12, 12px/18px system-ui, sans-serif);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .body {
   display: flex;
   flex: 1 1 auto;

@@ -23,6 +23,8 @@ const UPSTREAM_COMMIT = 'd01493b0a7b976a74bfcedc80c783d60c7995910'
 export interface Config {
   /** Skills advertised to the model-facing catalog; every bundled Skill remains user-invocable. */
   autoLoadSkills: UiSkillName[]
+  /** Archive page snapshots (HTML tree + screenshot) with annotated sends. */
+  pageSnapshotEnabled: boolean
 }
 
 const uiSkillName = z.union([
@@ -40,6 +42,8 @@ const uiSkillName = z.union([
 export const Config: Schema<Config> = z.object({
   autoLoadSkills: z.array(uiSkillName)
     .default([...DEFAULT_AUTO_LOAD_SKILLS]),
+  pageSnapshotEnabled: z.boolean()
+    .default(true),
 })
 
 function skillDirectory(name: UiSkillName): URL {

@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-7cbf1e73-3050-4438-a8ce-a74ba210f0c0",
+  "sessionId": "session-6a3026cd-51cb-4732-949e-a7bf9d0705a3",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:52054/",
+    "url": "http://127.0.0.1:52061/",
     "title": "魔法 UI 演示页"
   },
   "comments": [
     {
-      "id": "05bccbdd-ec5e-4c3f-913b-b7fa0fc2bff3",
+      "id": "34724e8d-f7ec-4b6f-8ecf-81e8daec3ad9",
       "comment": "给卡片增加更明显的阴影",
       "tagName": "div",
       "role": "",

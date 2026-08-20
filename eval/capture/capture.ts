@@ -29,8 +29,13 @@ import { harnessWebLaunch } from '../../scripts/harness-cli.ts'
 import { resolveHarnessRoot } from '../../scripts/harness-path.ts'
 import { materializeProfilePluginLink } from '../../scripts/profile-plugin-link.ts'
 import { loadTask, loadTasks } from '../tasks/register.ts'
+import { frozenStem } from '../tasks/frozen.ts'
 import { hashDir, baselineDir, FIXTURES_ROOT, REPO_ROOT, repoCommit, harnessCommit, probeFreePort } from '../runner/runner.ts'
 import type { AdjustAction, CaptureMeta, EvalRound, FrozenSnapshot, LoadedEvalTask } from '../types.ts'
+import {
+  MAX_SNAPSHOT_HTML,
+  SNAPSHOT_HTML_TRUNCATION_MARKER,
+} from '../../packages/dsh-web-review/src/snapshot-contract.ts'
 
 const CAPTURE_VIEWPORT = { width: 1680, height: 1000 }
 
@@ -244,8 +249,20 @@ async function selectSkills(page: Page, editor: import('playwright').Locator, na
   await field.click()
 }
 
+/** Resolve the live Preview frame (isolated random Origin) by its URL prefix. */
+function previewFrameOf(page: Page): import('playwright').Frame {
+  const target = page.frames().find(candidate => candidate.url().includes('/.dsh-web-review/'))
+  if (target === undefined) throw new Error('preview frame not found')
+  return target
+}
+
 /** Drive one round through the real GUI and return the exact intercepted POST body. */
-async function captureOnce(task: LoadedEvalTask, round: EvalRound, roundIndex: number): Promise<{ snapshot: FrozenSnapshot; meta: Omit<CaptureMeta, 'fixtureRevision'> }> {
+async function captureOnce(task: LoadedEvalTask, round: EvalRound, roundIndex: number): Promise<{
+  snapshot: FrozenSnapshot
+  meta: Omit<CaptureMeta, 'fixtureRevision'>
+  pageHtml: string
+  pagePng: Buffer
+}> {
   const fixture = await startFixtureServer(task)
   const gui = await bootGui()
   const browser: Browser = await chromium.launch()
@@ -315,6 +332,29 @@ async function captureOnce(task: LoadedEvalTask, round: EvalRound, roundIndex: n
       .filter(snapshot => snapshot.comments.length > 0)
       .at(-1)
     if (confirmed === undefined) throw new Error('no confirmed annotation POST intercepted')
+    // Freeze the annotated page itself: the cleaned HTML tree (same cleanup as
+    // the production bridge capture) and a full-page screenshot stand in for
+    // the page.html/page.png the plugin archives at send time.
+    const pageHtml = await previewFrameOf(page).evaluate(([cap, marker]) => {
+      const clone = document.documentElement.cloneNode(true) as HTMLElement
+      for (const element of Array.from(clone.querySelectorAll('*'))) {
+        if (element.matches('.dsh-wv-marker,.dsh-wv-selection-box,style[data-dsh-web-review]')) {
+          element.remove()
+          continue
+        }
+        for (const attribute of Array.from(element.attributes)) {
+          if (attribute.name.startsWith('data-dsh-wv-')) element.removeAttribute(attribute.name)
+        }
+        if (element.tagName.toLowerCase() === 'script') element.remove()
+      }
+      const full = '<!doctype html>' + clone.outerHTML
+      return full.length <= cap
+        ? full
+        : full.slice(0, cap) + '\n' + marker + ' ' + String(full.length) + ' bytes -->'
+    }, [MAX_SNAPSHOT_HTML, SNAPSHOT_HTML_TRUNCATION_MARKER] as const)
+    // The visible Preview viewport stands in for the bridge's canvas
+    // capture: same page the model would see, real pixels, no taint concerns.
+    const pagePng = await page.locator('iframe[title="Web preview"]').screenshot({ type: 'png' })
     return {
       snapshot: confirmed,
       meta: {
@@ -323,6 +363,8 @@ async function captureOnce(task: LoadedEvalTask, round: EvalRound, roundIndex: n
         harnessCommit: harnessCommit(resolveHarnessRoot()),
         capturedAt: new Date().toISOString(),
       },
+      pageHtml,
+      pagePng,
     }
   } finally {
     await browser.close()
@@ -336,11 +378,17 @@ async function expectEnabled(locator: import('playwright').Locator): Promise<voi
 }
 
 function frozenPath(taskId: string, round: number, suffix: string): string {
-  const stem = round === 1 ? taskId : `${taskId}.round-${round}`
-  return join(REPO_ROOT, 'eval', 'tasks', 'frozen', `${stem}.${suffix}`)
+  return join(REPO_ROOT, 'eval', 'tasks', 'frozen', `${frozenStem(taskId, round)}.${suffix}`)
 }
 
-function writeFrozen(task: LoadedEvalTask, round: number, snapshot: FrozenSnapshot, meta: Omit<CaptureMeta, 'fixtureRevision'>): void {
+function writeFrozen(
+  task: LoadedEvalTask,
+  round: number,
+  snapshot: FrozenSnapshot,
+  meta: Omit<CaptureMeta, 'fixtureRevision'>,
+  pageHtml: string,
+  pagePng: Buffer,
+): void {
   const dir = dirname(frozenPath(task.id, round, 'x'))
   mkdirSync(dir, { recursive: true })
   writeFileSync(frozenPath(task.id, round, 'snapshot.json'), JSON.stringify(snapshot, null, 2))
@@ -348,6 +396,8 @@ function writeFrozen(task: LoadedEvalTask, round: number, snapshot: FrozenSnapsh
     ...meta,
     fixtureRevision: hashDir(baselineDir(task.fixture)),
   }, null, 2))
+  writeFileSync(frozenPath(task.id, round, 'page.html'), pageHtml)
+  writeFileSync(frozenPath(task.id, round, 'page.png'), pagePng)
 }
 
 function styleValueTolerant(a: string, b: string): boolean {
@@ -440,8 +490,8 @@ async function main(): Promise<void> {
           process.exitCode = 1
         }
       } else {
-        writeFrozen(task, roundNumber, live.snapshot, live.meta)
-        console.log(`[capture] ${task.id} round ${roundNumber} frozen (${live.snapshot.comments.length} comment(s), ${live.snapshot.selectedSkills.length} skill(s))`)
+        writeFrozen(task, roundNumber, live.snapshot, live.meta, live.pageHtml, live.pagePng)
+        console.log(`[capture] ${task.id} round ${roundNumber} frozen (${live.snapshot.comments.length} comment(s), ${live.snapshot.selectedSkills.length} skill(s), page artifacts ${live.pagePng.length} PNG bytes)`)
       }
     }
   }

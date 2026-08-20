@@ -1,13 +1,13 @@
 {
-  "sessionId": "session-a1534510-ab6d-4fdb-8238-903d3464b3ea",
+  "sessionId": "session-effd649a-4779-4a8f-a600-480e18031edb",
   "selectedSkills": [],
   "page": {
-    "url": "http://127.0.0.1:64536/",
+    "url": "http://127.0.0.1:51826/",
     "title": "用户信息表单"
   },
   "comments": [
     {
-      "id": "f6f257c8-b9e0-4717-a251-a68e05c19d8c",
+      "id": "5426bc76-0ab9-4da4-b82d-cfd0721ee8a2",
       "comment": "加大表单项之间的垂直间距",
       "tagName": "input",
       "role": "textbox",

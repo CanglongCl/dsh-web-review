@@ -59,6 +59,13 @@ dsh web
 - 对话中的页面批注沿用 DSH 原生折叠行：收起时显示页面与批注数，展开后只展示目标、修改意图、前后值和可用源码线索。
 - Agent 根据批注修改当前工作区源码，页面中的临时调整不会直接写入工程。
 
+### 页面快照存档
+
+- 带批注发送时，插件会自动把当时页面的完整 HTML 树与一张截图存档到系统临时目录（<os.tmpdir()>/dsh-web-review/snapshots/，仅保留最近 20 份）。
+- 快照落盘后，插件会把快照目录与文件路径注入为一条独立上下文，Agent 可以直接阅读 page.html、page.png、manifest.json 进一步确认你的修改意图。
+- 快照是临时存档：系统清理临时目录后会自动消失；普通（无批注）发送不会产生快照。
+- 该功能默认打开，可通过 Cordis 配置项 `pageSnapshotEnabled: false` 整体关闭（关闭后不做捕获、不落盘、不注入）。
+
 ### UI 优化 Skills
 
 插件内置了 [Jakub Krehel 的设计 Skills](https://github.com/jakubkrehel/skills)：
