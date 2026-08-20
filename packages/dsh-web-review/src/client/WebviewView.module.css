@@ -162,7 +162,7 @@
   height: 49px;
   padding: 6px 10px;
   background: var(--dsw-alias-state-business-tertiary, #dceeff);
-  border-bottom: 1px solid rgb(65 118 230 / 12%);
+  border-bottom: 1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary, #4176e6) 12%, transparent);
 }
 
 .annotationIcon {
@@ -179,7 +179,7 @@
 }
 
 .annotationIcon:hover:not(:disabled) {
-  background: rgb(65 118 230 / 10%);
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary, #4176e6) 10%, transparent);
   color: var(--dsw-alias-label-primary, #0f1115);
 }
 

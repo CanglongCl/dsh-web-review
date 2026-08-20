@@ -1,7 +1,7 @@
 {
   "name": "@canglongcl/dsh-web-review",
   "description": "DSH web review plugin: page preview, element annotation, visual adjustments, and AI-driven workspace source edits",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "publishConfig": {
     "access": "public",
@@ -19,6 +19,9 @@
     "./package.json": "./package.json"
   },
   "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "inject": [
         "@deepseek-ai/dsh-client-locale",

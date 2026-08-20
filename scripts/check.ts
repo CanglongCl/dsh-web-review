@@ -6,7 +6,7 @@
  *  3. build — tsdown produces the node half plus both client channels;
  *  4. unit suite — vitest, including the real directory-entry load;
  *  5. config/package contracts — generated config is deterministic, 0812
- *     Cordis/CLI names, current dsh.client shape, both banner ids, and the
+ *     Cordis/CLI names, current dsh.client + dsh.bundle shape, both banner ids, and the
  *     native-ESM package entry;
  *  6. official package — stable bundle id, dsh.bundle declaration, exact
  *     staging allowlist, tarball output, and checksum.
@@ -179,6 +179,17 @@ assert(
     return manifest.dsh?.client?.platform === 'web' && manifest.dshClient === undefined
   },
   () => 'package.json must use the current nested dsh.client manifest; legacy dshClient is ignored by the host',
+)
+assert(
+  'source package declares the official dsh.bundle patch',
+  () => {
+    const manifest = JSON.parse(readFileSync(join(PKG, 'package.json'), 'utf8')) as {
+      dsh?: { bundle?: { patch?: string } }
+    }
+    return manifest.dsh?.bundle?.patch === './cordis.patch.yml'
+      && existsSync(join(PKG, 'cordis.patch.yml'))
+  },
+  () => 'package.json must declare dsh.bundle with the committed cordis.patch.yml next to it (installability contract)',
 )
 const repositoryManifest = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as { version: string }
 const packageManifest = JSON.parse(readFileSync(join(PKG, 'package.json'), 'utf8')) as {

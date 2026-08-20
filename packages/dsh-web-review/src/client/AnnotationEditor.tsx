@@ -136,8 +136,8 @@ function AdjustIcon(): JSX.Element {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
       <path d="M2 4h4m3 0h5M2 12h5m3 0h4M6 2v4m4 4v4" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" />
-      <circle cx="7.5" cy="4" r="1.5" fill="white" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="8.5" cy="12" r="1.5" fill="white" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="7.5" cy="4" r="1.5" style={{ fill: 'var(--dsw-alias-bg-base, #fff)' }} stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="8.5" cy="12" r="1.5" style={{ fill: 'var(--dsw-alias-bg-base, #fff)' }} stroke="currentColor" strokeWidth="1.2" />
     </svg>
   )
 }
