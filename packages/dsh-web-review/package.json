@@ -1,7 +1,7 @@
 {
   "name": "@canglongcl/dsh-web-review",
   "description": "DSH web review plugin: page preview, element annotation, visual adjustments, and AI-driven workspace source edits",
-  "version": "0.3.0",
+  "version": "0.4.1-beta.0",
   "private": true,
   "publishConfig": {
     "access": "public",
