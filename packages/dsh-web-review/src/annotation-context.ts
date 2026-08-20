@@ -492,7 +492,9 @@ export function acknowledgeAnnotationEvent(
     ? event.data.content[0].text
     : undefined
   const current = state.get(sessionId)
-  if (text !== undefined && current?.snapshotId === snapshotId && current.context === text) state.delete(sessionId)
+  if (text !== undefined && current?.snapshotId === snapshotId && current.context === text) {
+    state.delete(sessionId)
+  }
 }
 
 /** Release dedupe state when the exact live agent leaves the registry. */

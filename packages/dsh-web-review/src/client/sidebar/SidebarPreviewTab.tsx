@@ -17,7 +17,7 @@
  * This wrapper is the only component allowed to touch the registry and
  * services; the underlying surface components stay pure props components.
  */
-import { useMemo, type ReactNode } from 'react'
+import { useEffect, useMemo, type ReactNode } from 'react'
 import type { ClientContext, ConversationSnapshot, ISessions, IWorkspaces, SessionId, UseProjection } from '@deepseek-ai/dsh-client-runtime/client'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
@@ -27,7 +27,19 @@ import type { WebviewStoreRegistry } from '../webview-session-store.ts'
 import { makeSelectorHook } from './runtime-share.ts'
 import css from './SidebarPreviewTab.module.css'
 
-/** Apply-scope dependencies shared with the dock/view registrations. */
+/** Never-invoked fallback for the global standard seats when a service is absent. */
+const emptySessionHook = ((selector: unknown) => selector as never) as SnapshotSelectorHook<never>
+
+/** Structural input facade slice (ui-conversation does not export the type). */
+type SessionInputLike = {
+  state: { getSnapshot(): unknown; subscribe(fn: () => void): () => void }
+  setDraft(text: string): void
+  addImages(ids: readonly unknown[]): boolean
+  removeImage(id: unknown): void
+  pruneImages(ids: readonly unknown[]): void
+  submit(mode?: unknown): void
+}
+
 export interface SidebarTabDeps {
   /** Locale binder for the `webview` namespace. */
   t: TranslateNS<'webview'>
@@ -50,7 +62,7 @@ function brandedSessionId(sessionId: string): SessionId {
   return sessionId as SessionId
 }
 
-export function SidebarPreviewTab({ ctx: tabCtx, scope, deps }: SidebarPreviewTabProps): ReactNode {
+export function SidebarPreviewTab({ ctx: tabCtx, scope, tab, deps }: SidebarPreviewTabProps): ReactNode {
   // The better-sidebar declaration graph types ctx through the bare cordis
   // Context, which does not carry the DSH runtime members (their
   // context-types.ts mirrors them structurally and reads cross-plugin
@@ -63,16 +75,23 @@ export function SidebarPreviewTab({ ctx: tabCtx, scope, deps }: SidebarPreviewTa
   // Stabilize the synthesized selector hooks per source identity.
   const useWebviewStore = useMemo(() => makeSelectorHook(engine), [engine])
 
-  // The host SessionStore and the client runtime share the `sessions`
-  // service key; narrow through the runtime face like scopedConversation.
-  const sessions = ctx.sessions as unknown as ISessions
-  const sessionCtx = sessions.scope(sessionId)
-  const sessionFace = sessionCtx === undefined ? undefined : sessions.sessionOf(sessionCtx)
+  // The sidebar framework renders this tab through ITS OWN context, which
+  // carries none of this plugin's inject declarations — direct property
+  // access would throw "cannot get property without inject". Read the
+  // services through ctx.get (reflection, no inject requirement).
+  const sessions = ctx.get('sessions') as unknown as ISessions | undefined
+  // The stable session binding carries the ready SessionFace (scopeOf/sessionOf
+  // can hand back a not-yet-initialized runtime whose uSES source lacks its
+  // notifier); the conversation input facade still resolves through the
+  // agent-scoped ctx below.
+  const sessionFace = sessions === undefined ? undefined : sessions.binding(sessionId)?.session
   const useSession = useMemo(
     () => (sessionFace === undefined ? undefined : makeSelectorHook(sessionFace)),
     [sessionFace],
   )
-  const input = sessionCtx === undefined ? undefined : ctx.conversation.input.for(sessionCtx)
+  const sessionCtx = sessions === undefined ? undefined : sessions.scope(sessionId)
+  const conversation = ctx.get('conversation') as { input: { for(actx: unknown): SessionInputLike } } | undefined
+  const input = sessionCtx === undefined || conversation === undefined ? undefined : conversation.input.for(sessionCtx)
   const useInput = useMemo(
     () => (input === undefined ? undefined : makeSelectorHook(input.state)),
     [input],
@@ -84,13 +103,29 @@ export function SidebarPreviewTab({ ctx: tabCtx, scope, deps }: SidebarPreviewTa
   // isolated Origin (iframe reload) on any re-render.
   const face = useMemo(() => deps.buildViewFace(sessionId), [deps, sessionId])
 
+  // The sidebar framework's urlTarget flow opens this tab with the link as
+  // tab.path but never touches our store; seed the shared engine from it so
+  // the iframe renders the claimed URL (the store remains the source of
+  // truth afterwards — tab.path is their bookkeeping only).
+  useEffect(() => {
+    const seed = typeof tab.path === 'string' ? tab.path : ''
+    if (seed === '') return
+    if (engine.getSnapshot().url === seed) return
+    engine.actions.setUrl(seed)
+    engine.actions.setTitle('')
+    engine.actions.clearPicks()
+  }, [tab.path, engine])
+
   // The standard kit's useProjection is never invoked by the preview surface
   // itself; provide a working implementation over the session projections
   // face so the synthesized props satisfy the runtime share type.
   // The global standard kit's useSessions/useWorkspaces are never invoked
   // by the preview surface; provide real selector hooks over the live
   // services so the synthesized props satisfy the runtime share type.
-  const useSessions = useMemo(() => makeSelectorHook(sessions.list), [sessions])
+  const useSessions = useMemo(
+    () => (sessions === undefined ? emptySessionHook : makeSelectorHook(sessions.list)),
+    [sessions],
+  )
   const workspaces = ctx.get('workspaces') as IWorkspaces | undefined
   const useWorkspaces = useMemo(
     () => (workspaces === undefined ? undefined : makeSelectorHook(workspaces.list)),

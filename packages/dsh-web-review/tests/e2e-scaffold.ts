@@ -9,10 +9,10 @@
  * gitignored `.artifacts/`.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer } from 'node:net'
-import { homedir, tmpdir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Locator, Page } from 'playwright'
@@ -135,24 +135,18 @@ export async function startServices(options: StartServicesOptions = {}): Promise
   // version match) so the first-boot notice never renders. With a configured
   // credential the blank-state probe succeeds and the session stays
   // non-blank; without one it fails instantly against a dead endpoint.
-  if (process.env.DEEPSEEK_API_KEY === undefined) {
-    for (const candidate of [join(REPO_ROOT, '.env'), join(homedir(), '.dsh', '.env')]) {
-      try {
-        process.loadEnvFile(candidate)
-        if (process.env.DEEPSEEK_API_KEY !== undefined) break
-      } catch {
-        // Candidate absent — try the next.
-      }
-    }
-  }
-  const apiKey = process.env.DEEPSEEK_API_KEY
-  const defaultCredentials = join(homedir(), '.dsh', '.credentials.yaml')
-  const hasStoredCredentials = apiKey === undefined && existsSync(defaultCredentials)
-  if (hasStoredCredentials) {
-    const stagedCredentials = join(dshHome, '.credentials.yaml')
-    copyFileSync(defaultCredentials, stagedCredentials)
-    chmodSync(stagedCredentials, 0o600)
-  }
+  // Keyless-by-design: never inherit the developer's provider credentials.
+  // A real model call makes the connected session's first turn run for many
+  // seconds, and every later send queues behind the busy agent — the
+  // transcript assertions then time out waiting for a step that never
+  // starts. A fake stored credential flips the models readiness join to
+  // 'provider-ready' (rc.8 otherwise shows an onboarding dialog that blocks
+  // pointer events while the official provider has no configured
+  // credential); combined with the dead loopback and the no-retry policy,
+  // every request fails instantly and every turn settles.
+  const stagedCredentials = join(dshHome, '.credentials.yaml')
+  writeFileSync(stagedCredentials, 'DEEPSEEK_API_KEY: e2e-keyless-fake\n')
+  chmodSync(stagedCredentials, 0o600)
   writeFileSync(join(dshHome, 'settings.yaml'), [
     `${WELCOME_NOTICE_SETTINGS_NAMESPACE}:`,
     `  ${WELCOME_NOTICE_ACK_FIELD}: ${WELCOME_NOTICE_VERSION}`,
@@ -252,13 +246,8 @@ export async function startServices(options: StartServicesOptions = {}): Promise
   const launch = harnessWebLaunch(harness, overlayPath, '127.0.0.1', webPort, {
     ...process.env,
     DSH_HOME: dshHome,
-    ...(apiKey === undefined ? {} : { DEEPSEEK_API_KEY: apiKey }),
-    // With either supported credential source the probe message hits the
-    // configured provider; only a truly credential-free run uses a dead
-    // loopback so failure settles instantly (a hung turn churns the header).
-    ...(apiKey === undefined && !hasStoredCredentials
-      ? { DEEPSEEK_BASE_URL: 'http://127.0.0.1:9' }
-      : {}),
+    DEEPSEEK_API_KEY: '',
+    DEEPSEEK_BASE_URL: 'http://127.0.0.1:9',
   })
   const web = spawn(launch.command, launch.args, {
     cwd: REPO_ROOT,

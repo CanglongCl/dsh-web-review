@@ -99,14 +99,19 @@ function fakeCtx(sessionId: string, face: ReturnType<typeof sessionFaceFake>, in
   const sessions = {
     scope: vi.fn(() => ({})),
     sessionOf: vi.fn(() => face),
+    binding: vi.fn(() => ({ session: face })),
   }
   const conversation = {
     input: { for: vi.fn(() => input) },
   }
   return {
-    sessions,
-    conversation,
-    get: vi.fn(() => undefined),
+    // The wrapper reads services through ctx.get (the sidebar framework's
+    // context carries no inject declarations).
+    get: vi.fn((name: string) => {
+      if (name === 'sessions') return sessions
+      if (name === 'conversation') return conversation
+      return undefined
+    }),
     _sessionId: sessionId,
   } as never
 }
@@ -267,9 +272,7 @@ describe('SidebarPreviewTab', () => {
   it('does not render while the session scope is unavailable', () => {
     const d = deps()
     const ctx = {
-      sessions: { scope: vi.fn(() => undefined), sessionOf: vi.fn() },
-      conversation: { input: { for: vi.fn() } },
-      get: vi.fn(),
+      get: vi.fn(() => undefined),
     } as never
     const { container } = render(
       <SidebarPreviewTab
@@ -312,14 +315,18 @@ describe('SidebarPreviewTab', () => {
     const face = sessionFaceFake()
     const input = inputFake()
     let scopeAvailable = true
+    const sessions = {
+      scope: vi.fn(() => (scopeAvailable ? {} : undefined)),
+      sessionOf: vi.fn(() => face),
+      binding: vi.fn(() => (scopeAvailable ? { session: face } : undefined)),
+      list: { subscribe: vi.fn(), getSnapshot: vi.fn() },
+    }
     const ctx = {
-      sessions: {
-        scope: vi.fn(() => (scopeAvailable ? {} : undefined)),
-        sessionOf: vi.fn(() => face),
-        list: { subscribe: vi.fn(), getSnapshot: vi.fn() },
-      },
-      conversation: { input: { for: vi.fn(() => input) } },
-      get: vi.fn(),
+      get: vi.fn((name: string) => {
+        if (name === 'sessions') return sessions
+        if (name === 'conversation') return { input: { for: vi.fn(() => input) } }
+        return undefined
+      }),
     } as never
     const props = {
       ctx,

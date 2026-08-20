@@ -16,10 +16,15 @@ import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 
 /** Bind one selector hook over a bare observable snapshot source. */
 export function makeSelectorHook<T>(source: ObservableSnapshot<T>): SnapshotSelectorHook<T> {
+  // Capture the method-bound subscribe/getSnapshot once per source (mirrors
+  // ui-renderer's bindSnapshotSelector): the Session's subscribe reads
+  // this.notifier, and React calls the uSES subscribe with no receiver.
+  const subscribe = (fn: () => void) => source.subscribe(fn)
+  const sourceSnapshot = () => source.getSnapshot()
   return function hook<S>(selector: (state: T) => S, eq?: (a: S, b: S) => boolean): S {
     const cache = useRef<{ snapshot: T; value: S } | null>(null)
     const getSnapshot = useCallback((): S => {
-      const snapshot = source.getSnapshot()
+      const snapshot = sourceSnapshot()
       const cached = cache.current
       if (cached !== null && Object.is(cached.snapshot, snapshot)) return cached.value
       let value = selector(snapshot)
@@ -29,6 +34,6 @@ export function makeSelectorHook<T>(source: ObservableSnapshot<T>): SnapshotSele
       cache.current = { snapshot, value }
       return value
     }, [source, selector, eq])
-    return useSyncExternalStore(source.subscribe, getSnapshot, getSnapshot)
+    return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
   }
 }

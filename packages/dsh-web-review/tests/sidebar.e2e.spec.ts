@@ -61,7 +61,9 @@ describe('better-sidebar integration', () => {
     await openSidebarTab(page)
 
     // Our preview surface renders inside the sidebar tab.
-    const surface = page.locator('[data-webview-ui]')
+    // The preview surface nests two data-webview-ui roots (the sidebar tab
+    // chrome and the inner panel); the interactive panel is the unique one.
+    const surface = page.locator('[data-dsh-better-sidebar] [data-webview-panel]')
     await surface.waitFor({ timeout: 15_000 })
     const input = surface.getByPlaceholder(en['panel.urlPlaceholder'])
     await input.waitFor({ timeout: 10_000 })
@@ -83,7 +85,7 @@ describe('better-sidebar integration', () => {
 
     await openSidebarTab(page)
 
-    const surface = page.locator('[data-webview-ui]')
+    const surface = page.locator('[data-dsh-better-sidebar] [data-webview-panel]')
     const input = surface.getByPlaceholder(en['panel.urlPlaceholder'])
     await input.waitFor({ timeout: 15_000 })
     await input.fill(services.demoUrl)
@@ -143,7 +145,7 @@ describe('better-sidebar integration', () => {
 
     // The link opens the SIDEBAR preview tab and the demo page renders
     // through the isolated transport inside it.
-    const surface = page.locator('[data-webview-ui]')
+    const surface = page.locator('[data-dsh-better-sidebar] [data-webview-panel]')
     await surface.waitFor({ timeout: 15_000 })
     await expect.poll(
       async () => page.frameLocator('iframe[title="Web preview"]').locator('h1').textContent(),

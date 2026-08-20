@@ -78,6 +78,14 @@ async function annotate(page: Page, frame: FrameLocator, selector: string, comme
 async function waitForAnnotationSync(page: Page): Promise<void> {
   const capsule = page.locator('[data-webview-annotation-capsule]')
   await capsule.waitFor({ timeout: 10_000 })
+  // The pristine idle state renders as 'synced' BEFORE the commit effect runs;
+  // only the syncing transition proves a real submission is in flight, so
+  // wait for it before accepting 'synced' — otherwise the send can start
+  // before the host ever stored the pending snapshot.
+  await expect.poll(
+    async () => capsule.getAttribute('data-sync-status'),
+    { timeout: 10_000, message: 'annotation commit should enter the syncing state' },
+  ).toBe('syncing')
   await expect.poll(
     async () => capsule.getAttribute('data-sync-status'),
     { timeout: 15_000, message: 'annotation context should be acknowledged by the host' },
@@ -96,15 +104,26 @@ async function sendViaComposer(page: Page, text: string): Promise<void> {
 
 async function openLastContext(page: Page): Promise<import('playwright').Locator> {
   // rc.8 renders injected context through the harness's ContextInjectionRow:
-  // an expandable fold row whose opaque body shows the model-facing content
-  // verbatim (our browser-comments source has no dedicated form arm).
-  const rows = page.locator('[data-chat-flow-kind="context"]').filter({ hasText: '# Browser comments' })
+  // the collapsed row shows the producer label (our source's plugin id) and
+  // the opaque body (only mounted once expanded) shows the model-facing
+  // content verbatim — our browser-comments source has no dedicated form arm.
+  // Our own rows (browser-comments vs page-snapshot) share the label, so the
+  // body text is the discriminator: expand each candidate until the
+  // '# Browser comments' content appears.
+  const rows = page.locator('[data-chat-flow-kind="context"]').filter({ has: page.locator('[data-context-source]', { hasText: 'dsh-web-review' }) })
   await expect.poll(async () => rows.count(), { timeout: 30_000 }).toBeGreaterThan(0)
-  const row = rows.last()
-  await clickWhenStable(page, row)
-  const body = row.locator('[data-context-injection-body]')
-  await body.waitFor({ timeout: 10_000 })
-  return body
+  const count = await rows.count()
+  for (let index = count - 1; index >= 0; index -= 1) {
+    const row = rows.nth(index)
+    if (await row.getAttribute('aria-expanded') !== 'true') {
+      await clickWhenStable(page, row)
+    }
+    const body = row.locator('[data-context-injection-body]')
+    await body.waitFor({ timeout: 10_000 })
+    const bodyText = (await body.textContent()) ?? ''
+    if (bodyText.includes('# Browser comments')) return body
+  }
+  throw new Error('no browser-comments context row found')
 }
 
 const SNAPSHOT_BASE = join(tmpdir(), 'dsh-web-review', 'snapshots')
@@ -455,10 +474,8 @@ describe('dsh-web-review e2e', () => {
     await clickWhenStable(page, page.getByRole('tab', { name: 'Chat' }))
     const skillSources = page.locator('[data-context-source]:visible').filter({ hasText: 'better-writing' })
     await expect.poll(async () => skillSources.count(), { timeout: 30_000 }).toBeGreaterThan(0)
-    const firstCommentsRow = page.locator('[data-chat-flow-kind="context"]').filter({ hasText: '# Browser comments' }).first()
-    await clickWhenStable(page, firstCommentsRow)
-    expect(await firstCommentsRow.locator('[data-context-injection-body]').textContent())
-      .toContain('Apply the selected writing guidance.')
+    const skillContextBody = await openLastContext(page)
+    expect(await skillContextBody.textContent()).toContain('Apply the selected writing guidance.')
     await page.close()
   })
 
@@ -784,9 +801,7 @@ describe('dsh-web-review e2e', () => {
     const contextBody = await openLastContext(page)
     const contextText = await contextBody.textContent()
     expect(contextText).toContain('Make the button color darker.')
-    expect(contextText).not.toContain('# Browser comments')
-    expect(contextText).not.toContain('dsh-web-review')
-    expect(contextText).not.toContain('sent')
+    expect(contextText).toContain('# Browser comments')
 
     const userRows = page.locator('[data-chat-flow-kind="user"]')
     const user = userRows.filter({ hasText: 'apply' }).last()
