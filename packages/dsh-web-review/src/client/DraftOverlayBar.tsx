@@ -258,6 +258,7 @@ export function DraftOverlayBar({ useWebviewStore, useSession, actions, syncAnno
           className={css.capsule}
           data-webview-annotation-capsule=""
           data-sync-status={syncStatus}
+          data-annotation-snapshot-id={state.annotationSync.status === 'ready' ? state.annotationSync.snapshotId : undefined}
         >
           <button
             type="button"

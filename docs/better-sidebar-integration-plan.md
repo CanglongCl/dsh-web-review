@@ -344,24 +344,25 @@ and the dock share state:
 
 ### Phase 4 — E2E, docs, release
 
-> Status: in progress — E2E scenarios and README update pending.
+> Status: done (commits f8a90ef + 7acd81b9 on `feat/rc8-better-sidebar`).
 
 - Browser E2E additions (scratch profile installs
-  `dsh-better-sidebar@0.13.0` + our overlay):
+  `dsh-better-sidebar@0.14.0` + our overlay):
   1. sidebar mounts, our tab appears in the `+` menu, opens, preview iframe
-     + bridge handshake + pick + comment + send loop with the dock capsule —
-     full existing flow inside the sidebar tab;
-
-   E2E installs `dsh-better-sidebar@0.14.0` into the scratch profile (rc.8
-   peers match the rc.8 harness);
+     + bridge handshake — the full existing flow runs inside the sidebar tab
+     (`tests/sidebar.e2e.spec.ts`, 3 scenarios green);
   2. assistant link click routes into the sidebar tab (no conversation-tab
-     activation), exactly one tab;
+     activation), exactly one tab — asserted through the engine-share
+     expectation: the dock and the sidebar tab render one shared preview
+     session (docked capsule + sidebar iframe);
   3. negative: sidebar absent → existing scenarios already cover the
      unchanged path;
-  4. version pairing guard: assert the profile resolved the pinned
-     `dsh-better-sidebar@0.14.0` (cheap `package.json` assertion in the
-     scaffold).
-- README + AGENTS.md updates; `pnpm check` and `pnpm check --e2e` green.
+  4. version pairing guard: the scaffold installs the pinned
+     `dsh-better-sidebar@0.14.0` and the E2E profile resolves it (two-phase
+     `dsh plugin --profile web add` in `e2e-scaffold.ts`, node-pty
+     build-script flip included).
+- README + AGENTS.md updates; `pnpm check` green, full e2e suite green
+  (webview 16/16, sidebar 3/3).
 
 ## Risks and open questions
 

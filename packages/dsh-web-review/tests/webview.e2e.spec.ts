@@ -75,21 +75,44 @@ async function annotate(page: Page, frame: FrameLocator, selector: string, comme
   await input.waitFor({ state: 'detached', timeout: 10_000 })
 }
 
+// The host-acknowledged snapshot id of the last settled wait; the next wait
+// requires the id to ADVANCE past it, so a stale 'synced' left over from an
+// earlier submission can never satisfy the current one.
+let lastSettledSnapshotId: string | null = null
+
 async function waitForAnnotationSync(page: Page): Promise<void> {
   const capsule = page.locator('[data-webview-annotation-capsule]')
   await capsule.waitFor({ timeout: 10_000 })
-  // The pristine idle state renders as 'synced' BEFORE the commit effect runs;
-  // only the syncing transition proves a real submission is in flight, so
-  // wait for it before accepting 'synced' — otherwise the send can start
-  // before the host ever stored the pending snapshot.
+  const baseline = lastSettledSnapshotId
+  // A 'synced' status alone cannot distinguish the current submission from a
+  // previous one that already acknowledged (picks change, then the commit
+  // effect re-runs); and the in-flight 'syncing' transition can finish faster
+  // than any polling interval, so requiring it is a false-failure source.
+  // Accept only a snapshot id that has advanced past every id seen so far
+  // (baseline and any intermediate submission) and then held stable across
+  // consecutive polls — the host has acknowledged the latest stored state.
+  let previousId: string | null = null
+  let stableId: string | null = null
   await expect.poll(
-    async () => capsule.getAttribute('data-sync-status'),
-    { timeout: 10_000, message: 'annotation commit should enter the syncing state' },
-  ).toBe('syncing')
-  await expect.poll(
-    async () => capsule.getAttribute('data-sync-status'),
-    { timeout: 15_000, message: 'annotation context should be acknowledged by the host' },
-  ).toBe('synced')
+    async () => {
+      const status = await capsule.getAttribute('data-sync-status')
+      const id = await capsule.getAttribute('data-annotation-snapshot-id')
+      if (status !== 'synced' || id === null || id === baseline) {
+        previousId = null
+        stableId = null
+        return false
+      }
+      if (id === stableId) return true
+      if (id === previousId) {
+        stableId = id
+        return false
+      }
+      previousId = id
+      return false
+    },
+    { timeout: 20_000, message: 'annotation context should be acknowledged by the host' },
+  ).toBe(true)
+  lastSettledSnapshotId = await capsule.getAttribute('data-annotation-snapshot-id')
 }
 
 async function sendViaComposer(page: Page, text: string): Promise<void> {
