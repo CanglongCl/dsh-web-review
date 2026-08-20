@@ -1,8 +1,8 @@
 /** Pure contract, formatting and lifecycle tests for separate context injection. */
 import type { IncomingMessage } from 'node:http'
 import type { Agent, AgentRegistry, PreStepDecision } from '@deepseek-ai/dsh-agent'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { Session, SessionId, type SessionEvent, type SessionId as SessionIdType } from '@deepseek-ai/dsh-session'
+import { CallId, createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
+import { Session, SessionId, type SessionEvent, type SessionId as SessionIdType, type UserMessage } from '@deepseek-ai/dsh-session'
 import { describe, expect, it } from 'vitest'
 import {
   ANNOTATION_LIMITS,
@@ -51,13 +51,21 @@ const noSelectedSkills = {
   get: async () => { throw new Error('unexpected Skill lookup') },
 }
 
+function claimedPrompt(text = 'apply the comments'): UserMessage {
+  return createUserMessage({
+    source: { kind: 'user' },
+    content: [{ type: 'text', text }],
+  })
+}
+
 function attach(
   state: AnnotationCommitState,
   agent: Agent,
   next: () => Promise<PreStepDecision>,
   skills: Parameters<typeof attachPendingAnnotationContext>[2] = noSelectedSkills,
+  claimed: UserMessage[] = [claimedPrompt()],
 ): Promise<PreStepDecision> {
-  return attachPendingAnnotationContext(state, agent, skills, signal, [], next)
+  return attachPendingAnnotationContext(state, agent, skills, signal, claimed, next)
 }
 
 function harness(rawId = 'session-1'): {
@@ -349,6 +357,59 @@ describe('pending annotation admission', () => {
 
     const blocked: PreStepDecision = { kind: 'reject' }
     expect(await attach(state, agent, async () => blocked)).toBe(blocked)
+  })
+
+  it('keeps a pending snapshot bound to the queued user message across busy-agent steps', async () => {
+    const { agent, agents } = harness()
+    const state: AnnotationCommitState = new Map()
+    storeAnnotationSnapshot(agents, state, snapshot())
+    const agentId = SessionId('session-1')
+
+    // A running turn's intermediate steps claim only tool-result contexts:
+    // a queued send must not let those steps consume the annotation.
+    const toolResult = createToolResultMessage({
+      callId: CallId('call-1'),
+      content: [{ type: 'text', text: 'tool output' }],
+      isError: false,
+    })
+    const downstream = createUserMessage({
+      source: { kind: 'plugin', plugin: 'downstream' },
+      content: [{ type: 'text', text: 'downstream context' }],
+    })
+    const intermediate = await attach(state, agent, async () => ({
+      kind: 'enter', messages: [downstream],
+    }), noSelectedSkills, [toolResult])
+    expect(intermediate).toEqual({ kind: 'enter', messages: [downstream] })
+    expect(state.has(agentId)).toBe(true)
+
+    // The page-snapshot guide injected during the busy window is also not a
+    // user prompt, so the annotation stays queued behind it.
+    const guide = createUserMessage({
+      source: { kind: 'plugin', plugin: 'dsh-web-review' },
+      content: [{ type: 'text', text: '## Page snapshot' }],
+    })
+    const guideStep = await attach(state, agent, async () => ({
+      kind: 'enter', messages: [guide],
+    }), noSelectedSkills, [guide])
+    expect(guideStep).toEqual({ kind: 'enter', messages: [guide] })
+    expect(state.has(agentId)).toBe(true)
+
+    // The queued turn finally claims the user's prompt: the snapshot rides
+    // the same step into the LLM.
+    const userPrompt = claimedPrompt('apply the comments')
+    const queued = await attach(state, agent, async () => ({
+      kind: 'enter', messages: [userPrompt],
+    }), noSelectedSkills, [userPrompt])
+    if (queued.kind !== 'enter') throw new Error('expected enter')
+    expect(queued.messages).toHaveLength(2)
+    expect(queued.messages[0]).toBe(userPrompt)
+    expect(queued.messages[1]).toMatchObject({
+      source: {
+        kind: 'plugin', plugin: 'dsh-web-review', form: 'browser-comments',
+        snapshotId: expect.any(String),
+      },
+      content: [{ type: 'text', text: expect.stringContaining('# Browser comments') }],
+    })
   })
 
   it('consumes only the exact context event that actually committed', async () => {

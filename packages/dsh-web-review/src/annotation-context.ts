@@ -413,6 +413,12 @@ export function formatLoadedSkillReminder(names: readonly UiSkillName[]): string
  * Add the current pending snapshot to one accepted step without rewriting
  * the claimed user messages. The state remains pending until the session
  * event for this exact plugin context proves admission committed.
+ *
+ * The snapshot is bound to the step that actually carries the user's prompt
+ * into the LLM: it only rides a claim containing a `source.kind === 'user'`
+ * message. While a queued send waits behind a busy agent, intermediate tool
+ * steps claim only tool-result contexts and pass through untouched, so the
+ * annotation cannot reach the model before the queued message that owns it.
  */
 export async function attachPendingAnnotationContext(
   state: AnnotationCommitState,
@@ -426,6 +432,7 @@ export async function attachPendingAnnotationContext(
   if (decision.kind !== 'enter') return decision
   const pending = state.get(agent.id)
   if (pending === undefined) return decision
+  if (!claimedMessages.some(message => message.source.kind === 'user')) return decision
   signal.throwIfAborted()
   const loaded = visibleSkillNames(agent)
   for (const name of decisionSkillNames([...claimedMessages, ...decision.messages])) loaded.add(name)
