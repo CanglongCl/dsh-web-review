@@ -93,3 +93,5 @@ dsh web
 ## 参与开发
 
 开发环境、架构说明与验证流程见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
+
+版本变更记录见 [CHANGELOG.md](./CHANGELOG.md)。

@@ -1,6 +1,7 @@
-/** Bump both manifests to the next beta version, verify the release identity,
- * then commit, tag, and push. The pushed `v<version>` tag makes CI publish the
- * exact checked tarball to the `beta` dist-tag (see release-npm.yml).
+/** Bump both manifests to the next beta version, regenerate CHANGELOG.md,
+ * verify the release identity, then commit, tag, and push. The pushed
+ * `v<version>` tag makes CI publish the exact checked tarball to the `beta`
+ * dist-tag and create the matching GitHub release (see release-npm.yml).
  *
  * Usage:
  *   pnpm release:beta                continue the current beta series, or start
@@ -177,6 +178,7 @@ console.log(`release:beta: ${current} -> ${next}${dryRun ? ' (dry run)' : ''}`)
 if (dryRun) {
   const status = run('git', ['status', '--porcelain'])
   if (status.trim() !== '') console.warn('release:beta: the working tree is dirty; a real run would abort')
+  console.log(`release:beta: dry run — would regenerate CHANGELOG.md with a section for ${next}`)
   console.log('release:beta: dry run — no files, commits, tags, or pushes were made')
   process.exit(0)
 }
@@ -188,12 +190,16 @@ if (status.trim() !== '') fail('the working tree is dirty; commit or stash chang
 writeVersion(MANIFESTS[0], current, next)
 writeVersion(MANIFESTS[1], current, next)
 
-// The bumped manifests must still satisfy the release identity gate.
+// The release commit carries the regenerated changelog: commits since the
+// last tag become the new version's section.
+run(process.execPath, ['--import', 'tsx', join(root, 'scripts', 'changelog.ts'), '--next', next], true)
+
+// The bumped manifests and changelog must still satisfy the release identity gate.
 run(process.execPath, ['--import', 'tsx', join(root, 'scripts', 'verify-release.ts')], true)
 
-run('git', ['add', MANIFESTS[0], MANIFESTS[1]])
+run('git', ['add', MANIFESTS[0], MANIFESTS[1], join(root, 'CHANGELOG.md')])
 run('git', ['commit', '-m', `release: bump ${next}`])
 run('git', ['tag', '-a', `v${next}`, '-m', `dsh-web-review v${next}`])
 run('git', ['push', 'origin', 'HEAD'])
 run('git', ['push', 'origin', `v${next}`], true)
-console.log(`release:beta: pushed ${next}; CI publishes the checked tarball to the beta dist-tag (${PACKAGE_NAME}@beta)`)
+console.log(`release:beta: pushed ${next}; CI publishes the checked tarball to the beta dist-tag (${PACKAGE_NAME}@beta) and creates the GitHub release`)

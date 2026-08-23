@@ -70,6 +70,13 @@ for (const required of [
   '--access public',
   'id-token: write',
   '? "beta" : version.includes("-") ? "next" : "latest"',
+  'name: Create GitHub release',
+  'needs: publish',
+  'contents: write',
+  'gh release create "$GITHUB_REF_NAME"',
+  '--notes-file',
+  '--prerelease',
+  'release/*.tgz',
 ]) {
   if (!workflow.includes(required)) fail(`release workflow is missing ${required}`)
 }
@@ -89,6 +96,9 @@ for (const forbidden of [
   'NPM_PUBLISH_TOKEN',
   'NODE_AUTH_TOKEN',
   '--access restricted',
+  'softprops',
+  'action-gh-release',
+  'secrets.GITHUB_TOKEN',
 ]) {
   if (workflow.includes(forbidden)) fail(`release workflow must not contain ${forbidden}`)
 }
@@ -97,9 +107,12 @@ if (workflow.includes('secrets.NPM_TOKEN')) fail('release workflow must not use 
 if (repositoryManifest.scripts?.['release:beta'] !== 'tsx scripts/release-beta.ts') {
   fail('root manifest must expose release:beta as tsx scripts/release-beta.ts')
 }
+if (repositoryManifest.scripts?.['changelog'] !== 'tsx scripts/changelog.ts') {
+  fail('root manifest must expose changelog as tsx scripts/changelog.ts')
+}
 const releaseBetaPath = join(root, 'scripts', 'release-beta.ts')
 const releaseBeta = existsSync(releaseBetaPath) ? readFileSync(releaseBetaPath, 'utf8') : ''
-for (const required of ['--dry-run', '-beta.', 'release: bump ', '`v${next}`', 'verify-release.ts']) {
+for (const required of ['--dry-run', '-beta.', 'release: bump ', '`v${next}`', 'verify-release.ts', 'changelog.ts', '--next']) {
   if (!releaseBeta.includes(required)) fail(`scripts/release-beta.ts is missing ${JSON.stringify(required)}`)
 }
 const actionRefs = [...workflow.matchAll(/^\s*uses:\s+\S+@([^\s#]+)/gmu)].map(match => match[1])
@@ -118,6 +131,12 @@ if (publishing) {
       `publishing requires GitHub repository ${EXPECTED_GITHUB_REPOSITORY}, got `
       + `${process.env.GITHUB_REPOSITORY ?? '(unset)'}`,
     )
+  }
+  const changelogPath = join(root, 'CHANGELOG.md')
+  const changelog = existsSync(changelogPath) ? readFileSync(changelogPath, 'utf8') : ''
+  const firstHeading = /^## \[([^\]]+)\] - \d{4}-\d{2}-\d{2}$/mu.exec(changelog)
+  if (firstHeading === null || firstHeading[1] !== version) {
+    fail(`CHANGELOG.md must lead with the ${version} section (## [${version}] - YYYY-MM-DD)`)
   }
 }
 

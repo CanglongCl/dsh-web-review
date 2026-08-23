@@ -93,3 +93,5 @@ See [Eval suite](./eval/README.md) for the evaluation design, commands, and guid
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup, architecture notes, and verification workflows.
+
+See [CHANGELOG.md](./CHANGELOG.md) for the version history.

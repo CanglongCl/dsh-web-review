@@ -150,6 +150,7 @@ DSH_HARNESS='/绝对路径/deepseek-harness' pnpm check:e2e
 | `pnpm test:e2e` | 真实 DSH GUI、隔离 Origin、点选与发送链路 |
 | `pnpm package:official` | 生成正式安装包 |
 | `pnpm release:verify` | 校验待发布产物 |
+| `pnpm changelog` | 按 Conventional Commits 重新生成 `CHANGELOG.md`，或输出单版本发布说明 |
 
 pre-commit hook 会运行快速门禁，不包含需要启动服务和 provider 配置的浏览器 E2E。
 
@@ -170,6 +171,8 @@ pnpm package:official
 3. 发布 Job 使用前一 Job 已校验的 tarball，不重新构建。
 4. 发布 Job 通过 npm Trusted Publishing 使用短期 GitHub OIDC 身份，并显式保持 `public`。
 
+每次发布都会同步更新 `CHANGELOG.md`（Keep a Changelog 格式，内容由 Conventional Commits 自动生成）。发布前运行 `pnpm changelog --next <version>` 生成新版本小节并随 `release: bump` 提交（`pnpm release:beta` 自动完成）；发布身份校验（`pnpm release:verify`）要求 `CHANGELOG.md` 首节与 tag 版本一致。CI 在 npm 发布成功后创建同名 GitHub Release：发布说明由 `pnpm changelog --version <version>` 从提交历史重新生成（与仓库内 `CHANGELOG.md` 同源），候选版本标记为 prerelease，并附上已校验的 tarball 与 `SHA256SUMS`。
+
 dist-tag 规则：`x.y.z-beta.N` 发布到 `beta`，其他候选版本（如 `-rc`）发布到 `next`，稳定版本发布到 `latest`。创建 tag 前必须单独完成显式 Harness E2E：
 
 ```sh
@@ -185,9 +188,9 @@ git push personal v<version>
 - 校验两份 manifest 版本一致且为合法 semver，工作区干净；
 - 计算下一个 beta 版本：当前是 `x.y.z-beta.N` 时递增为 `x.y.z-beta.(N+1)`；否则从当前稳定版本的下一个 minor（或显式给出的基础版本）开始，即 `x.y.z-beta.0`；
 - 校验新版本高于 npm 上已发布的 `beta` / `latest`；
-- 写入两份 manifest，运行 `pnpm release:verify`，提交 `release: bump <version>`，打 `v<version>` 注释 tag 并推送到 origin。
+- 重新生成 `CHANGELOG.md`（`--next` 小节）并写入两份 manifest，运行 `pnpm release:verify`，提交包含 `CHANGELOG.md` 的 `release: bump <version>`，打 `v<version>` 注释 tag 并推送到 origin。
 
-tag 推送后 CI 自动打包并发布到 `beta` dist-tag，用户可用 `npm i @canglongcl/dsh-web-review@beta` 安装。`--dry-run` 只打印计划，不修改任何文件。
+tag 推送后 CI 自动打包、发布到 `beta` dist-tag 并创建同名 GitHub Release，用户可用 `npm i @canglongcl/dsh-web-review@beta` 安装。`--dry-run` 只打印计划，不修改任何文件。
 
 Trusted Publisher 与 CI 边界的详细配置以 [AGENTS.md](./AGENTS.md) 为准。发布 workflow 不保存 npm 写令牌。
 

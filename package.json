@@ -10,6 +10,7 @@
     "setup:harness": "tsx scripts/dev.ts --setup-only",
     "build": "pnpm gen-config && pnpm --filter ./packages/dsh-web-review build",
     "package:official": "pnpm build && tsx scripts/package-official.ts",
+    "changelog": "tsx scripts/changelog.ts",
     "release:verify": "tsx scripts/verify-release.ts",
     "release:beta": "tsx scripts/release-beta.ts",
     "build:watch": "pnpm --filter ./packages/dsh-web-review watch",
