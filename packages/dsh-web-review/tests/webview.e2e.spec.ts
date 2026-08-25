@@ -127,12 +127,11 @@ async function sendViaComposer(page: Page, text: string): Promise<void> {
 
 async function openLastContext(page: Page): Promise<import('playwright').Locator> {
   // rc.8 renders injected context through the harness's ContextInjectionRow:
-  // the collapsed row shows the producer label (our source's plugin id) and
-  // the opaque body (only mounted once expanded) shows the model-facing
-  // content verbatim — our browser-comments source has no dedicated form arm.
-  // Our own rows (browser-comments vs page-snapshot) share the label, so the
-  // body text is the discriminator: expand each candidate until the
-  // '# Browser comments' content appears.
+  // our browser-comments source declares the standard snapshot form, so the
+  // expanded body renders named sections (data-context-sections) with the
+  // supersedes caption. Rows share the producer label, so the body text is
+  // the discriminator: expand each candidate until the '# Browser comments'
+  // overview section appears.
   const rows = page.locator('[data-chat-flow-kind="context"]').filter({ has: page.locator('[data-context-source]', { hasText: 'dsh-web-review' }) })
   await expect.poll(async () => rows.count(), { timeout: 30_000 }).toBeGreaterThan(0)
   const count = await rows.count()
@@ -144,7 +143,10 @@ async function openLastContext(page: Page): Promise<import('playwright').Locator
     const body = row.locator('[data-context-injection-body]')
     await body.waitFor({ timeout: 10_000 })
     const bodyText = (await body.textContent()) ?? ''
-    if (bodyText.includes('# Browser comments')) return body
+    if (bodyText.includes('# Browser comments')) {
+      await body.locator('[data-context-sections]').waitFor({ timeout: 10_000 })
+      return body
+    }
   }
   throw new Error('no browser-comments context row found')
 }

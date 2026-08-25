@@ -58,8 +58,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
   interface SlotMap {
     // rc.8 removed the conversation.chat.contextview chain slot; the
-    // browser-comments fold now renders through the harness's own
-    // ContextInjectionRow (opaque body). Keep the namespace declaration.
+    // browser-comments context now declares the standard `snapshot` form
+    // (source.form + sections) rendered by the harness's ContextInjectionRow.
+    // Keep the namespace declaration for the locale keys.
   }
 }
 
