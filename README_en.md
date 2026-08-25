@@ -26,6 +26,8 @@ dsh plugin --profile web add @canglongcl/dsh-web-review
 dsh web
 ```
 
+With [dsh-better-sidebar](https://www.npmjs.com/package/dsh-better-sidebar) installed, the web preview opens in the sidebar.
+
 ## Usage
 
 1. Ask the AI to start the frontend page you want to review, then click the URL it returns.

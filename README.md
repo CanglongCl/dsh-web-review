@@ -26,6 +26,8 @@ dsh plugin --profile web add @canglongcl/dsh-web-review
 dsh web
 ```
 
+安装 [dsh-better-sidebar](https://www.npmjs.com/package/dsh-better-sidebar) 后，网页预览会在侧边栏中打开。
+
 ## 使用方法
 
 1. 告诉启动要评审的前端页面，点击AI返回的地址页面。

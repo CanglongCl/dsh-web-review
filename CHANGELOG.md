@@ -5,7 +5,19 @@ All notable changes to `dsh-web-review` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.1-beta.1] - 2026-08-23
+## [0.5.0-beta.1] - 2026-08-25
+
+### Added
+
+- better-sidebar integration: when [dsh-better-sidebar](https://www.npmjs.com/package/dsh-better-sidebar) is installed, the web preview opens in the sidebar
+
+### Internal
+
+- accept acknowledged snapshots by id advancement, not the syncing transition
+- keyless-by-design runtime, rc.8 fold-row assertions, and sidebar tab render fixes
+- derive the web-review line onto main (rc.8 + better-sidebar + rc.8 adaptations)
+
+## [0.4.1-beta.1] - 2026-08-24
 
 ### Internal
 
@@ -178,6 +190,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - add visual web review workflow
 - TypeScript-only repo, e2e suite, git hooks and quality gates
 
+[0.5.0-beta.1]: https://github.com/CanglongCl/dsh-web-review/compare/v0.4.1-beta.1...v0.5.0-beta.1
 [0.4.1-beta.1]: https://github.com/CanglongCl/dsh-web-review/compare/v0.4.1-beta.0...v0.4.1-beta.1
 [0.4.1-beta.0]: https://github.com/CanglongCl/dsh-web-review/compare/v0.4.0-beta.0...v0.4.1-beta.0
 [0.4.0-beta.0]: https://github.com/CanglongCl/dsh-web-review/compare/v0.3.0...v0.4.0-beta.0
