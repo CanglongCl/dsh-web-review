@@ -9,10 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- better-sidebar integration: when [dsh-better-sidebar](https://www.npmjs.com/package/dsh-better-sidebar) is installed, the web preview opens in the sidebar
+- render browser comments via the rc.8 snapshot context form
 
 ### Internal
 
+- remove page snapshot archival feature
+- replace page snapshot archival with dsh-better-sidebar integration
+- better-sidebar note in README and 0.5.0-beta.1 changelog entry
 - accept acknowledged snapshots by id advancement, not the syncing transition
 - keyless-by-design runtime, rc.8 fold-row assertions, and sidebar tab render fixes
 - derive the web-review line onto main (rc.8 + better-sidebar + rc.8 adaptations)
