@@ -26,8 +26,6 @@ dsh plugin --profile web add @canglongcl/dsh-web-review
 dsh web
 ```
 
-With [dsh-better-sidebar](https://www.npmjs.com/package/dsh-better-sidebar) installed, the web preview opens in the sidebar.
-
 ## Usage
 
 1. Ask the AI to start the frontend page you want to review, then click the URL it returns.
@@ -61,12 +59,9 @@ With [dsh-better-sidebar](https://www.npmjs.com/package/dsh-better-sidebar) inst
 - Page comments use DSH's native transcript disclosure: page and count when collapsed, then targets, intent, before/after values, and available source clues when expanded.
 - The agent updates source code in the current workspace; temporary page adjustments do not modify project files directly.
 
-### Page Snapshot Archival
+### `dsh-better-sidebar` integration
 
-- Sending comments also archives the page at send time — its full HTML tree and a screenshot — into the OS temp directory (<os.tmpdir()>/dsh-web-review/snapshots/, newest 20 retained).
-- After the archive lands, the plugin injects the snapshot directory and file paths as a separate context, so the agent can open page.html, page.png, and manifest.json to further confirm your intent.
-- Snapshots are ephemeral: the system clears the temp directory over time, and plain sends without comments never capture.
-- The feature defaults to on and can be switched off entirely with the Cordis config item `pageSnapshotEnabled: false` (no capture, no archive, no injection).
+After installing [dsh-better-sidebar](https://www.npmjs.com/package/dsh-better-sidebar), the web preview automatically opens in the sidebar. You can also enable it by opening Web Preview from the sidebar's New tab menu.
 
 ### UI Design Skills
 
