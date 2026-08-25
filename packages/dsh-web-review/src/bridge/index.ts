@@ -46,7 +46,6 @@ import {
   reviewableParent,
 } from '../client/element-navigation.ts'
 import { snapshotOf, truncate } from '../client/picker-core.ts'
-import { capturePageSnapshot } from './capture.ts'
 import { PICKER_STYLE } from './picker-style.ts'
 
 interface BridgeConfig {
@@ -611,9 +610,6 @@ async function execute(command: PreviewBridgeCommand): Promise<unknown> {
   if (command.name === 'history-back') { history.back(); return null }
   if (command.name === 'history-forward') { history.forward(); return null }
   if (command.name === 'reload') { location.reload(); return null }
-  if (command.name === 'capture-snapshot') {
-    return capturePageSnapshot(document)
-  }
   throw new Error('unsupported command')
 }
 

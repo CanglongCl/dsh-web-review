@@ -50,7 +50,6 @@ import { watchBetterSidebar } from './sidebar/detect.ts'
 import { PREVIEW_TAB_ID, registerSidebarPreviewTab } from './sidebar/tab.tsx'
 import type { SidebarTabDeps } from './sidebar/SidebarPreviewTab.tsx'
 import { isUiSkillName, UI_SKILLS, type UiSkillName } from '../ui-skills.ts'
-import { makeUploadSnapshot } from './snapshot-sync.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -280,7 +279,6 @@ export function apply(ctx: ClientContext): void {
     returnToChat: () => { activateConversationTab(document, t('view.chat')) },
     createPreviewSession,
     releasePreviewSessions,
-    uploadPageSnapshot: makeUploadSnapshot(sessionId),
   })
 
   ctx.inject(['commandUi'], (scope: ClientContext) => {

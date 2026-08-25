@@ -133,11 +133,9 @@ function deps() {
           frameOrigin,
           frameUrl: `${frameOrigin}${PREVIEW_ENTRY_PREFIX}${encodeTarget(target)}`,
           targetOrigin: new URL(target).origin,
-          snapshotsEnabled: true,
         } as unknown as PreviewSessionDescriptor)
       },
       releasePreviewSessions: vi.fn(async () => {}),
-      uploadPageSnapshot: vi.fn(async () => ({ kind: 'saved' as const, snapshotId: 'snap-1' as never, dir: '/tmp/x' })),
     })),
   } as unknown as SidebarTabDeps
 }
@@ -434,14 +432,12 @@ describe('SidebarPreviewTab', () => {
           frameOrigin,
           frameUrl: frameOrigin + PREVIEW_ENTRY_PREFIX + encodeTarget(target),
           targetOrigin: new URL(target).origin,
-          snapshotsEnabled: true,
         } as unknown as PreviewSessionDescriptor)
       },
       releasePreviewSessions: (sessionIds: readonly PreviewSessionId[]) => {
         sharedRelease(sessionIds)
         return Promise.resolve()
       },
-      uploadPageSnapshot: vi.fn(async () => ({ kind: 'saved' as const, snapshotId: 'snap-1' as never, dir: '/tmp/x' })),
     }))
     const sessionId = 'session-stable'
     const ctx = fakeCtx(sessionId, sessionFaceFake(), inputFake())

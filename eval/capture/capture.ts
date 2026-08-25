@@ -32,10 +32,10 @@ import { loadTask, loadTasks } from '../tasks/register.ts'
 import { frozenStem } from '../tasks/frozen.ts'
 import { hashDir, baselineDir, FIXTURES_ROOT, REPO_ROOT, repoCommit, harnessCommit, probeFreePort } from '../runner/runner.ts'
 import type { AdjustAction, CaptureMeta, EvalRound, FrozenSnapshot, LoadedEvalTask } from '../types.ts'
-import {
-  MAX_SNAPSHOT_HTML,
-  SNAPSHOT_HTML_TRUNCATION_MARKER,
-} from '../../packages/dsh-web-review/src/snapshot-contract.ts'
+/** Maximum serialized HTML accepted from the frame (archival capture cap). */
+const MAX_SNAPSHOT_HTML = 4 * 1024 * 1024
+/** Marker appended by the frame when the HTML tree exceeded the cap. */
+const SNAPSHOT_HTML_TRUNCATION_MARKER = '<!-- dsh-web-review: html truncated at'
 
 const CAPTURE_VIEWPORT = { width: 1680, height: 1000 }
 

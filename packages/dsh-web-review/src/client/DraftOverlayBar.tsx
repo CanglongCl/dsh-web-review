@@ -75,10 +75,6 @@ export function DraftOverlayBar({ useWebviewStore, useSession, actions, syncAnno
     const node = session.nodes.findLast(candidate => annotationContextId(candidate) !== undefined)
     return node === undefined ? undefined : annotationContextId(node)
   })
-  const lastUserMessageSeq = useSession((session) => {
-    const node = session.nodes.findLast(candidate => candidate.kind === 'user')
-    return node === undefined ? undefined : node.seq
-  })
   const [open, setOpen] = useState(false)
   const [retry, setRetry] = useState(0)
   const detailsId = useId()
@@ -89,25 +85,6 @@ export function DraftOverlayBar({ useWebviewStore, useSession, actions, syncAnno
   tRef.current = t
   const openPreviewRef = useRef(openPreview)
   openPreviewRef.current = openPreview
-  // The input machine's submit phases can complete inside one React batch, so
-  // no render-time edge observes them. The dock watches the session's user
-  // message node instead: a NEW user node while annotations are pending asks
-  // the Preview view to archive the page (stock-composer annotated sends).
-  // Declared before the capsule-acknowledgement effect so it reads the picks
-  // before a same-batch acknowledgement clears them.
-  const seenUserSeqRef = useRef<number | undefined>(undefined)
-  const userSeqInitializedRef = useRef(false)
-  useEffect(() => {
-    if (!userSeqInitializedRef.current) {
-      userSeqInitializedRef.current = true
-      seenUserSeqRef.current = lastUserMessageSeq
-      return
-    }
-    if (lastUserMessageSeq === undefined || lastUserMessageSeq === seenUserSeqRef.current) return
-    seenUserSeqRef.current = lastUserMessageSeq
-    if (state.picks.length > 0) actions.requestSnapshot()
-  }, [lastUserMessageSeq, state.picks.length, actions])
-
   // The dock entry stays mounted even while it renders no annotation chrome,
   // so it owns the session-wide assistant-link delegation. The browser's
   // normal external-link path remains available through modifier clicks.

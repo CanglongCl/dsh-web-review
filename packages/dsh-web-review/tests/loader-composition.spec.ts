@@ -10,7 +10,7 @@
  * injects, routes, the HTTP stack — is real.
  */
 import { createServer, type Server } from 'node:http'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -24,11 +24,7 @@ import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import SkillService from '@deepseek-ai/dsh-skill'
 import * as plugin from '../src/index.ts'
-import { PAGE_SNAPSHOT_BASE_DIR, PAGE_SNAPSHOTS_PATH, PREVIEW_GUIDANCE } from '../src/index.ts'
-import {
-  MAX_SNAPSHOT_BODY,
-  type PageSnapshotPayload,
-} from '../src/snapshot-contract.ts'
+import { PREVIEW_GUIDANCE } from '../src/index.ts'
 import { MAX_ANNOTATION_BODY, type AnnotationSnapshot } from '../src/annotation-contract.ts'
 import {
   PREVIEW_CLIENT_HEADER,
@@ -530,96 +526,5 @@ describe('/webview-annotations (real Loader + webserver composition)', () => {
     await loadComposition()
     const response = await fetch(`http://127.0.0.1:${port}/webview-annotations`)
     expect(response.status).toBe(405)
-  })
-})
-
-describe('/webview-snapshots (real Loader + webserver composition)', () => {
-  const PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgo='
-
-  function snapshotPayload(sessionId = 'session-1'): PageSnapshotPayload {
-    return {
-      sessionId,
-      page: { url: 'http://localhost:5173/', title: 'Example Domain' },
-      viewport: { width: 1280, height: 720 },
-      scroll: { x: 0, y: 0 },
-      html: '<!doctype html><html><body><h1>Example</h1></body></html>',
-      screenshot: { dataUrl: PNG_DATA_URL, width: 1280, height: 720, truncated: false },
-      screenshotError: null,
-    }
-  }
-
-  function postSnapshot(
-    body: unknown,
-    headers: Record<string, string> = {},
-    withOrigin = true,
-  ): Promise<Response> {
-    return fetch(`http://127.0.0.1:${port}${PAGE_SNAPSHOTS_PATH}`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-dsh-web-review-client': '1',
-        ...(withOrigin ? { origin: `http://127.0.0.1:${port}` } : {}),
-        ...headers,
-      },
-      body: typeof body === 'string' ? body : JSON.stringify(body),
-    })
-  }
-
-  it('archives a validated payload and injects the exact-directory guide after the save', async () => {
-    await loadComposition()
-    const stub = registerStubAgent()
-    const response = await postSnapshot(snapshotPayload())
-    expect(response.status).toBe(200)
-    const receipt = await response.json() as { kind: string; snapshotId: string; dir: string }
-    expect(receipt).toMatchObject({ kind: 'saved', snapshotId: expect.any(String), dir: expect.any(String) })
-    expect(receipt.dir.startsWith(PAGE_SNAPSHOT_BASE_DIR)).toBe(true)
-    const manifest = JSON.parse(await readFile(join(receipt.dir, 'manifest.json'), 'utf8')) as {
-      page: { url: string; title: string }
-      screenshot: { file: string }
-    }
-    expect(manifest.page).toEqual({ url: 'http://localhost:5173/', title: 'Example Domain' })
-    expect(manifest.screenshot).toMatchObject({ file: 'page.png' })
-    expect(await readFile(join(receipt.dir, 'page.html'), 'utf8')).toContain('Example')
-    // The guide rides the live agent's next-step inbox right after the save.
-    expect(stub.inject).toHaveBeenCalledOnce()
-    const message = stub.inject.mock.calls[0]?.[0] as { content: Array<{ type: string; text: string }> }
-    expect(message.content[0]?.text).toContain(receipt.dir + '/page.html')
-    expect(message.content[0]?.text).toContain(receipt.dir + '/page.png')
-    expect(message.content[0]?.text).not.toContain('latest.json')
-    await rm(receipt.dir, { recursive: true, force: true })
-  })
-
-  it('requires the plugin client header, JSON content type and same-origin browser', async () => {
-    await loadComposition()
-    registerStubAgent()
-    const payload = JSON.stringify(snapshotPayload())
-    expect((await postSnapshot(payload, { 'x-dsh-web-review-client': '' })).status).toBe(415)
-    expect((await postSnapshot(payload, { 'content-type': 'text/plain' })).status).toBe(415)
-    expect((await postSnapshot(payload, {}, false)).status).toBe(403)
-  })
-
-  it('rejects invalid bodies, unknown sessions and non-POST methods', async () => {
-    await loadComposition()
-    registerStubAgent()
-    expect((await postSnapshot('not json')).status).toBe(400)
-    expect((await postSnapshot(snapshotPayload('missing'))).status).toBe(404)
-    expect((await fetch(`http://127.0.0.1:${port}${PAGE_SNAPSHOTS_PATH}`)).status).toBe(405)
-  })
-
-  it('answers disabled, archives nothing and stamps the descriptor off when configured off', async () => {
-    await loadComposition({ pageSnapshotEnabled: false })
-    const stub = registerStubAgent()
-    const response = await postSnapshot(snapshotPayload())
-    expect(response.status).toBe(200)
-    expect(await response.json()).toEqual({ kind: 'disabled' })
-    expect(stub.inject).not.toHaveBeenCalled()
-    const descriptor = await createPreview(fixtureUrl + '/')
-    expect(descriptor.snapshotsEnabled).toBe(false)
-  })
-
-  it('rejects oversized bodies with 413', async () => {
-    await loadComposition()
-    const response = await postSnapshot('x'.repeat(MAX_SNAPSHOT_BODY + 1))
-    expect(response.status).toBe(413)
   })
 })

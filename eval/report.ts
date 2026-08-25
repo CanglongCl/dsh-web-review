@@ -9,7 +9,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, readdirSy
 import { join, relative, sep } from 'node:path'
 import { REPO_ROOT, RESULTS_PATH } from './runner/runner.ts'
 import { loadTasks } from './tasks/register.ts'
-import { formatSnapshotGuide } from '../packages/dsh-web-review/src/snapshot-archive.ts'
+import { formatSnapshotGuide } from './snapshot-guide.ts'
 import { frozenPagePath, snapshotManifestOf } from './snapshot-stage.ts'
 import type { LoadedEvalTask, RunRecord, TokenBudget } from './types.ts'
 

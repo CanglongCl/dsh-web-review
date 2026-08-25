@@ -32,7 +32,7 @@ import {
   formatAnnotationContext,
   parseAnnotationBody,
 } from '../../../packages/dsh-web-review/src/annotation-context.ts'
-import { formatSnapshotGuide } from '../../../packages/dsh-web-review/src/snapshot-archive.ts'
+import { formatSnapshotGuide } from '../../snapshot-guide.ts'
 import { isUiSkillName, type UiSkillName } from '../../../packages/dsh-web-review/src/ui-skills.ts'
 import { skillBody } from '../../../packages/dsh-web-review/src/skill-provider.ts'
 import type { EvalArm } from '../../types.ts'

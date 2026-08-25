@@ -19,7 +19,6 @@ function descriptor(seed: string): PreviewSessionDescriptor {
     frameOrigin,
     frameUrl: `${frameOrigin}/.dsh-web-review/entry/https%3A//example.com/`,
     targetOrigin: 'https://example.com',
-    snapshotsEnabled: true,
   }
 }
 
