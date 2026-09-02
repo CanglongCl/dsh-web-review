@@ -27,8 +27,8 @@ pnpm install
 开发、手动验收和 E2E 需要外部 DeepSeek Harness checkout。当前兼容基线是：
 
 ```text
-dsh-v0.1.0-rc.8
-141eb6fef83422698aef7a981029e843e8161534
+dsh-v0.1.2-alpha.5
+db6bdc3576bc0d0e69002cb7c3ce22ab3520aaf35
 ```
 
 Harness 必须位于本仓库之外，不要为本插件修改 Harness 源码：
@@ -79,7 +79,7 @@ pnpm dev:acceptance
 
 ### 加载方式
 
-- 开发环境通过 profile-local alias `@dsh-web-review-dev/plugin` 加载外部 checkout。
+- 开发环境以真实包名 `@canglongcl/dsh-web-review`（profile-local 软链）加载外部 checkout —— alpha.5 要求 loader 行名等于 package.json name（DSH-0.1.2-A1-26），不再使用 development alias。
 - `scripts/profile-plugin-link.ts` 在 Web profile 下维护对应 symlink；非 symlink 占用该路径时会失败，不会覆盖。
 - `cordis.yml` 只通过 `dsh web --patch` 增加本插件，不修改 Harness profile 或源码。
 - 开发 bundle 和正式 bundle 使用不同的 loader ID，不能混用。
