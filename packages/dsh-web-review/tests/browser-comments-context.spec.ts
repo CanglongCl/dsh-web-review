@@ -43,24 +43,25 @@ describe('Browser Comments durable presentation', () => {
     expect(JSON.stringify(presentation)).not.toContain('inToolChrome')
   })
 
-  it('accepts only the exact plugin/form payload and declines malformed or foreign records', () => {
+  it('accepts only the exact snapshot-form payload and declines malformed or foreign records', () => {
     const source = {
       kind: 'plugin',
       plugin: 'dsh-web-review',
-      form: 'browser-comments',
+      form: 'snapshot',
       snapshotId: AnnotationSnapshotId('snapshot-1'),
-      presentation: browserCommentsPresentationOf(snapshot()),
+      sections: [
+        { name: 'Overview', text: '# Browser comments' },
+        { name: 'User Comment 1', text: '## User Comment 1\n\nTarget: hero' },
+      ],
     }
     expect(browserCommentsContextSourceOf(source)).toEqual(source)
     expect(browserCommentsContextSourceOf({ ...source, plugin: 'foreign' })).toBeUndefined()
     expect(browserCommentsContextSourceOf({ ...source, extra: true })).toBeUndefined()
+    expect(browserCommentsContextSourceOf({ ...source, form: 'browser-comments' })).toBeUndefined()
+    expect(browserCommentsContextSourceOf({ ...source, sections: [] })).toBeUndefined()
     expect(browserCommentsContextSourceOf({
       ...source,
-      presentation: { ...source.presentation, comments: [{ ...source.presentation.comments[0], changes: [] }] },
-    })).toBeDefined()
-    expect(browserCommentsContextSourceOf({
-      ...source,
-      presentation: { ...source.presentation, comments: [{ ...source.presentation.comments[0], id: '' }] },
+      sections: [{ name: '', text: 'x' }, { name: 'ok', text: 'y' }],
     })).toBeUndefined()
   })
 })

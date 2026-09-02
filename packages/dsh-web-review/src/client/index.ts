@@ -18,7 +18,7 @@
  * and follows the declaring ui-conversation entry across reloads. The inject
  * face stays thin: one serialized, acknowledged per-session annotation sync.
  */
-import type { ClientContext, ContextMessageNode, ISessions, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, ISessions, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the ui-conversation SlotMap merge (the view/dock entries).
 import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -44,8 +44,6 @@ import { DraftOverlayBar, type WebviewDockInjected } from './DraftOverlayBar.tsx
 import { normalizePreviewUrl } from './navigation-url.ts'
 import { activateConversationTab } from './preview-link.ts'
 import { isUiSkillName, UI_SKILLS, type UiSkillName } from '../ui-skills.ts'
-import { browserCommentsContextSourceOf } from '../browser-comments-context.ts'
-import { BrowserCommentsContext } from './BrowserCommentsContext.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -53,12 +51,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     webview: WebviewKey
   }
   interface SlotMap {
-    /** Producer-owned presentation chain declared by the reviewed Harness Context renderer. */
-    'conversation.chat.contextview': {
-      kind: 'chain'
-      scope: 'session'
-      owner: { readonly node: ContextMessageNode }
-    }
+    // rc.8 removed the conversation.chat.contextview chain slot; the
+    // browser-comments context now declares the standard 'snapshot' form
+    // (source.form + sections) rendered by the harness's ContextInjectionRow.
   }
 }
 
@@ -218,12 +213,6 @@ export function apply(ctx: ClientContext): void {
   // registrations declare the same handle (one instance per session — the
   // preview tab and the annotation dock share one pick list).
   const webviewStore = createWebviewStore()
-
-  ctx.slots.inject('conversation.chat.contextview', () => ctx.slots.register({
-    name: 'conversation.chat.contextview',
-    select: ({ node }) => browserCommentsContextSourceOf(node.source) ?? null,
-    locale: NS,
-  }, BrowserCommentsContext))
 
   ctx.inject(['commandUi'], (scope: ClientContext) => {
     scope.effect(() => scope.commandUi.register({
