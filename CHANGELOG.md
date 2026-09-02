@@ -5,7 +5,44 @@ All notable changes to `dsh-web-review` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.1-beta.1] - 2026-08-23
+## [0.6.0-beta.0] - 2026-09-02
+
+### Changed
+
+- migrate the client and node seams to the alpha.5 host
+- render browser comments via the rc.8 snapshot context form
+
+### Internal
+
+- relabel harness-cli spec to the alpha.5 baseline
+- relabel the harness baseline to alpha.5
+- alpha.5 token boot, contenteditable composer and chat flows
+- run the source-checkout channel under the real package name
+- pin the @deepseek-ai development cohort to 0.1.2-alpha.5
+- relabel remaining test comments to the rc.8 baseline
+- relabel the reviewed harness baseline to rc.8
+- acknowledge by snapshot id and assert rc.8 context rows
+- pin the @deepseek-ai development cohort to 0.1.0-rc.8
+- add the oh-my-dsh plugin-upgrade skill for DSH host migration
+
+## [0.5.0] - 2026-08-26
+
+## [0.5.0-beta.1] - 2026-08-25
+
+### Added
+
+- render browser comments via the rc.8 snapshot context form
+
+### Internal
+
+- remove page snapshot archival feature
+- replace page snapshot archival with dsh-better-sidebar integration
+- better-sidebar note in README and 0.5.0-beta.1 changelog entry
+- accept acknowledged snapshots by id advancement, not the syncing transition
+- keyless-by-design runtime, rc.8 fold-row assertions, and sidebar tab render fixes
+- derive the web-review line onto main (rc.8 + better-sidebar + rc.8 adaptations)
+
+## [0.4.1-beta.1] - 2026-08-24
 
 ### Internal
 
@@ -178,6 +215,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - add visual web review workflow
 - TypeScript-only repo, e2e suite, git hooks and quality gates
 
+[0.6.0-beta.0]: https://github.com/CanglongCl/dsh-web-review/compare/v0.5.0...v0.6.0-beta.0
+[0.5.0]: https://github.com/CanglongCl/dsh-web-review/compare/v0.5.0-beta.1...v0.5.0
+[0.5.0-beta.1]: https://github.com/CanglongCl/dsh-web-review/compare/v0.4.1-beta.1...v0.5.0-beta.1
 [0.4.1-beta.1]: https://github.com/CanglongCl/dsh-web-review/compare/v0.4.1-beta.0...v0.4.1-beta.1
 [0.4.1-beta.0]: https://github.com/CanglongCl/dsh-web-review/compare/v0.4.0-beta.0...v0.4.1-beta.0
 [0.4.0-beta.0]: https://github.com/CanglongCl/dsh-web-review/compare/v0.3.0...v0.4.0-beta.0
