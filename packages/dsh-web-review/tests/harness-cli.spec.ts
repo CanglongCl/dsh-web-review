@@ -12,7 +12,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })))
 })
 
-describe('rc.8 Harness Web launch contract', () => {
+describe('alpha.5 Harness Web launch contract', () => {
   it('uses the native-ESM built CLI with launcher flags before app flags', async () => {
     const harness = await mkdtemp(join(tmpdir(), 'dsh-harness-cli-'))
     roots.push(harness)
