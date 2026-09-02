@@ -18,7 +18,13 @@
  * and follows the declaring ui-conversation entry across reloads. The inject
  * face stays thin: one serialized, acknowledged per-session annotation sync.
  */
-import type { ClientContext, ISessions, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+// Type-only service and standard-seat merges this plugin's client assembly uses.
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
+import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the ui-conversation SlotMap merge (the view/dock entries).
 import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'

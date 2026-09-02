@@ -4,7 +4,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { useSyncExternalStore } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SnapshotSelectorHook, Translate } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { WebviewDockProps } from '../src/client/DraftOverlayBar.tsx'
 import {
   AnnotationSnapshotId,
   type AnnotationDraft,
@@ -44,32 +45,47 @@ function hookFor(store: ReturnType<WebviewStore['create']>): SnapshotSelectorHoo
   return (selector) => useSyncExternalStore(store.subscribe, () => selector(store.getSnapshot()))
 }
 
+/** Session lifecycle source (alpha.5 SessionSnapshot shape). */
 function sessionSource() {
-  let snapshot = { nodes: [] } as unknown as ConversationSnapshot
+  let snapshot = { promptError: null } as unknown as SessionSnapshot
   const listeners = new Set<() => void>()
-  const useSession: SnapshotSelectorHook<ConversationSnapshot> = (selector) =>
+  const useSession: SnapshotSelectorHook<SessionSnapshot> = (selector) =>
     useSyncExternalStore(
       (listener) => { listeners.add(listener); return () => { listeners.delete(listener) } },
       () => selector(snapshot),
     )
+  return { useSession }
+}
+
+/** Chat flow source: mirrors the alpha.5 ui-chat session chat provide hook. */
+function chatSource() {
+  let order: string[] = []
+  const nodes = new Map<string, { kind?: string; data?: { source?: unknown } }>()
+  const listeners = new Set<() => void>()
+  const snapshot = () => ({
+    order,
+    nodes: { get: (key: string) => nodes.get(key) },
+  })
+  const useChat: (selector: (chat: unknown) => unknown) => unknown = (selector) =>
+    useSyncExternalStore(
+      (listener) => { listeners.add(listener); return () => { listeners.delete(listener) } },
+      () => selector(snapshot()),
+    )
   return {
-    useSession,
+    useChat,
     appendHuman(seq: number) {
-      snapshot = {
-        ...snapshot,
-        nodes: [...snapshot.nodes, { kind: 'user', seq, time: 1, content: [], source: { kind: 'user' } }],
-      }
+      const key = 'user-' + seq
+      order = [...order, key]
+      nodes.set(key, { kind: 'user', data: { source: { kind: 'user' } } })
       for (const listener of listeners) listener()
     },
     appendAnnotationContext(seq: number, snapshotId: string) {
-      snapshot = {
-        ...snapshot,
-        nodes: [...snapshot.nodes, {
-          kind: 'context', seq, time: 1, content: [{ type: 'text', text: '# Browser comments' }],
-          source: { kind: 'plugin', plugin: 'dsh-web-review', snapshotId },
-          provenance: { role: 'inject', label: 'dsh-web-review' }, form: null,
-        }],
-      }
+      const key = 'context-' + seq
+      order = [...order, key]
+      nodes.set(key, {
+        kind: 'context',
+        data: { source: { kind: 'plugin', plugin: 'dsh-web-review', snapshotId } },
+      })
       for (const listener of listeners) listener()
     },
   }
@@ -306,7 +322,7 @@ function renderView(
 
 function renderDock(
   sync: WebviewDockInjected['syncAnnotations'] = successfulSync(),
-  useSession: SnapshotSelectorHook<ConversationSnapshot> = sessionSource().useSession,
+  useChat: (selector: (chat: unknown) => unknown) => unknown = chatSource().useChat,
   openPreview: WebviewDockInjected['openPreview'] = vi.fn(),
 ) {
   const store = createWebviewStore().create()
@@ -316,7 +332,7 @@ function renderDock(
       {...({} as any)}
       useStore={hookFor(store)}
       actions={store.actions}
-      useSession={useSession}
+      useChat={useChat as unknown as WebviewDockProps['useChat']}
       syncAnnotations={sync}
       openPreview={openPreview}
       t={t}
@@ -769,9 +785,9 @@ describe('DraftOverlayBar', () => {
   })
 
   it('ignores unrelated human messages and clears only the matching durable annotation context', async () => {
-    const session = sessionSource()
+    const session = chatSource()
     const sync = vi.fn<(_draft: AnnotationDraft) => Promise<AnnotationSyncReceipt>>(successfulSync())
-    const store = renderDock(sync, session.useSession)
+    const store = renderDock(sync, session.useChat)
     act(() => {
       store.actions.setUrl('http://localhost:5173/')
       store.actions.addPick(pick('p1', 'Apply this change'))
@@ -789,13 +805,13 @@ describe('DraftOverlayBar', () => {
   })
 
   it('does not let an older A acknowledgement clear a newer ready B snapshot', async () => {
-    const session = sessionSource()
+    const session = chatSource()
     const sync = vi.fn<(_draft: AnnotationDraft) => Promise<AnnotationSyncReceipt>>(async (draft) => {
       const comment = draft.comments[0]?.comment
       if (comment === undefined) return { kind: 'empty' }
       return receipt(comment === 'A' ? 'snapshot-a' : 'snapshot-b')
     })
-    const store = renderDock(sync, session.useSession)
+    const store = renderDock(sync, session.useChat)
     act(() => {
       store.actions.setUrl('http://localhost:5173/')
       store.actions.addPick(pick('p1', 'A'))

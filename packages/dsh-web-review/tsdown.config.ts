@@ -34,21 +34,16 @@ const PACKAGE_ROOT = dirname(fileURLToPath(import.meta.url))
 const PLATFORM_MODULES = [
   'react', 'react/jsx-runtime', 'react-dom', 'react-dom/client', '@deepseek-ai/cordis',
   '@deepseek-ai/dsh-client-ui-slots',
-  '@deepseek-ai/dsh-client-web-react',
+  '@deepseek-ai/dsh-client-store',
   '@deepseek-ai/dsh-client-ui-primitives',
-  '@deepseek-ai/dsh-client-ui-attachment',
-  '@deepseek-ai/dsh-client-schema-form',
 ] as const
-
-/** The runtime store-engine exemption (snapshot stores live in runtime/client). */
-const RUNTIME_STORE_EXEMPTION = '@deepseek-ai/dsh-client-runtime/client'
 
 /** Keep module CSS inside the remotely loaded client artifact. */
 const CSS_VIRTUAL_PREFIX = '\0dsh-web-review-css:'
 const CSS_VIRTUAL_SUFFIX = '.mjs'
 
 /** Externals resolved from the loader module table: platform modules + the runtime exemption. */
-export const CLIENT_EXTERNALS: readonly string[] = [...PLATFORM_MODULES, RUNTIME_STORE_EXEMPTION]
+export const CLIENT_EXTERNALS: readonly string[] = [...PLATFORM_MODULES]
 /** Third-party packages intentionally embedded in the browser artifact. */
 const CLIENT_BUNDLED_DEPENDENCIES = ['clsx'] as const
 

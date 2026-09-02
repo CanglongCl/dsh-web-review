@@ -221,7 +221,7 @@ async function run(ctx: Context, config: Config, io: RunnerIo): Promise<void> {
   }
   await sessions.flush(agent.session)
 
-  const outcome = summarize(agent.session.events, firstSeq)
+  const outcome = summarize(agent.session.snapshotEvents(firstSeq), firstSeq)
   io.stdout.write(`${outcome.text}\n`)
   if (outcome.reason?.kind === 'error') {
     io.stderr.write(`dsh: ${outcome.reason.error.code}: ${outcome.reason.error.message}\n`)

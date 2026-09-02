@@ -11,7 +11,6 @@ import {
   IconWarningOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ConversationNode } from '@deepseek-ai/dsh-client-runtime/client'
 import {
   annotationSnapshotIdOfSource,
   type AnnotationDraft,
@@ -52,17 +51,26 @@ function sourceOf(pick: PickItem): string {
   return anchor.component.trim() === '' ? source : `${source} · ${anchor.component}`
 }
 
-function annotationContextId(node: ConversationNode): ReturnType<typeof annotationSnapshotIdOfSource> {
-  return node.kind === 'context' ? annotationSnapshotIdOfSource(node.source) : undefined
+/** Snapshot id carried by the newest plugin-authored chat context node, if any. */
+function latestAnnotationContextIdOf(chat: unknown): ReturnType<typeof annotationSnapshotIdOfSource> | undefined {
+  const snapshot = chat as {
+    readonly order?: readonly string[]
+    readonly nodes?: { get(key: string): { kind?: string; data?: { source?: unknown } } | undefined }
+  }
+  const order = snapshot.order ?? []
+  for (let index = order.length - 1; index >= 0; index -= 1) {
+    const node = snapshot.nodes?.get(order[index] ?? '')
+    if (node?.kind !== 'context') continue
+    const id = annotationSnapshotIdOfSource(node.data?.source)
+    if (id !== undefined) return id
+  }
+  return undefined
 }
 
 /** Annotation composer capsule and hover/focus detail card. */
-export function DraftOverlayBar({ useStore, useSession, actions, syncAnnotations, openPreview, t }: WebviewDockProps) {
+export function DraftOverlayBar({ useStore, useChat, actions, syncAnnotations, openPreview, t }: WebviewDockProps) {
   const state = useStore((s) => s)
-  const latestAnnotationContextId = useSession((session) => {
-    const node = session.nodes.findLast(candidate => annotationContextId(candidate) !== undefined)
-    return node === undefined ? undefined : annotationContextId(node)
-  })
+  const latestAnnotationContextId = useChat(chat => latestAnnotationContextIdOf(chat))
   const [open, setOpen] = useState(false)
   const [retry, setRetry] = useState(0)
   const detailsId = useId()

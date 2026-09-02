@@ -413,9 +413,8 @@ function decisionSkillNames(messages: readonly UserMessage[]): Set<string> {
 /** Skill bodies that remain on the exact model-visible session surface. */
 export function visibleSkillNames(agent: Pick<Agent, 'session'>): Set<string> {
   const names = new Set<string>()
-  const events = agent.session.events
   for (const seq of agent.session.surface.nodes) {
-    const event = events[seq]
+    const event = agent.session.eventAt(seq)
     if (event?.type === 'user/message') {
       const source = event.data.source as { kind?: unknown; name?: unknown }
       if (source.kind === 'skill-invocation' && typeof source.name === 'string') names.add(source.name)
@@ -423,7 +422,7 @@ export function visibleSkillNames(agent: Pick<Agent, 'session'>): Set<string> {
     }
     if (event?.type !== 'tool/result' || event.data.message.content[0]?.isError === true) continue
     const callSeq = event.sourceEventSeqs?.[0]
-    const call = callSeq === undefined ? undefined : events[callSeq]
+    const call = callSeq === undefined || callSeq === null ? undefined : agent.session.eventAt(callSeq)
     if (call?.type !== 'tool/call' || call.data.name !== 'skill') continue
     try {
       const args = JSON.parse(call.data.arguments) as { name?: unknown }

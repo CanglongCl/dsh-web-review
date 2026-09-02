@@ -1,7 +1,8 @@
 /** Pure contract, formatting and lifecycle tests for separate context injection. */
 import type { IncomingMessage } from 'node:http'
 import type { Agent, AgentRegistry, PreStepDecision } from '@deepseek-ai/dsh-agent'
-import { CallId, createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
+import { ToolCallId } from '@deepseek-ai/dsh-llm/brand'
 import { Session, SessionId, type SessionEvent, type SessionId as SessionIdType, type UserMessage } from '@deepseek-ai/dsh-session'
 import { describe, expect, it } from 'vitest'
 import {
@@ -419,7 +420,7 @@ describe('pending annotation admission', () => {
     // A running turn's intermediate steps claim only tool-result contexts:
     // a queued send must not let those steps consume the annotation.
     const toolResult = createToolResultMessage({
-      callId: CallId('call-1'),
+      callId: ToolCallId('call-1'),
       content: [{ type: 'text', text: 'tool output' }],
       isError: false,
     })

@@ -1,5 +1,5 @@
 /** Client transport ordering and acknowledgement tests (no timer/coalescing). */
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AnnotationDraft } from '../src/annotation-contract.ts'
 import { makeSyncAnnotations } from '../src/client/index.ts'

@@ -5,7 +5,7 @@
  * annotation picks shared by both registrations, and the focus signal the dock
  * sends to the preview tab (detail-row click → locate the element in the iframe).
  */
-import { defineStore } from '@deepseek-ai/dsh-client-runtime/client'
+import { defineStore } from '@deepseek-ai/dsh-client-store'
 import type { AnnotationSnapshotId } from '../annotation-contract.ts'
 import type { UiSkillName } from '../ui-skills.ts'
 import type { PickItem } from './contract.ts'
