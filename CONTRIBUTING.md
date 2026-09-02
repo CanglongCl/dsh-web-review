@@ -27,8 +27,8 @@ pnpm install
 开发、手动验收和 E2E 需要外部 DeepSeek Harness checkout。当前兼容基线是：
 
 ```text
-snapshot-20260812T172954Z-final-unwatermarked-5fa48343c7
-7b9644f2b664e46c9518506035aa6c8d5af4d8e8
+dsh-v0.1.0-rc.8
+141eb6fef83422698aef7a981029e843e8161534
 ```
 
 Harness 必须位于本仓库之外，不要为本插件修改 Harness 源码：
