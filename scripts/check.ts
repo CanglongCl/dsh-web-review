@@ -5,7 +5,7 @@
  *  2. typecheck — source/scripts solution plus every unit/component/E2E test;
  *  3. build — tsdown produces the node half plus both client channels;
  *  4. unit suite — vitest, including the real directory-entry load;
- *  5. config/package contracts — generated config is deterministic, 0812
+ *  5. config/package contracts — generated config is deterministic, rc.8
  *     Cordis/CLI names, current dsh.client + dsh.bundle shape, both banner ids, and the
  *     native-ESM package entry;
  *  6. official package — stable bundle id, dsh.bundle declaration, exact
@@ -32,19 +32,19 @@ const EXPECTED_PUBLIC_DEVELOPMENT_VERSIONS: Record<string, string> = {
   '@deepseek-ai/cordis': '4.0.1',
   '@deepseek-ai/cordis-plugin-include': '1.0.6',
   '@deepseek-ai/cordis-plugin-loader': '1.0.2',
-  '@deepseek-ai/dsh-agent': '0.1.0-rc.6',
-  '@deepseek-ai/dsh-client-locale': '0.1.0-rc.6',
-  '@deepseek-ai/dsh-client-runtime': '0.1.0-rc.6',
-  '@deepseek-ai/dsh-client-ui-commands': '0.1.0-rc.6',
-  '@deepseek-ai/dsh-client-ui-conversation': '0.1.0-rc.6',
-  '@deepseek-ai/dsh-client-ui-layout': '0.1.0-rc.6',
-  '@deepseek-ai/dsh-client-ui-primitives': '0.1.0-rc.6',
-  '@deepseek-ai/dsh-client-ui-slots': '0.1.0-rc.6',
-  '@deepseek-ai/dsh-host-webserver': '0.1.0-rc.6',
-  '@deepseek-ai/dsh-llm': '0.1.0-rc.6',
-  '@deepseek-ai/dsh-session': '0.1.0-rc.6',
-  '@deepseek-ai/dsh-skill': '0.1.0-rc.6',
-  '@deepseek-ai/dsh-system-prompt': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-agent': '0.1.0-rc.8',
+  '@deepseek-ai/dsh-client-locale': '0.1.0-rc.8',
+  '@deepseek-ai/dsh-client-runtime': '0.1.0-rc.8',
+  '@deepseek-ai/dsh-client-ui-commands': '0.1.0-rc.8',
+  '@deepseek-ai/dsh-client-ui-conversation': '0.1.0-rc.8',
+  '@deepseek-ai/dsh-client-ui-layout': '0.1.0-rc.8',
+  '@deepseek-ai/dsh-client-ui-primitives': '0.1.0-rc.8',
+  '@deepseek-ai/dsh-client-ui-slots': '0.1.0-rc.8',
+  '@deepseek-ai/dsh-host-webserver': '0.1.0-rc.8',
+  '@deepseek-ai/dsh-llm': '0.1.0-rc.8',
+  '@deepseek-ai/dsh-session': '0.1.0-rc.8',
+  '@deepseek-ai/dsh-skill': '0.1.0-rc.8',
+  '@deepseek-ai/dsh-system-prompt': '0.1.0-rc.8',
   '@deepseek-ai/schemastery': '3.18.1',
 }
 const runE2e = process.argv.includes('--e2e')
@@ -129,7 +129,7 @@ const webLauncherFiles = [
   join(PKG, 'tests', 'e2e-scaffold.ts'),
 ]
 assert(
-  '0812 Web launchers share the built-CLI helper',
+  'rc.8 Web launchers share the built-CLI helper',
   () => webLauncherFiles.every(path => {
     const source = readFileSync(path, 'utf8')
     return source.includes('harnessWebLaunch(')
@@ -167,7 +167,7 @@ assert(
       join(PKG, 'tests', 'e2e-scaffold.ts'),
     ].map(file => readFileSync(file, 'utf8')).every(source =>
       source.includes('materializeProfilePluginLink')),
-  () => 'entry-name.json, cordis.yml, and every launcher must share and materialize the 0812 development alias',
+  () => 'entry-name.json, cordis.yml, and every launcher must share and materialize the rc.8 development alias',
 )
 assert(
   'client package declares dsh.client',
@@ -218,7 +218,7 @@ assert(
   () => 'package.json exports must not expose private src/* modules or missing declaration artifacts',
 )
 assert(
-  'source package uses the public 0812 runtime packages',
+  'source package uses the public rc.8 runtime packages',
   () => {
     const dependencies = packageManifest.devDependencies ?? {}
     const deepseekDependencies = Object.entries(dependencies)
@@ -231,7 +231,7 @@ assert(
       && dependencies['@cordisjs/plugin-include'] === undefined
       && readFileSync(join(PKG, 'tsdown.config.ts'), 'utf8').includes("'@deepseek-ai/cordis'")
   },
-  () => 'public npm dependencies and browser platform externals must use the exact pinned 0812 @deepseek-ai package line',
+  () => 'public npm dependencies and browser platform externals must use the exact pinned rc.8 @deepseek-ai package line',
 )
 const migrationSurfaces = [
   join(PKG, 'package.json'),
@@ -241,7 +241,7 @@ const migrationSurfaces = [
   join(PKG, 'tests', 'entry-load.spec.ts'),
 ]
 assert(
-  '0812 public vocabulary has no 0811 aliases',
+  'rc.8 public vocabulary has no 0811 aliases',
   () => migrationSurfaces.every((file) => {
     const source = readFileSync(file, 'utf8')
     return !source.includes('@deepseek-ai/dsh-client-ui-command"')
@@ -258,7 +258,7 @@ assert(
   () => 'pnpm-lock.yaml must not contain link: dependencies or machine-local user paths',
 )
 assert(
-  'launchers use the 0812 app-owned CLI',
+  'launchers use the rc.8 app-owned CLI',
   () => {
     const source = readFileSync(join(ROOT, 'scripts', 'harness-cli.ts'), 'utf8')
     return source.includes('resolveHarnessCli')
@@ -266,7 +266,7 @@ assert(
       && !source.includes("'--dev'")
       && !source.includes("'--import', 'tsx'")
   },
-  () => '0812 launches apps/cli/lib/bin.js with --patch before app flags and has no --dev option',
+  () => 'rc.8 launches apps/cli/lib/bin.js with --patch before app flags and has no --dev option',
 )
 assert(
   'bundle banner id matches the entry name',
@@ -284,7 +284,7 @@ assert(
   'native-ESM package entry exists',
   () => packageManifest.exports?.['.'] === './lib/index.js'
     && existsSync(join(PKG, 'lib', 'index.js')),
-  () => 'package.json must export the built lib/index.js entry used by the 0812 profile-local alias',
+  () => 'package.json must export the built lib/index.js entry used by the rc.8 profile-local alias',
 )
 assert(
   'built node half is self-contained',
