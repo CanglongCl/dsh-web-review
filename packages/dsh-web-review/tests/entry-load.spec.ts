@@ -1,6 +1,6 @@
 /**
- * Native-ESM entry test: Harness rc.8 resolves the profile-local development
- * alias to this package and imports its package `main`. This subprocess uses
+ * Native-ESM entry test: Harness alpha.5 resolves the profile-local source
+ * package row (real npm name, per DSH-0.1.2-A1-26) and imports its package `main`. This subprocess uses
  * plain Node, matching the built app-owned CLI rather than tsx source hooks.
  */
 import { spawnSync } from 'node:child_process'
@@ -15,8 +15,8 @@ import { materializeProfilePluginLink } from '../../../scripts/profile-plugin-li
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
 const PKG_DIR = join(REPO_ROOT, 'packages', 'dsh-web-review')
 
-describe('package alias import (rc.8 Loader resolution path)', () => {
-  it('imports the profile-local source alias under plain Node', async () => {
+describe('source package row import (alpha.5 Loader resolution path)', () => {
+  it('imports the profile-local source package under plain Node', async () => {
     if (!existsSync(join(PKG_DIR, 'lib', 'index.js'))) {
       throw new Error('lib/index.js missing — run `pnpm build` before `pnpm test`')
     }
@@ -24,7 +24,7 @@ describe('package alias import (rc.8 Loader resolution path)', () => {
     materializeProfilePluginLink(REPO_ROOT, dshHome)
     const profile = join(dshHome, 'profiles', 'web')
     const script = [
-      'const m = await import("@dsh-web-review-dev/plugin")',
+      'const m = await import("@canglongcl/dsh-web-review")',
       'console.log(JSON.stringify({ name: m.name, inject: m.inject, hasApply: typeof m.apply === "function" }))',
     ].join('; ')
     const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {

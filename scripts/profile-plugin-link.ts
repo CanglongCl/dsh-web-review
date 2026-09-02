@@ -1,4 +1,4 @@
-/** Materialize the rc.8 source-checkout package under its development alias. */
+/** Materialize the alpha.5 source-checkout package under its development alias. */
 import {
   existsSync,
   lstatSync,
@@ -10,7 +10,7 @@ import {
   unlinkSync,
 } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { DEVELOPMENT_ENTRY_NAME, OFFICIAL_PACKAGE_NAME } from './development-entry.ts'
+import { OFFICIAL_PACKAGE_NAME } from './development-entry.ts'
 
 function existingLink(path: string): ReturnType<typeof lstatSync> | undefined {
   try {
@@ -22,8 +22,10 @@ function existingLink(path: string): ReturnType<typeof lstatSync> | undefined {
 }
 
 /**
- * Link the external source package into one DSH profile's node_modules.
- * Only a symlink at the exact development alias may be replaced.
+ * Link the external source package into one DSH profile's node_modules under its
+ * real package name (the alpha.5 loader row name must equal the package.json
+ * name, so the development alias no longer exists).
+ * Only a symlink at the exact package name may be replaced.
  * @param repositoryRoot - dsh-web-review repository root.
  * @param dshHome - resolved DSH home for this launch.
  * @param profile - target DSH profile name.
@@ -50,7 +52,7 @@ export function materializeProfilePluginLink(
     }
   }
   const target = realpathSync(join(repositoryRoot, 'packages', 'dsh-web-review'))
-  const destination = join(profileRoot, 'node_modules', ...DEVELOPMENT_ENTRY_NAME.split('/'))
+  const destination = join(profileRoot, 'node_modules', ...OFFICIAL_PACKAGE_NAME.split('/'))
   const current = existingLink(destination)
   if (current !== undefined) {
     if (!current.isSymbolicLink()) {
