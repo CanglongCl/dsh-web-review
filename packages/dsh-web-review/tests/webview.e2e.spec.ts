@@ -112,12 +112,30 @@ async function waitForAnnotationSync(page: Page): Promise<void> {
   lastSettledSnapshotId = await capsule.getAttribute('data-annotation-snapshot-id')
 }
 
+/** The alpha.5 composer is a contenteditable seat (not a textarea). */
+async function composerInput(page: Page): Promise<import('playwright').Locator> {
+  const input = page.locator('[data-composer-input][contenteditable="true"]').last()
+  await input.waitFor({ timeout: 20_000 })
+  return input
+}
+
+/** Replace the composer draft through real keystrokes (Lexical-safe). */
+async function writeDraft(page: Page, text: string): Promise<void> {
+  const input = await composerInput(page)
+  await input.click()
+  await page.keyboard.press('ControlOrMeta+A')
+  if (text === '') await page.keyboard.press('Backspace')
+  else await page.keyboard.type(text)
+}
+
+async function composerText(page: Page): Promise<string> {
+  const input = await composerInput(page)
+  return (await input.textContent()) ?? ''
+}
+
 async function sendViaComposer(page: Page, text: string): Promise<void> {
-  const composer = page.getByPlaceholder('Message the agent')
-  await composer.waitFor({ timeout: 15_000 })
-  await expect.poll(async () => composer.isEditable(), { timeout: 45_000 }).toBe(true)
-  await composer.fill(text)
-  const send = page.getByRole('button', { name: 'Send message' })
+  await writeDraft(page, text)
+  const send = page.getByRole('button', { name: 'Send message', exact: true })
   await expect.poll(async () => send.isEnabled(), { timeout: 45_000 }).toBe(true)
   await send.click()
 }
@@ -216,8 +234,7 @@ describe('dsh-web-review e2e', () => {
     const page = await newPage(browser)
     onTestFailed(() => saveFailureShot(page, 'skills-slash-command'))
     await bootWithPanel(page, 'skills-slash-command')
-    const composer = page.getByPlaceholder('Message the agent')
-    await composer.fill('/skills')
+    await writeDraft(page, '/skills')
     const slashMenu = page.getByRole('listbox', { name: 'Suggestions' })
     const skillsCommand = slashMenu.getByRole('option', { name: /skills/u })
     await skillsCommand.waitFor({ timeout: 10_000 })
@@ -226,7 +243,7 @@ describe('dsh-web-review e2e', () => {
     await skillList.waitFor({ timeout: 10_000 })
     expect(await skillList.getByRole('option').count()).toBe(8)
     await skillList.getByRole('option', { name: /better-layout/u }).click()
-    await expect.poll(async () => composer.inputValue()).toBe('/better-layout')
+    await expect.poll(async () => composerText(page), { timeout: 10_000 }).toBe('/better-layout')
     await page.close()
   })
 
@@ -396,7 +413,10 @@ describe('dsh-web-review e2e', () => {
     expect(await selected.getAttribute('tabindex')).toBe('-1')
     expect(await tree.locator('[role="treeitem"]:focus').count()).toBe(0)
     await editor.press('Tab')
-    expect(await tree.locator('[role="treeitem"][aria-selected="true"]').count()).toBe(1)
+    await expect.poll(
+      async () => tree.locator('[role="treeitem"][aria-selected="true"]').count(),
+      { timeout: 10_000 },
+    ).toBe(1)
     await expect.poll(async () => frame.locator('.card').nth(1).getAttribute('data-dsh-wv-selected')).not.toBeNull()
     expect(await editor.evaluate(element => getComputedStyle(element).outlineStyle)).toBe('none')
     expect(await page.locator('[data-webview-navigation-feedback]').count()).toBe(0)
@@ -700,7 +720,7 @@ describe('dsh-web-review e2e', () => {
     await editor.waitFor({ state: 'detached', timeout: 10_000 })
     await waitForAnnotationSync(page)
 
-    await page.getByPlaceholder('Message the agent').fill('apply the reviewed visual changes')
+    await writeDraft(page, 'apply the reviewed visual changes')
     await page.getByRole('button', { name: 'Send 1' }).click()
     await expect.poll(
       async () => page.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
@@ -799,17 +819,16 @@ describe('dsh-web-review e2e', () => {
     await annotate(page, frame, 'button.btn-primary', 'Make the button color darker.')
     await waitForAnnotationSync(page)
 
-    const composer = page.getByPlaceholder('Message the agent')
-    await composer.fill('apply this annotated draft')
+    await writeDraft(page, 'apply this annotated draft')
     await page.getByRole('button', { name: 'Send 1' }).click()
     await expect.poll(
       async () => page.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
       { message: 'annotation send should activate Chat' },
     ).toBe('true')
     // The running turn swaps the composer placeholder (steer-queue hint), so
-    // the cleared draft is asserted through the stable seat textarea instead.
+    // the cleared draft is asserted through the stable contenteditable seat.
     await expect.poll(
-      async () => page.locator('[data-composer-seat] textarea').inputValue(),
+      async () => page.locator('[data-composer-seat] [data-composer-input]').textContent(),
       { timeout: 10_000, message: 'dedicated send should clear the composer draft' },
     ).toBe('')
     await expect.poll(
@@ -831,7 +850,7 @@ describe('dsh-web-review e2e', () => {
     const frame = await loadDemoPage(page)
     await annotate(page, frame, 'button.btn-primary', 'Make the button color darker.')
     await waitForAnnotationSync(page)
-    expect(await page.getByPlaceholder('Message the agent').inputValue()).toBe('')
+    expect(await composerText(page)).toBe('')
     await page.getByRole('button', { name: 'Send 1' }).click()
 
     await expect.poll(

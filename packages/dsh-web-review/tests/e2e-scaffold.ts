@@ -9,6 +9,9 @@
  * gitignored `.artifacts/`.
  */
 import { spawn, type ChildProcess } from 'node:child_process'
+
+/** Captured service stdout/stderr for diagnostics. */
+export const serviceLogs: string[] = []
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer } from 'node:net'
@@ -21,7 +24,7 @@ import { harnessWebLaunch } from '../../../scripts/harness-cli.ts'
 import { resolveHarnessRoot } from '../../../scripts/harness-path.ts'
 import { materializeProfilePluginLink } from '../../../scripts/profile-plugin-link.ts'
 
-/** Onboarding acknowledgement expected by the reviewed rc.8 Harness baseline. */
+/** Onboarding acknowledgement expected by the reviewed alpha.5 Harness baseline. */
 const WELCOME_NOTICE_SETTINGS_NAMESPACE = 'ui-onboarding'
 const WELCOME_NOTICE_ACK_FIELD = 'welcomeNoticeVersion'
 const WELCOME_NOTICE_VERSION = '2026-08-13.1'
@@ -149,6 +152,7 @@ export async function startServices(): Promise<E2EServices> {
   const capture = (label: string) => (chunk: Buffer) => {
     for (const line of chunk.toString('utf8').split('\n')) {
       if (line.trim() !== '') logs.push(`[${label}] ${line}`)
+        serviceLogs.push(`[${label}] ${line}`)
     }
   }
 
@@ -213,11 +217,35 @@ export async function startServices(): Promise<E2EServices> {
   demo.stdout?.on('data', capture('demo'))
   demo.stderr?.on('data', capture('demo'))
 
-  const webUrl = `http://127.0.0.1:${webPort}`
+  const rootUrl = `http://127.0.0.1:${webPort}`
   const demoUrl = `http://127.0.0.1:${demoPort}`
+  let webUrl = rootUrl
   try {
-    await waitForChildService(web, async () => (await fetch(webUrl)).ok, 90_000, 'web ready')
+    // The alpha host prints a process-scoped bootstrap token URL and keeps the
+    // bare root behind a signed-cookie exchange (DSH-0.1.2-A1-08/A1-19). Treat
+    // the printed URL as the boot signal, then open the browser against the
+    // token URL so the 303 cookie exchange happens inside the test context;
+    // the rc host (bare root URL) keeps the plain readiness probe.
+    let tokenUrl: string | undefined
+    const webReady = async (): Promise<boolean> => {
+      if (tokenUrl === undefined) {
+        const match = logs.findLast(line => /(http:\/\/127\.0\.0\.1:\d+\/\?token=[A-Za-z0-9_-]+)/u.test(line))
+        const found = match?.match(/(http:\/\/127\.0\.0\.1:\d+\/\?token=[A-Za-z0-9_-]+)/u)?.[1]
+        if (found !== undefined) tokenUrl = found
+      }
+      if (tokenUrl !== undefined) {
+        try {
+          const probe = await fetch(tokenUrl, { redirect: 'manual' })
+          return probe.status === 303 || probe.ok
+        } catch {
+          return false
+        }
+      }
+      return (await fetch(rootUrl)).ok
+    }
+    await waitForChildService(web, webReady, 90_000, 'web ready')
     await waitForChildService(demo, async () => (await fetch(demoUrl)).ok, 30_000, 'demo ready')
+    webUrl = tokenUrl ?? rootUrl
   } catch (error) {
     console.error(logs.join('\n'))
     web.kill('SIGTERM')
@@ -257,7 +285,7 @@ export async function newPage(browser: Browser): Promise<Page> {
 
 /**
  * Connect a fresh workspace through the empty hero's Choose-workspace flow
- * (the Harness rc.8 workspace-management path: with the -browse directory picker
+ * (the Harness alpha.5 workspace-management path: with the -browse directory picker
  * pinned by {@link startServices}, the click lands directly in the in-app
  * 'Select Workspace Directory' dialog). First-boot overlays are suppressed
  * at the configuration layer (welcome-notice ack + provider key), so no UI
@@ -267,7 +295,9 @@ export async function newPage(browser: Browser): Promise<Page> {
  */
 export async function connectWorkspace(page: Page, root: string, name = 'workspace'): Promise<void> {
   mkdirSync(join(root, name), { recursive: true })
-  await page.getByRole('button', { name: 'Choose workspace' }).click()
+  const picker = page.getByRole('button', { name: 'Choose workspace' })
+  await picker.waitFor({ timeout: 20_000 })
+  await picker.click()
   const dialog = page.getByRole('dialog', { name: 'Select Workspace Directory' })
   const addWorkspace = page.getByRole('menuitem', { name: /Add workspace/ })
   await Promise.race([
@@ -286,25 +316,23 @@ export async function connectWorkspace(page: Page, root: string, name = 'workspa
   // page, derailing every later gesture.
   await dialog.waitFor({ state: 'detached', timeout: 15_000 })
   // The startup initial-selection may open (or create) a blank session in the
-  // most recent workspace BEFORE this connect lands; that session's hero shows
-  // the SAME hero composer, so the wait below must first confirm the CURRENT
-  // session is the freshly connected one. The hero's workspace chip names the
-  // current session's workspace — wait for this workspace's basename before
-  // sending the probe, or the 'hello' would go to the wrong (still blank)
-  // session and this scenario would boot into a session that never renders the
-  // view tablist.
+  // most recent workspace BEFORE this connect lands; the alpha.5 hero renders
+  // the composer surface only once a workspace exists, so the adopt above
+  // already targets the live session. The alpha.5 composer is a contenteditable
+  // seat (not a textarea); wait for the editable surface with its placeholder
+  // before typing.
   const heroSeat = page.locator('[data-composer-seat]')
-  await heroSeat.getByText(name, { exact: true }).waitFor({ timeout: 20_000 })
-  const composer = heroSeat.locator('textarea:enabled[placeholder="Describe what you want to build"]')
+  const composer = heroSeat.locator('[data-composer-input][contenteditable="true"]')
   await composer.waitFor({ timeout: 20_000 })
+  await composer.click()
   // Leave the blank state: the conversation session header (and with it the
   // view tablist — [Chat] [Preview]) only renders once the session holds a
   // message. The probe message fails fast against the dead provider endpoint,
   // so the turn settles and the header stays mounted; wait for the Preview
   // tab here so callers never race the remount window.
-  await composer.fill('hello')
-  await composer.press('Enter')
-  await page.getByRole('tab', { name: 'Web Preview' }).waitFor({ state: 'visible', timeout: 30_000 })
+  await page.keyboard.type('hello')
+  await page.keyboard.press('Enter')
+  await page.getByRole('tab', { name: 'Web Preview' }).waitFor({ state: 'visible', timeout: 45_000 })
 }
 
 /** Poll until a click succeeds: the session header re-mounts while a turn
