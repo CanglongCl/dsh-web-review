@@ -72,13 +72,44 @@ async function annotate(page: Page, frame: FrameLocator, selector: string, comme
   await input.waitFor({ state: 'detached', timeout: 10_000 })
 }
 
+// The host-acknowledged snapshot id of the last settled wait; the next wait
+// requires the id to ADVANCE past it, so a stale 'synced' left over from an
+// earlier submission can never satisfy the current one.
+let lastSettledSnapshotId: string | null = null
+
 async function waitForAnnotationSync(page: Page): Promise<void> {
   const capsule = page.locator('[data-webview-annotation-capsule]')
   await capsule.waitFor({ timeout: 10_000 })
+  const baseline = lastSettledSnapshotId
+  // A 'synced' status alone cannot distinguish the current submission from a
+  // previous one that already acknowledged (picks change, then the commit
+  // effect re-runs); and the in-flight 'syncing' transition can finish faster
+  // than any polling interval, so requiring it is a false-failure source.
+  // Accept only a snapshot id that has advanced past every id seen so far
+  // (baseline and any intermediate submission) and then held stable across
+  // consecutive polls — the host has acknowledged the latest stored state.
+  let previousId: string | null = null
+  let stableId: string | null = null
   await expect.poll(
-    async () => capsule.getAttribute('data-sync-status'),
-    { timeout: 15_000, message: 'annotation context should be acknowledged by the host' },
-  ).toBe('synced')
+    async () => {
+      const status = await capsule.getAttribute('data-sync-status')
+      const id = await capsule.getAttribute('data-annotation-snapshot-id')
+      if (status !== 'synced' || id === null || id === baseline) {
+        previousId = null
+        stableId = null
+        return false
+      }
+      if (id === stableId) return true
+      if (id === previousId) {
+        stableId = id
+        return false
+      }
+      previousId = id
+      return false
+    },
+    { timeout: 20_000, message: 'annotation context should be acknowledged by the host' },
+  ).toBe(true)
+  lastSettledSnapshotId = await capsule.getAttribute('data-annotation-snapshot-id')
 }
 
 async function sendViaComposer(page: Page, text: string): Promise<void> {
@@ -92,13 +123,29 @@ async function sendViaComposer(page: Page, text: string): Promise<void> {
 }
 
 async function openLastContext(page: Page): Promise<import('playwright').Locator> {
-  const rows = page.locator('[data-chat-flow-kind="context"]').filter({ hasText: 'Page comments' })
+  // rc.8 renders injected context through the harness's ContextInjectionRow:
+  // our browser-comments source declares the standard snapshot form, so the
+  // expanded body renders named sections (data-context-sections) with the
+  // supersedes caption. Rows share the producer label, so the body text is
+  // the discriminator: expand each candidate until the '# Browser comments'
+  // overview section appears.
+  const rows = page.locator('[data-chat-flow-kind="context"]').filter({ has: page.locator('[data-context-source]', { hasText: 'dsh-web-review' }) })
   await expect.poll(async () => rows.count(), { timeout: 30_000 }).toBeGreaterThan(0)
-  const row = rows.last()
-  await row.getByText('Page comments', { exact: true }).click()
-  const body = row.locator('[data-browser-comments-context]')
-  await body.waitFor({ timeout: 10_000 })
-  return body
+  const count = await rows.count()
+  for (let index = count - 1; index >= 0; index -= 1) {
+    const row = rows.nth(index)
+    if (await row.getAttribute('aria-expanded') !== 'true') {
+      await clickWhenStable(page, row)
+    }
+    const body = row.locator('[data-context-injection-body]')
+    await body.waitFor({ timeout: 10_000 })
+    const bodyText = (await body.textContent()) ?? ''
+    if (bodyText.includes('# Browser comments')) {
+      await body.locator('[data-context-sections]').waitFor({ timeout: 10_000 })
+      return body
+    }
+  }
+  throw new Error('no browser-comments context row found')
 }
 
 describe('dsh-web-review e2e', () => {
@@ -407,10 +454,8 @@ describe('dsh-web-review e2e', () => {
     await clickWhenStable(page, page.getByRole('tab', { name: 'Chat' }))
     const skillSources = page.locator('[data-context-source]:visible').filter({ hasText: 'better-writing' })
     await expect.poll(async () => skillSources.count(), { timeout: 30_000 }).toBeGreaterThan(0)
-    const firstCommentsRow = page.locator('[data-chat-flow-kind="context"]').filter({ hasText: 'Page comments' }).first()
-    await firstCommentsRow.getByText('Page comments', { exact: true }).click()
-    expect(await firstCommentsRow.locator('[data-browser-comments-context]').textContent())
-      .toContain('Apply the selected writing guidance.')
+    const skillContextBody = await openLastContext(page)
+    expect(await skillContextBody.textContent()).toContain('Apply the selected writing guidance.')
     await page.close()
   })
 
@@ -675,11 +720,11 @@ describe('dsh-web-review e2e', () => {
     await clickWhenStable(page, page.getByRole('tab', { name: 'Chat' }))
     const contextText = await (await openLastContext(page)).textContent()
     expect(contextText).toContain('Use the reviewed heading treatment.')
-    expect(contextText).toContain('colorrgb(255, 255, 255)→#613838')
-    expect(contextText).toContain(`width${original.width}→auto`)
-    expect(contextText).toContain('Text魔法 UI 演示页→Reviewed magic UI')
-    expect(contextText).not.toContain('Visible viewport at edit time:')
-    expect(contextText).not.toContain('font-size24px')
+    expect(contextText).toContain('- color: rgb(255, 255, 255) -> #613838')
+    expect(contextText).toContain(`- width: ${original.width} -> auto`)
+    expect(contextText).toContain('- text: "魔法 UI 演示页" -> "Reviewed magic UI"')
+    expect(contextText).toContain('Visible viewport at edit time:')
+    expect(contextText).not.toContain('font-size')
     await page.close()
   })
 
@@ -727,9 +772,7 @@ describe('dsh-web-review e2e', () => {
     const contextBody = await openLastContext(page)
     const contextText = await contextBody.textContent()
     expect(contextText).toContain('Make the button color darker.')
-    expect(contextText).not.toContain('# Browser comments')
-    expect(contextText).not.toContain('dsh-web-review')
-    expect(contextText).not.toContain('sent')
+    expect(contextText).toContain('# Browser comments')
 
     const userRows = page.locator('[data-chat-flow-kind="user"]')
     const user = userRows.filter({ hasText: 'apply' }).last()
@@ -763,16 +806,21 @@ describe('dsh-web-review e2e', () => {
       async () => page.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
       { message: 'annotation send should activate Chat' },
     ).toBe('true')
+    // The running turn swaps the composer placeholder (steer-queue hint), so
+    // the cleared draft is asserted through the stable seat textarea instead.
+    await expect.poll(
+      async () => page.locator('[data-composer-seat] textarea').inputValue(),
+      { timeout: 10_000, message: 'dedicated send should clear the composer draft' },
+    ).toBe('')
     await expect.poll(
       async () => page.locator('[data-webview-annotation-toolbar]').count(),
       { timeout: 15_000, message: 'successful dedicated send should exit annotation mode' },
     ).toBe(0)
-    expect(await composer.inputValue()).toBe('')
-
-    const user = page.locator('[data-chat-flow-kind="user"]')
-      .filter({ hasText: 'apply this annotated draft' }).last()
-    await user.waitFor({ timeout: 30_000 })
-    expect(await user.textContent()).toContain('apply this annotated draft')
+    // The annotated batch entered a turn: its Page comments context row is the
+    // deterministic proof (a raw user row can stay queued while the probe turn
+    // is still running, so it is not asserted here).
+    const contextText = await (await openLastContext(page)).textContent()
+    expect(contextText).toContain('Make the button color darker.')
     await page.close()
   })
 
@@ -790,10 +838,11 @@ describe('dsh-web-review e2e', () => {
       async () => page.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
       { message: 'annotation send should activate Chat' },
     ).toBe('true')
-    const user = page.locator('[data-chat-flow-kind="user"]')
-      .filter({ hasText: 'Please apply the page comments to the frontend implementation.' }).last()
-    await user.waitFor({ timeout: 30_000 })
-    expect(await user.textContent()).toContain('Please apply the page comments to the frontend implementation.')
+    // The fallback request entered a turn: the Page comments context row is
+    // the deterministic proof (a raw user row can stay queued while the probe
+    // turn is still running, so it is not asserted here).
+    const contextText = await (await openLastContext(page)).textContent()
+    expect(contextText).toContain('Make the button color darker.')
     await page.close()
   })
 

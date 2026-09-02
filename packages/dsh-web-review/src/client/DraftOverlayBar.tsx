@@ -132,9 +132,16 @@ export function DraftOverlayBar({ useStore, useSession, actions, syncAnnotations
   }, [actions, latestAnnotationContextId, state.annotationSync, state.picks.length])
 
   const clearing = state.picks.length === 0
-  const syncStatus = state.annotationSync.status === 'ready' || state.annotationSync.status === 'idle'
+  // The pristine idle state must NOT read as 'synced' while annotations are
+  // pending: the commit effect has not run yet, so "发送时注入" would be a
+  // lie and a caller (or test) that accepts 'synced' could send before the
+  // host ever stored the pending snapshot. Pending picks + idle renders as
+  // syncing (preparing) until the host acknowledges the submission.
+  const syncStatus = state.annotationSync.status === 'ready'
     ? 'synced'
-    : state.annotationSync.status
+    : state.annotationSync.status === 'idle' && !clearing
+      ? 'syncing'
+      : state.annotationSync.status
   if (clearing && syncStatus !== 'syncing' && syncStatus !== 'error') return null
 
   const count = state.picks.length
@@ -217,6 +224,7 @@ export function DraftOverlayBar({ useStore, useSession, actions, syncAnnotations
           className={css.capsule}
           data-webview-annotation-capsule=""
           data-sync-status={syncStatus}
+          data-annotation-snapshot-id={state.annotationSync.status === 'ready' ? state.annotationSync.snapshotId : undefined}
         >
           <button
             type="button"

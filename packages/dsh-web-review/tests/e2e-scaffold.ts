@@ -21,7 +21,7 @@ import { harnessWebLaunch } from '../../../scripts/harness-cli.ts'
 import { resolveHarnessRoot } from '../../../scripts/harness-path.ts'
 import { materializeProfilePluginLink } from '../../../scripts/profile-plugin-link.ts'
 
-/** Onboarding acknowledgement expected by the reviewed 0812 Harness baseline. */
+/** Onboarding acknowledgement expected by the reviewed rc.8 Harness baseline. */
 const WELCOME_NOTICE_SETTINGS_NAMESPACE = 'ui-onboarding'
 const WELCOME_NOTICE_ACK_FIELD = 'welcomeNoticeVersion'
 const WELCOME_NOTICE_VERSION = '2026-08-13.1'
@@ -257,7 +257,7 @@ export async function newPage(browser: Browser): Promise<Page> {
 
 /**
  * Connect a fresh workspace through the empty hero's Choose-workspace flow
- * (the Harness 0812 workspace-management path: with the -browse directory picker
+ * (the Harness rc.8 workspace-management path: with the -browse directory picker
  * pinned by {@link startServices}, the click lands directly in the in-app
  * 'Select Workspace Directory' dialog). First-boot overlays are suppressed
  * at the configuration layer (welcome-notice ack + provider key), so no UI
