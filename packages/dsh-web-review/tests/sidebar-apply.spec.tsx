@@ -71,6 +71,8 @@ interface FakeApplyHarness {
   setLiveIds(ids: string[]): void
   /** Registrations of one slot that are still live. */
   liveRegistrations(slot: string): Array<{ slot: string; count: number; dispose: () => void; opts?: Record<string, unknown> }>
+  /** Contributions handed to the fake commandUi.register, in registration order. */
+  commandContributions: Array<Record<string, unknown>>
 }
 
 function fakeApplyContext(options: { service?: BetterSidebarService; sessionIds?: string[] } = {}): FakeApplyHarness {
@@ -84,7 +86,13 @@ function fakeApplyContext(options: { service?: BetterSidebarService; sessionIds?
   const effects: Array<() => void> = []
   const injected: string[][] = []
   const closeDetails = vi.fn()
-  const commandUi = { register: vi.fn() }
+  const commandContributions: Array<Record<string, unknown>> = []
+  const commandUi = {
+    register: vi.fn((contribution: Record<string, unknown>) => {
+      commandContributions.push(contribution)
+      return () => {}
+    }),
+  }
 
   const ctx = {
     get: (name: string): unknown => services.get(name),
@@ -154,6 +162,7 @@ function fakeApplyContext(options: { service?: BetterSidebarService; sessionIds?
     injected,
     effects,
     closeDetails,
+    commandContributions,
     setLiveIds: (ids: string[]): void => {
       liveIds = ids
       listListener?.()
@@ -326,5 +335,21 @@ describe('apply: better-sidebar wiring', () => {
     // No re-registration during unload; the view contribution stays.
     expect(service.registerTab).not.toHaveBeenCalled()
     expect(h.liveRegistrations('conversation.view')).toHaveLength(1)
+  })
+})
+
+describe('apply: /skills command contribution', () => {
+  it('exposes the menu row description as a callable', () => {
+    const h = fakeApplyContext()
+    apply(h.ctx)
+    const contribution = h.commandContributions[0]
+    expect(contribution?.name).toBe('skills')
+    // The host contract resolves the row copy by CALLING this field on every
+    // candidate pass (`contribution.description()`). A plain string throws
+    // `TypeError: contribution.description is not a function` there and takes
+    // the entire `/` candidate list down with it, so the assertion is on the
+    // callable form, not on the text.
+    expect(typeof contribution?.description).toBe('function')
+    expect((contribution?.description as () => string)()).toBe(zh['command.skills.description'])
   })
 })

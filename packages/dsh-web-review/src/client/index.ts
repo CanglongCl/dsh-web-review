@@ -285,7 +285,14 @@ export function apply(ctx: ClientContext): void {
   ctx.inject(['commandUi'], (scope: ClientContext) => {
     scope.effect(() => scope.commandUi.register({
       name: 'skills',
-      description: t('command.skills.description'),
+      // `description` is a THUNK on the current host contract: ui-commands
+      // >= 0.1.5-rc.3 declares `description?(): string` and calls
+      // `contribution.description()` while synthesizing candidates. This
+      // package still pins the rc.8 devDependency, whose declaration types the
+      // field as a plain string, so the callable form is expressed through
+      // that type. A plain string crashes the whole `/` candidate pass on a
+      // current host — every command in the menu becomes unreachable.
+      description: (() => t('command.skills.description')) as unknown as string,
       available: () => true,
       ui: {
         kind: 'popupSelect',
